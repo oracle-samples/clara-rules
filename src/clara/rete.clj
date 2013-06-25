@@ -204,43 +204,76 @@
 
 (defn ast-to-dnf 
   "Convert an AST to disjunctive normal form."
-  ;; FIXME: add support for actual disjunctions...
   [ast] 
-  (if (= :and (:type ast)) 
-    ;; The top-level is an and, so there is only disjunction, so return a single-item vector with it.
-    [(map :content (:content ast))]
-    (throw (RuntimeException. "ONLY SIMPLE ANDS SUPPORTED"))))
+
+  (if (= :condition (:type ast))
+    ;; Individual conditions can return unchanged.
+    ast
+   
+    ;; Process children.
+    (let [children (map ast-to-dnf (:content ast))
+          conjunctions (filter #(#{:and :condition} (:type %)) children)
+          ;; Merge all child disjunctions into a single list.
+          disjunctions (mapcat :content (filter #(#{:or} (:type %)) children))]
+      ;; TODO: Nodes with only a single expression as a child can be flattened.      
+      (condp = (:type ast)
+
+        :and
+        (if (= 0 (count disjunctions))
+          ;; If there are no disjunctions in the children, no changes are needed.
+          ast
+          ;; Distribute each disjunction over all conjunctions to
+          ;; create a top-level disjunctive normal forum.
+          {:type :or 
+           :content (into [] (for [disjunction disjunctions]
+                               {:type :and
+                                :content (apply vector (cons disjunction conjunctions))}))})
+
+        :or
+        {:type :or
+         ;; Nested disjunctions can be merged into the parent disjunction. We
+         ;; the simply append nested conjunctions to create our DNF.
+         :content (apply vector (concat disjunctions conjunctions))  }
+        :not 
+        (throw (RuntimeException. "TODO: use de Morgan's law to handle negations"))))))
 
 (defn- add-rule* 
   "Adds a new production, returning a tuple of a new beta root and a new set of alpha roots"
-  [[condition & more] production-node alpha-roots ancestor-binding-keys]
-  (if condition
-
+  [[expression & more] production-node alpha-roots ancestor-binding-keys]
+  (condp = (:type expression)
+    
     ;; Recursively create children, then create a new join and alpha node for the condition.
-    (let [node-binding-keys (s/intersection ancestor-binding-keys (:binding-keys condition))
-          all-binding-keys (s/union ancestor-binding-keys (:binding-keys condition))
-          [child new-alphas] (add-rule* more production-node alpha-roots all-binding-keys)
-          join-node (create-join-node condition [child] node-binding-keys)
-          alpha-node (create-alpha-node condition [join-node])]
+    :condition (let [condition (:content expression)
+                     node-binding-keys (s/intersection ancestor-binding-keys (:binding-keys condition))
+                     all-binding-keys (s/union ancestor-binding-keys (:binding-keys condition))
+                     [child new-alphas] (add-rule* more production-node alpha-roots all-binding-keys)
+                     join-node (create-join-node condition [child] node-binding-keys)
+                     alpha-node (create-alpha-node condition [join-node])]
       
-      [join-node, 
-       (merge-with concat new-alphas {(get-in alpha-node [:condition :type]) [alpha-node]})])
+                 [join-node, 
+                  (merge-with concat new-alphas {(get-in alpha-node [:condition :type]) [alpha-node]})])
+    
+    ;; It's a conjunction, so add all content of the conjunction.
+    :and (add-rule* (:content expression) production-node alpha-roots ancestor-binding-keys)
+
     ;; No more conditions, so terminate the recursion by returning the production node.
     ;; The returned production node will be the child of a join node built as we
     ;; work our way back up the recursion stack.
-    [production-node alpha-roots]))
+    nil [production-node alpha-roots]))
 
 (defn- add-production* 
   [network production]
 
   (let [production-node (create-production-node production)
-        disjunctions (ast-to-dnf (:lhs production))
+        dnf (ast-to-dnf (:lhs production))
+        ;; Get a list of disjunctions, which may be a single item.
+        disjunctions (if (= :or (:type dnf)) (:content dnf) [dnf])
         [alpha-roots beta-roots] 
         (loop [alpha-roots (:alpha-roots network)
                beta-roots (:beta-roots network)
                disjunctions disjunctions]
           (if (seq disjunctions)
-            (let [[beta-root alpha-roots] (add-rule* (first disjunctions)
+            (let [[beta-root alpha-roots] (add-rule*  [(first disjunctions)] ; FIXME: should accept simple conjuection, not a vec.
                                                      production-node
                                                      alpha-roots
                                                      #{})]

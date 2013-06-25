@@ -121,9 +121,140 @@
     (is (= #{{:?t 15} {:?t 10}}
            (into #{} (query session cold-query))))))
 
-(comment
-  (deftest parse-expression
-    (pprint (parse-lhs '[(Temperature (< temperature 20) (== ?t temperature))
-                         (Temperature (< temperature 50) (== ?t temperature))
-                         (or (WindSpeed (> windspeed 25))
-                             (WindSpeed (> windspeed 505)))]))))
+(deftest test-simple-disjunction
+  (let [or-query (new-query [(or (Temperature (< temperature 20) (== ?t temperature))
+                                 (WindSpeed (> windspeed 30) (== ?w windspeed)))])
+
+        network (-> (rete-network) 
+                    (add-query or-query))
+
+        cold-session (new-session network)
+        windy-session (new-session network)]
+
+    (insert cold-session (->Temperature 15))
+    (insert windy-session (->WindSpeed 50))
+
+    (is (= #{{:?t 15}}
+           (into #{} (query cold-session or-query))))
+
+    (is (= #{{:?w 50}}
+           (into #{} (query windy-session or-query))))))
+
+(deftest test-disjunction-with-nested-and
+
+  (let [really-cold-or-cold-and-windy 
+        (new-query [(or (Temperature (< temperature 0) (== ?t temperature))
+                        (and (Temperature (< temperature 20) (== ?t temperature))
+                             (WindSpeed (> windspeed 30) (== ?w windspeed))))])
+
+        network (-> (rete-network) 
+                    (add-query really-cold-or-cold-and-windy))
+
+        cold-session (new-session network)
+        windy-session (new-session network)]
+
+    (insert cold-session (->Temperature -10))
+    (insert windy-session (->Temperature 15))
+    (insert windy-session (->WindSpeed 50))
+
+    (is (= #{{:?t -10}}
+           (into #{} (query cold-session really-cold-or-cold-and-windy))))
+
+    (is (= #{{:?w 50 :?t 15}}
+           (into #{} (query windy-session really-cold-or-cold-and-windy))))))
+
+(deftest test-ast-to-dnf 
+
+  ;; Test simple condition.
+  (is (= {:type :condition :content :placeholder} 
+         (ast-to-dnf {:type :condition :content :placeholder} )))
+
+  ;; Test single-item conjunection.
+  (is (= {:type :and 
+            :content [{:type :condition :content :placeholder}]} 
+         (ast-to-dnf {:type :and 
+                      :content [{:type :condition :content :placeholder}]})))
+
+  ;; Test multi-item conjunction.
+  (is (= {:type :and 
+            :content [{:type :condition :content :placeholder1}
+                      {:type :condition :content :placeholder2}
+                      {:type :condition :content :placeholder3}]} 
+         (ast-to-dnf {:type :and 
+                      :content [{:type :condition :content :placeholder1}
+                                {:type :condition :content :placeholder2}
+                                {:type :condition :content :placeholder3}]})))
+  
+  ;; Test simple disjunction
+  (is (= {:type :or
+          :content [{:type :condition :content :placeholder1}
+                    {:type :condition :content :placeholder2}
+                    {:type :condition :content :placeholder3}]}
+         (ast-to-dnf {:type :or
+                      :content [{:type :condition :content :placeholder1}
+                                {:type :condition :content :placeholder2}
+                                {:type :condition :content :placeholder3}]})))
+
+
+  ;; Test simple disjunction with nested conjunction.
+  (is (= {:type :or
+          :content [{:type :condition :content :placeholder1}
+                    {:type :and
+                     :content [{:type :condition :content :placeholder2}
+                               {:type :condition :content :placeholder3}]}]}
+         (ast-to-dnf {:type :or
+                      :content [{:type :condition :content :placeholder1}
+                                {:type :and
+                                 :content [{:type :condition :content :placeholder2}
+                                           {:type :condition :content :placeholder3}]}]}))) 
+
+  ;; Test simple distribution of a nested or expression.
+  (is (= {:type :or,
+          :content
+          [{:type :and,
+            :content
+            [{:content :placeholder1, :type :condition}
+             {:content :placeholder3, :type :condition}]}
+           {:type :and,
+            :content
+            [{:content :placeholder2, :type :condition}
+             {:content :placeholder3, :type :condition}]}]}
+
+         (ast-to-dnf {:type :and
+                      :content 
+                      [{:type :or 
+                        :content 
+                        [{:type :condition :content :placeholder1}
+                         {:type :condition :content :placeholder2}]}                                 
+                       {:type :condition :content :placeholder3}]})))
+
+  ;; Test distribution over multiple and expressions.
+  (is (= {:type :or,
+          :content
+          [{:type :and,
+            :content
+            [{:content :placeholder1, :type :condition}
+             {:content :placeholder4, :type :condition}
+             {:content :placeholder5, :type :condition}]}
+           {:type :and,
+            :content
+            [{:content :placeholder2, :type :condition}
+             {:content :placeholder4, :type :condition}
+             {:content :placeholder5, :type :condition}]}
+           {:type :and,
+            :content
+            [{:content :placeholder3, :type :condition}
+             {:content :placeholder4, :type :condition}
+             {:content :placeholder5, :type :condition}]}]}
+
+         (ast-to-dnf {:type :and
+                      :content 
+                      [{:type :or 
+                        :content 
+                        [{:type :condition :content :placeholder1}
+                         {:type :condition :content :placeholder2}
+                         {:type :condition :content :placeholder3}]}                                 
+                       {:type :condition :content :placeholder4}
+                       {:type :condition :content :placeholder5}]}))))
+
+(run-tests)
