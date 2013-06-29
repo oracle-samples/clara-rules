@@ -121,6 +121,58 @@
     (is (= #{{:?t 15} {:?t 10}}
            (into #{} (query session cold-query))))))
 
+(deftest test-simple-retraction
+  (let [cold-query (new-query [[Temperature (< temperature 20) (== ?t temperature)]])
+
+        session (-> (rete-network) 
+                    (add-query cold-query)
+                    (new-session))
+        temp (->Temperature 10)]
+
+    ;; Ensure the item is there as expected.
+    (insert session temp)
+    (is (= #{{:?t 10}}
+           (into #{} (query session cold-query))))
+
+    ;; Ensure the item is retracted as expected.
+    (retract session temp)    
+    (is (= #{}
+           (into #{} (query session cold-query))))))
+
+(deftest test-noop-retraction
+  (let [cold-query (new-query [[Temperature (< temperature 20) (== ?t temperature)]])
+
+        session (-> (rete-network) 
+                    (add-query cold-query)
+                    (new-session))]
+
+    ;; Ensure retracting a non-existant item has no ill effects.
+    (insert session (->Temperature 10))
+    (retract session (->Temperature 15))
+    (is (= #{{:?t 10}}
+           (into #{} (query session cold-query))))))
+
+(deftest test-retraction-of-join
+  (let [same-wind-and-temp (new-query [(Temperature (== ?t temperature))
+                                      (WindSpeed (== ?t windspeed))])
+
+        session (-> (rete-network) 
+                    (add-query same-wind-and-temp)
+                    (new-session))]
+
+    (insert session (->Temperature 10))
+    (insert session (->WindSpeed 10))
+
+    ;; Ensure expected join occurred.
+    (is (= #{{:?t 10}}
+           (into #{} (query session same-wind-and-temp))))
+
+    ;; Ensure item was removed as viewed by the query.
+    (retract session (->Temperature 10))
+    (is (= #{}
+           (into #{} (query session same-wind-and-temp))))))
+
+
 (deftest test-simple-disjunction
   (let [or-query (new-query [(or (Temperature (< temperature 20) (== ?t temperature))
                                  (WindSpeed (> windspeed 30) (== ?w windspeed)))])
@@ -162,6 +214,8 @@
 
     (is (= #{{:?w 50 :?t 15}}
            (into #{} (query windy-session really-cold-or-cold-and-windy))))))
+
+
 
 (deftest test-ast-to-dnf 
 

@@ -12,18 +12,48 @@
 
 (defrecord Network [alpha-roots beta-roots production-nodes query-nodes])
 
-(defrecord Session [network memory])
-
 (defrecord Token [facts bindings])
-
+ 
 ;; Token with no bindings, used as the root of beta nodes.
 (def empty-token (->Token [] {}))
 
-(defprotocol ILeftActivate
-  (left-activate [node token memory]))
+;; Returns a new session with the additional facts inserted.
+(defprotocol IWorkingMemory
+  (insert [session fact])
+  (retract [session fact])
+  ;; Fires pending rules and returns a new session where they are in a fired state.
+  (fire-rules [session])
+  (query [session query]))
 
+;; Left activation protocol for various types of beta nodes.
+(defprotocol ILeftActivate
+  (left-activate [node token memory transport])
+  (left-retract [node token memory transport]))
+
+;; Right activation protocol to insert new facts, connect alpha nodes,
+;; and beta nodes.
 (defprotocol IRightActivate
-  (right-activate [node fact bindings memory]))
+  (right-activate [node fact bindings memory transport])
+  (right-retract [node fact bindings memory transport]))
+
+;; The transport protocol for sending and retracting items between nodes.
+(defprotocol ITransport
+  (send-fact [transport node fact bindings])
+  (send-token [transport node token])
+  (retract-fact [transport node fact bindings])
+  (retract-token [transport node token]))
+
+;; Simple, in-memory transport.
+(deftype LocalTransport [memory]
+  ITransport
+  (send-fact [transport node fact bindings]
+    (right-activate node fact bindings memory transport))
+  (send-token [transport node token]
+    (left-activate node token memory transport))
+  (retract-fact [transport node fact bindings]
+    (right-retract node fact bindings memory transport))
+  (retract-token [transport node token]
+    (left-retract node token memory transport)))
 
 (defprotocol ITransientMemory
   (get-beta-memory [memory node])
@@ -42,39 +72,81 @@
           (assoc! alpha-memory node node-memory)
           node-memory))))
 
-
 (defn get-facts 
   "Returns a seq of [fact, fact-bindings] tuples"
   [memory node bindings]
   (or (get (get-alpha-memory memory node) bindings)
       []))
 
-(defn add-fact [memory node node-bindings fact fact-bindings]
+(defn- add-fact 
+  "Helper function to add a fact to the alpha memory of a node."
+  [memory node node-bindings fact fact-bindings]
   (let [alpha-memory (get-alpha-memory memory node)
         current-facts (get alpha-memory node-bindings)]
     (assoc! alpha-memory node-bindings (conj current-facts [fact fact-bindings]))))
 
-(defn get-tokens [memory node bindings]
+(defn- remove-fact
+  "Remove a fact from the node's memory. Returns true if it was removed, false otherwise"
+  [memory node fact node-bindings]
+  (let [alpha-memory (get-alpha-memory memory node)
+        current-facts (get alpha-memory node-bindings)
+        filtered-facts (filter (fn [[candidate candidate-bindings]] (not= fact candidate)) current-facts)]
+    
+    ;; Update our memory with the changed facts.
+    (assoc! alpha-memory node-bindings filtered-facts)
+    ;; If the count of facts changed, we removed something.
+    (not= (count current-facts) (count filtered-facts))))
+
+(defn- get-tokens 
+  "Returns a seq of the tokens that match the given bindings for the node."
+  [memory node bindings]
   (or (get (get-beta-memory memory node) bindings)
       []))
 
-(defn add-token [memory node node-bindings token]
+(defn- add-token 
+  "Adds a token to the beta memory for a node."
+  [memory node node-bindings token]
   (let [beta-memory (get-beta-memory memory node)
         current-tokens (get beta-memory node-bindings)]
     (assoc! beta-memory node-bindings (conj current-tokens token))))
 
+(defn- remove-token
+  "Removes a token from the beta memory for a node. Returns true if it was removed, false wotherwise"
+  [memory node node-bindings token]
+  (let [beta-memory (get-beta-memory memory node)
+        current-tokens (get beta-memory node-bindings)
+        filtered-tokens (filter #(not= % token) current-tokens)]
+    (assoc! beta-memory node-bindings filtered-tokens)
+    ;; If the count of tokens changed, we remove something.
+    (not= (count current-tokens) (count filtered-tokens))))
 
 (defrecord ProductionNode [production rhs]
   ILeftActivate
-  (left-activate [node token memory] 
+  (left-activate [node token memory transport] 
     (let [beta-memory (get-beta-memory memory node)]
-      (assoc! beta-memory :tokens (conj (get beta-memory :tokens) token)))))
+      (assoc! beta-memory :tokens (conj (get beta-memory :tokens) token))))
+  (left-retract [node token memory transport] 
+    (let [beta-memory (get-beta-memory memory node)]
+      (assoc! beta-memory :tokens (filter #(not= % token) (get beta-memory :tokens))))))
 
-(defrecord AlphaNode [condition children activation])
+(defrecord AlphaNode [condition children activation]
+  IRightActivate
+  (right-activate [node fact bindings memory transport]
+    (if-let [bindings (activation fact)]
+      (doall 
+       (map
+        #(send-fact transport % fact bindings)
+        children))))
+  (right-retract [node fact bindings memory transport]
+    (if-let [bindings (activation fact)]
+      (doall 
+       (map
+        #(retract-fact transport % fact bindings)
+        children)))))
 
 (defrecord JoinNode [condition children binding-keys]
   ILeftActivate
-  (left-activate [node token memory] 
+  (left-activate [node token memory transport] 
     ;; Add token to the node's working memory for future right activations.
     (let [bindings (:bindings token)
           node-bindings (select-keys bindings binding-keys)
@@ -84,10 +156,19 @@
               :let [child-token (->Token (conj (:facts token) fact) (conj bindings (:bindings token)))]
               child children]
         ;; Create a new token containing all bindings and left-activate the child.
-        (left-activate child child-token memory))))
+        (send-token transport child child-token))))
+  (left-retract [node token memory transport] 
+    (let [bindings (:bindings token)
+          node-bindings (select-keys bindings binding-keys)]
+      (when (remove-token memory node node-bindings token)
+        (doseq [[fact fact-binding] (get-facts memory node node-bindings)
+                :let [child-token (->Token (conj (:facts token) fact) (conj bindings (:bindings token)))]
+                child children]
+          ;; Retract the token from all children.
+          (retract-token transport child child-token)))))
 
   IRightActivate
-  (right-activate [node fact bindings memory]   
+  (right-activate [node fact bindings memory transport]   
 
     (let [node-bindings (select-keys bindings binding-keys)
           matched-tokens (get-tokens memory node node-bindings)]
@@ -99,10 +180,22 @@
               :let [child-token (->Token (conj (:facts token) fact) (conj (:bindings token) bindings))]
               child children]
         ;; Create a new token containing all bindings and left-activate the child.
-        (left-activate child child-token memory)))))
+        (send-token transport child child-token))))
+  (right-retract [node fact bindings memory transport]   
+    ;; TODO: find all tokens that match the retracted fact, and retract their children.
+    ;; Then remove the fact from memory.
+    (let [node-bindings (select-keys bindings binding-keys)]
+      (when (remove-fact  memory node fact node-bindings)
+        (doseq [token (get-tokens memory node node-bindings)
+              :let [child-token (->Token (conj (:facts token) fact) (conj (:bindings token) bindings))]
+              child children]
+          ;; Retract children impacted by the retracted fact.
+          (retract-token transport child child-token))))))
 
-(defn get-fields 
+(defn- get-fields 
   "Returns a list of fields in the given class."
+  ;; TODO: add support for java beans.
+  ;; TODO: consider dynamic support for simple maps.
   [cls]
   (map :name 
        (filter #(and (:type %) 
@@ -110,7 +203,9 @@
                      (not (:static (:flags %)))) 
                (:members (reflect/type-reflect cls)))))
 
-(defmacro == [variable content]
+(defmacro == 
+  "Unifies a variable with a given value."
+  [variable content]
   `(do (assoc! ~'?__bindings__ ~(keyword variable) ~content)
        ~content))
 
@@ -161,7 +256,7 @@
      :content (apply vector (map parse-expression (rest expression)))}
     {:type :condition :content (create-condition expression)}))
 
-(defn parse-lhs
+(defn- parse-lhs
   "Parse the left-hand side and returns an AST"
   [lhs] 
   (parse-expression 
@@ -183,15 +278,6 @@
   `(->Production 
     ~(parse-lhs lhs)
     ~(compile-action (variables-as-keywords lhs) rhs)))
-
-(defn- create-alpha-node [condition children]
-  (->AlphaNode condition 
-               children 
-               (:activate-fn condition)))
-
-(defn- create-production-node [production]
-  (->ProductionNode production 
-                    (:rhs production)))
 
 (defn rete-network 
   "Creates an empty rete network."
@@ -248,7 +334,9 @@
                      all-binding-keys (s/union ancestor-binding-keys (:binding-keys condition))
                      [child new-alphas] (add-rule* more production-node alpha-roots all-binding-keys)
                      join-node (create-join-node condition [child] node-binding-keys)
-                     alpha-node (create-alpha-node condition [join-node])]
+                     alpha-node (->AlphaNode condition 
+                                             [join-node] 
+                                             (:activate-fn condition))]
       
                  [join-node, 
                   (merge-with concat new-alphas {(get-in alpha-node [:condition :type]) [alpha-node]})])
@@ -264,7 +352,7 @@
 (defn- add-production* 
   [network production]
 
-  (let [production-node (create-production-node production)
+  (let [production-node (->ProductionNode production (:rhs production)) 
         dnf (ast-to-dnf (:lhs production))
         ;; Get a list of disjunctions, which may be a single item.
         disjunctions (if (= :or (:type dnf)) (:content dnf) [dnf])
@@ -302,58 +390,47 @@
   [network query]
   (add-production* network query))
 
-
-
 (defn create-working-memory 
   "Create a new working memory for the given network."
   [rete-network]
   ;; Creat a new memory and initialize it with 
   ;; dummy nodes for the beta roots.
   (reduce (fn [memory beta-node] 
-            (left-activate beta-node empty-token memory)
+            (left-activate beta-node empty-token memory nil)
             memory)
           (->TransientMemory 
            (transient {}) 
            (transient {}))
           (:beta-roots rete-network)))
 
+
+(defrecord SimpleWorkingMemory [network memory transport]
+  IWorkingMemory
+  (insert [session fact]
+    (if-let [roots (get-in network [:alpha-roots (class fact)])]
+      (doall
+       (map 
+        #(send-fact transport % fact {})
+        roots)))
+    session) ;; FIXME: return a new session that is persistent.
+  (retract [session fact]
+    (if-let [roots (get-in network [:alpha-roots (class fact)])]
+      (doall
+       (map 
+        #(retract-fact transport % fact {})
+        roots)))
+    session)
+  (fire-rules [session]
+    (doseq [node (get-in session [:network :production-nodes])
+            token (:tokens (get-beta-memory (:memory session) node))]
+      ((:rhs node) session token)))
+  (query [session query]
+    (let [query-node (get-in network [:query-nodes query])
+          beta-memory (get-beta-memory memory query-node)]
+      (map :bindings (:tokens beta-memory)))))
+
 (defn new-session 
   "Creates a new session using the given rete network."
   [rete-network]
-  (->Session rete-network (create-working-memory rete-network)))
-
-(defn activate-alpha
-  "Activate an alpha node."
-  [node fact memory] 
-  (if-let [bindings ((:activation node) fact)]
-    (doall 
-     (map
-      #(right-activate % fact bindings memory)
-      (:children node)))))
-
-(defn insert 
-  "Insert a fact into the sesion"
-  [session fact]
-  ;; Locate the alpha roots that accept the given fact type.
-  (if-let [roots (get-in session [:network :alpha-roots (class fact)])]
-    (doall
-     (map 
-      #(activate-alpha % fact (:memory session))
-      roots)))
-  session)
-
-(defn fire-rules [session]
-  (doseq [node (get-in session [:network :production-nodes])
-          token (:tokens (get-beta-memory (:memory session) node))]
-    ((:rhs node) session token)))
-
-(defn query 
-  "Run a query against a working session. The given query must
-   have been defined and added to the network."
-  [session query]
-  (let [query-node (get-in session [:network :query-nodes query])
-        beta-memory (get-beta-memory (:memory session) query-node)]
-    (map :bindings (:tokens beta-memory))))
-
-;; TODO: compile alpha and beta nodes with functions that accept a "working memory" object
-;; that is used for all references. (Kind of cool that working memory is fully isolated from rete...)
+  (let [memory (create-working-memory rete-network)]
+    (->SimpleWorkingMemory rete-network memory (LocalTransport. memory))))
