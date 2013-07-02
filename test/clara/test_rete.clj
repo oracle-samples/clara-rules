@@ -121,6 +121,91 @@
     (is (= #{{:?t 15} {:?t 10}}
            (into #{} (query session cold-query))))))
 
+(deftest test-simple-negation
+  (let [not-cold-query (new-query [(not (Temperature (< temperature 20)))])
+
+        session (-> (rete-network) 
+                    (add-query not-cold-query)
+                    (new-session))]
+
+    ;; No facts for the above criteria exist, so we should see a positive result
+    ;; with no bindings.
+    (is (= #{{}}
+           (into #{} (query session not-cold-query))))
+    
+    ;; Inserting an item into the sesion should invalidate the negation.
+    (insert session (->Temperature 10))
+    (is (empty? (query session not-cold-query)))
+
+    ;; Retracting the inserted item should make the negation valid again.
+    (retract session (->Temperature 10))
+    (is (= #{{}}
+           (into #{} (query session not-cold-query))))))
+
+
+(deftest test-negation-with-other-conditions
+  (let [windy-but-not-cold-query (new-query [(WindSpeed (> windspeed 30) (== ?w windspeed))
+                                             (not (Temperature (< temperature 20)))])
+
+        session (-> (rete-network) 
+                    (add-query windy-but-not-cold-query)
+                    (new-session))]
+
+    ;; Make it windy, so our query should indicate that.
+    (insert session (->WindSpeed 40))
+    (is (= #{{:?w 40}}
+           (into #{} (query session windy-but-not-cold-query))))
+
+    ;; Make it hot and windy, so our query should still succeed.
+    (insert session (->Temperature 80))
+    (is (= #{{:?w 40}}
+           (into #{} (query session windy-but-not-cold-query))))
+
+    ;; Make it cold, so our query should return nothing.
+    (insert session (->Temperature 10))
+    (is (empty? (query session windy-but-not-cold-query)))))
+
+
+(deftest test-negated-conjunction
+  (let [not-cold-and-windy (new-query [(not (and (WindSpeed (> windspeed 30))
+                                                 (Temperature (< temperature 20))))])
+
+        session (-> (rete-network) 
+                    (add-query not-cold-and-windy)
+                    (new-session))]
+
+    ;; It is not cold and windy, so we should have a match.
+    (is (= #{{}}
+           (into #{} (query session not-cold-and-windy))))
+
+    ;; Make it cold and windy, so there should be no match.
+    (insert session (->WindSpeed 40))
+    (insert session (->Temperature 10))
+    (is (empty? (query session not-cold-and-windy)))))
+
+(deftest test-negated-disjunction
+  (let [not-cold-or-windy (new-query [(not (or (WindSpeed (> windspeed 30))
+                                               (Temperature (< temperature 20))))])
+
+        session (-> (rete-network) 
+                    (add-query not-cold-or-windy)
+                    (new-session))]
+
+    ;; It is not cold and windy, so we should have a match.
+    (is (= #{{}}
+           (into #{} (query session not-cold-or-windy))))
+
+    ;; Make it cold and windy, so there should be no match.
+    (insert session (->WindSpeed 40))
+    (is (empty? (query session not-cold-or-windy)))
+
+    ;; Retract the added fact and ensure we now match something.
+    (retract session (->WindSpeed 40))
+    (is (= #{{}}
+           (into #{} (query session not-cold-or-windy))))
+    ))
+
+
 (deftest test-simple-retraction
   (let [cold-query (new-query [[Temperature (< temperature 20) (== ?t temperature)]])
 
@@ -282,6 +367,58 @@
                          {:type :condition :content :placeholder2}]}                                 
                        {:type :condition :content :placeholder3}]})))
 
+  ;; Test push negation to edges.
+  (is (= {:type :and, 
+           :content 
+           [{:type :not, :content [{:content :placeholder1, :type :condition}]} 
+            {:type :not, :content [{:content :placeholder2, :type :condition}]} 
+            {:type :not, :content [{:content :placeholder3, :type :condition}]}]}
+          (ast-to-dnf {:type :not 
+                       :content
+                       [{:type :or 
+                         :content 
+                         [{:type :condition :content :placeholder1}
+                          {:type :condition :content :placeholder2}
+                          {:type :condition :content :placeholder3}]}]})))
+
+  (is (= {:type :and,
+          :content [{:type :and,
+                     :content
+                     [{:type :not, :content [{:content :placeholder1, :type :condition}]}
+                      {:type :not, :content [{:content :placeholder2, :type :condition}]}]}]}
+         
+       (ast-to-dnf {:type :and
+                      :content
+                      [{:type :not
+                        :content
+                        [{:type :or
+                          :content
+                          [{:type :condition :content :placeholder1}
+                           {:type :condition :content :placeholder2}]}]}]})))
+  
+  ;; Test push negation to edges.
+  (is (= {:type :or, 
+          :content [{:type :not, :content [{:content :placeholder1, :type :condition}]} 
+                    {:type :not, :content [{:content :placeholder2, :type :condition}]} 
+                    {:type :not, :content [{:content :placeholder3, :type :condition}]}]}
+         (ast-to-dnf {:type :not 
+                      :content
+                      [{:type :and
+                        :content 
+                        [{:type :condition :content :placeholder1}
+                         {:type :condition :content :placeholder2}
+                         {:type :condition :content :placeholder3}]}]})))
+
+  ;; Test simple identity disjunction.
+  (is (= {:type :or
+          :content
+          [{:type :not :content [{:type :condition :content :placeholder1}]}
+           {:type :not :content [{:type :condition :content :placeholder2}]}]}
+         (ast-to-dnf {:type :or
+                      :content
+                      [{:type :not :content [{:type :condition :content :placeholder1}]}
+                       {:type :not :content [{:type :condition :content :placeholder2}]}]})))
+
   ;; Test distribution over multiple and expressions.
   (is (= {:type :or,
           :content
@@ -300,7 +437,6 @@
             [{:content :placeholder3, :type :condition}
              {:content :placeholder4, :type :condition}
              {:content :placeholder5, :type :condition}]}]}
-
          (ast-to-dnf {:type :and
                       :content 
                       [{:type :or 
@@ -311,4 +447,4 @@
                        {:type :condition :content :placeholder4}
                        {:type :condition :content :placeholder5}]}))))
 
-(run-tests)
+

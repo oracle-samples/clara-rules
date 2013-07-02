@@ -110,6 +110,7 @@
         current-tokens (get beta-memory node-bindings)]
     (assoc! beta-memory node-bindings (conj current-tokens token))))
 
+
 (defn- remove-token
   "Removes a token from the beta memory for a node. Returns true if it was removed, false wotherwise"
   [memory node node-bindings token]
@@ -191,6 +192,48 @@
               child children]
           ;; Retract children impacted by the retracted fact.
           (retract-token transport child child-token))))))
+
+(defrecord NegationNode [condition children binding-keys]
+  ILeftActivate
+  (left-activate [node token memory transport]
+    ;; Add token to the node's working memory for future right activations.
+    (let [bindings (:bindings token)
+          node-bindings (select-keys bindings binding-keys)
+          matched-facts (get-facts memory node node-bindings)]
+      (add-token memory node node-bindings token)
+      (when (empty? matched-facts)
+        (doseq [child children]
+          (send-token transport child token)))))
+
+  (left-retract [node token memory transport]
+    (let [bindings (:bindings token)
+          node-bindings (select-keys bindings binding-keys)]
+      ;; If the token exists and doesn't match any facts, retract it
+      ;; from all children as well.
+      (when (and (remove-token memory node node-bindings token)
+                 (empty? (get-facts memory node node-bindings)))
+        (doseq [child children]
+          (retract-token transport child token)))))
+
+  IRightActivate
+  (right-activate [node fact bindings memory transport]
+    (let [node-bindings (select-keys bindings binding-keys)
+          matched-tokens (get-tokens memory node node-bindings)]
+      ;; Add fact to the node's working memory for future left activations.
+      (add-fact memory node node-bindings fact bindings)
+      ;; A negation was hit, so retract each matching token from the children nodes.
+      (doseq [token matched-tokens 
+              child children]
+        ;; Create a new token containing all bindings and left-activate the child.
+        (retract-token transport child token))))
+
+  (right-retract [node fact bindings memory transport]   
+    (let [node-bindings (select-keys bindings binding-keys)]
+      (when (remove-fact  memory node fact node-bindings)
+        (doseq [token (get-tokens memory node node-bindings)
+              child children]
+          ;; The retracted fact removed the negation, so send it to the children.
+          (send-token transport child token))))))
 
 (defn- get-fields 
   "Returns a list of fields in the given class."
@@ -284,21 +327,41 @@
   []
   (->Network {} [] [] {}))
 
-(defn- create-join-node [condition children binding-keys]
-  (->JoinNode condition children binding-keys))
-
-
 (defn ast-to-dnf 
   "Convert an AST to disjunctive normal form."
   [ast] 
-
-  (if (= :condition (:type ast))
+  (condp = (:type ast)
     ;; Individual conditions can return unchanged.
+    :condition
     ast
+
+    ;; Apply de Morgan's law to push negation nodes to the leaves. 
+    :not
+    (let [children (:content ast)
+          child (first children)
+          ;; Function to create negated grandchildren for de Morgan's law.
+          negate-grandchildren #(into [] (for [grandchild (:content child)] 
+                                           {:type :not
+                                            :content [grandchild]}))]
+
+      (when (not= 1 (count children))
+        (throw (IllegalArgumentException. "Negation must have only one child.")))
+
+      (condp = (:type child)
+
+        ;; If the child is a single condition, simply return the ast.
+        :condition ast
+
+        :and (ast-to-dnf {:type :or
+                          :content (negate-grandchildren)})
+        
+        :or (ast-to-dnf {:type :and 
+                         :content (negate-grandchildren)})))
    
-    ;; Process children.
+    ;; For all others, recursively process the children.
     (let [children (map ast-to-dnf (:content ast))
-          conjunctions (filter #(#{:and :condition} (:type %)) children)
+          ;; Get all conjunctions, which will not conain any disjunctions since they were processed above.
+          conjunctions (filter #(#{:and :condition :not} (:type %)) children)
           ;; Merge all child disjunctions into a single list.
           disjunctions (mapcat :content (filter #(#{:or} (:type %)) children))]
       ;; TODO: Nodes with only a single expression as a child can be flattened.      
@@ -306,10 +369,12 @@
 
         :and
         (if (= 0 (count disjunctions))
-          ;; If there are no disjunctions in the children, no changes are needed.
-          ast
-          ;; Distribute each disjunction over all conjunctions to
-          ;; create a top-level disjunctive normal forum.
+          
+          ;; If there are no disjunctions in the processed children, no further changes are needed.
+          {:type :and
+           :content (apply vector children)}
+          
+          ;; The children had disjunctions, so distribute them to convert to DNF.
           {:type :or 
            :content (into [] (for [disjunction disjunctions]
                                {:type :and
@@ -319,9 +384,7 @@
         {:type :or
          ;; Nested disjunctions can be merged into the parent disjunction. We
          ;; the simply append nested conjunctions to create our DNF.
-         :content (apply vector (concat disjunctions conjunctions))  }
-        :not 
-        (throw (RuntimeException. "TODO: use de Morgan's law to handle negations"))))))
+         :content (apply vector (concat disjunctions conjunctions))  }))))
 
 (defn- add-rule* 
   "Adds a new production, returning a tuple of a new beta root and a new set of alpha roots"
@@ -329,20 +392,35 @@
   (condp = (:type expression)
     
     ;; Recursively create children, then create a new join and alpha node for the condition.
-    :condition (let [condition (:content expression)
-                     node-binding-keys (s/intersection ancestor-binding-keys (:binding-keys condition))
-                     all-binding-keys (s/union ancestor-binding-keys (:binding-keys condition))
-                     [child new-alphas] (add-rule* more production-node alpha-roots all-binding-keys)
-                     join-node (create-join-node condition [child] node-binding-keys)
-                     alpha-node (->AlphaNode condition 
-                                             [join-node] 
-                                             (:activate-fn condition))]
+    :condition 
+    (let [condition (:content expression)
+          node-binding-keys (s/intersection ancestor-binding-keys (:binding-keys condition))
+          all-binding-keys (s/union ancestor-binding-keys (:binding-keys condition))
+          [child new-alphas] (add-rule* more production-node alpha-roots all-binding-keys)
+          join-node  (->JoinNode condition [child] node-binding-keys)
+          alpha-node (->AlphaNode condition 
+                                  [join-node] 
+                                  (:activate-fn condition))]
       
-                 [join-node, 
-                  (merge-with concat new-alphas {(get-in alpha-node [:condition :type]) [alpha-node]})])
+      [join-node, 
+       (merge-with concat new-alphas {(get-in alpha-node [:condition :type]) [alpha-node]})])
     
     ;; It's a conjunction, so add all content of the conjunction.
-    :and (add-rule* (:content expression) production-node alpha-roots ancestor-binding-keys)
+    :and 
+    (add-rule* (:content expression) production-node alpha-roots ancestor-binding-keys)
+
+    :not 
+    (let [condition (:content (first (:content expression))) ; Get the child content of the not clause.
+          node-binding-keys (s/intersection ancestor-binding-keys (:binding-keys condition))
+          all-binding-keys (s/union ancestor-binding-keys (:binding-keys condition))
+          [child new-alphas] (add-rule* more production-node alpha-roots all-binding-keys)
+          join-node  (->NegationNode condition [child] node-binding-keys)
+          alpha-node (->AlphaNode condition 
+                                  [join-node] 
+                                  (:activate-fn condition))]
+      
+      [join-node, 
+       (merge-with concat new-alphas {(get-in alpha-node [:condition :type]) [alpha-node]})])
 
     ;; No more conditions, so terminate the recursion by returning the production node.
     ;; The returned production node will be the child of a join node built as we
@@ -361,7 +439,7 @@
                beta-roots (:beta-roots network)
                disjunctions disjunctions]
           (if (seq disjunctions)
-            (let [[beta-root alpha-roots] (add-rule*  [(first disjunctions)] ; FIXME: should accept simple conjuection, not a vec.
+            (let [[beta-root alpha-roots] (add-rule*  [(first disjunctions)] ; FIXME: should accept simple conjunction, not a vec.
                                                      production-node
                                                      alpha-roots
                                                      #{})]
@@ -389,19 +467,6 @@
    but with the additional query."
   [network query]
   (add-production* network query))
-
-(defn create-working-memory 
-  "Create a new working memory for the given network."
-  [rete-network]
-  ;; Creat a new memory and initialize it with 
-  ;; dummy nodes for the beta roots.
-  (reduce (fn [memory beta-node] 
-            (left-activate beta-node empty-token memory nil)
-            memory)
-          (->TransientMemory 
-           (transient {}) 
-           (transient {}))
-          (:beta-roots rete-network)))
 
 
 (defrecord SimpleWorkingMemory [network memory transport]
@@ -432,5 +497,12 @@
 (defn new-session 
   "Creates a new session using the given rete network."
   [rete-network]
-  (let [memory (create-working-memory rete-network)]
-    (->SimpleWorkingMemory rete-network memory (LocalTransport. memory))))
+  (let [memory (->TransientMemory 
+                (transient {}) 
+                (transient {})) 
+        session (->SimpleWorkingMemory rete-network memory (LocalTransport. memory))]
+
+    ;; Activate the beta roots.
+    (doseq [beta-node (:beta-roots rete-network)]
+      (left-activate beta-node empty-token memory (:transport session)))
+    session))
