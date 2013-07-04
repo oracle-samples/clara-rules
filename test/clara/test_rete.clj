@@ -121,6 +121,35 @@
     (is (= #{{:?t 15} {:?t 10}}
            (into #{} (query session cold-query))))))
 
+(deftest test-simple-condition-binding
+  (let [cold-query (new-query [(?t <-- Temperature (< temperature 20))])
+
+        session (-> (rete-network) 
+                    (add-query cold-query)
+                    (new-session))]
+
+    (insert session (->Temperature 15))
+    (insert session (->Temperature 10))
+
+    (is (= #{{:?t #clara.testfacts.Temperature{:temperature 15}} 
+             {:?t #clara.testfacts.Temperature{:temperature 10}}}
+           (into #{} (query session cold-query))))))
+
+(deftest test-condition-and-value-binding
+  (let [cold-query (new-query [(?t <-- Temperature (< temperature 20) (== ?v temperature))])
+
+        session (-> (rete-network) 
+                    (add-query cold-query)
+                    (new-session))]
+
+    (insert session (->Temperature 15))
+    (insert session (->Temperature 10))
+
+    ;; Ensure the condition's fact and values are all bound.
+    (is (= #{{:?v 10, :?t #clara.testfacts.Temperature{:temperature 10}} 
+             {:?v 15, :?t #clara.testfacts.Temperature{:temperature 15}}}
+           (into #{} (query session cold-query))))))
+
 (deftest test-simple-negation
   (let [not-cold-query (new-query [(not (Temperature (< temperature 20)))])
 
@@ -446,5 +475,3 @@
                          {:type :condition :content :placeholder3}]}                                 
                        {:type :condition :content :placeholder4}
                        {:type :condition :content :placeholder5}]}))))
-
-

@@ -254,19 +254,20 @@
 
 (defn compile-condition 
   "Returns a function definition that can be used in alpha nodes to test the condition."
-  [type constraints]
+  [type constraints fact-binding]
   (let [fields (get-fields type)
         ;; Create an assignments vector for the let block.
         assignments (mapcat #(list 
                               % 
                               (list (symbol (str ".-" (name %))) 'this)) 
-                            fields)]
+                            fields)
+        initial-bindings (if fact-binding {fact-binding 'this}  {})]
 
     `(fn [ ~(with-meta 
               'this 
               {:tag (symbol (.getName type))})] ; Add type hint to avoid runtime refection.
        (let [~@assignments
-             ~'?__bindings__ (transient {})]
+             ~'?__bindings__ (transient ~initial-bindings)]
          (if (and ~@constraints)
            (persistent! ~'?__bindings__)
            nil)))))
@@ -285,11 +286,35 @@
                              (= \? (first (name item))))] 
               (keyword  item))))
 
-(defn create-condition [condition]
-  (let [type (first condition) 
+(defn- preparse-condition 
+  "Returns a map containing the following keys: 
+   :type the type of the fact the condition matches
+   :constraints a sequence of constraints
+   :binding-keys the set of all bindings the condition emits
+   :fact-binding the key of the binding used for the condition's fact, or nil if there is no such bidning. 
+                This is also member of the binding-keys."
+
+  [condition]
+
+  (let [fact-binding (if (= '<-- (second condition)) (keyword (first condition)) nil) ; Check if the entire condition is bound.
+        condition (if fact-binding (drop 2 condition) condition) ; drop the condition binding segment if applicable.
         constraints (apply vector (rest condition))
         binding-keys (variables-as-keywords constraints)]
-    `(->Condition ~(resolve type) '~constraints ~binding-keys ~(compile-condition (resolve type) constraints))))
+
+    ;; Ensure the fact binding symbol is valid.
+    (when (and (not= nil fact-binding)
+               (not= \? (first (name fact-binding))))
+      (throw (IllegalArgumentException. (str "Invalid binding for condition: " fact-binding))))
+
+    {:type (first condition) 
+     :constraints constraints
+     :binding-keys (if fact-binding (conj binding-keys fact-binding) binding-keys)
+     :fact-binding fact-binding}))
+
+(defn create-condition [condition]
+  (let [{:keys [type constraints binding-keys fact-binding]} (preparse-condition condition)]
+
+    `(->Condition ~(resolve type) '~constraints ~binding-keys ~(compile-condition (resolve type) constraints fact-binding))))
 
 (def operators #{'and 'or 'not})
 
