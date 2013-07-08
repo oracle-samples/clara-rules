@@ -15,10 +15,10 @@
                     (add-rule cold-rule)
                     (new-session))]
 
-    (insert session (->Temperature 10))
+    (insert session (->Temperature 10 "MCI"))
     (fire-rules session)
     (is (= 
-         (->Token [(->Temperature 10)] {})
+         (->Token [(->Temperature 10 "MCI")] {})
          @rule-output))))
 
 
@@ -31,12 +31,12 @@
                     (add-rule cold-windy-rule)
                     (new-session))]
 
-    (insert session (->WindSpeed 30))
-    (insert session (->Temperature 10))
+    (insert session (->WindSpeed 30 "MCI"))
+    (insert session (->Temperature 10 "MCI"))
     (fire-rules session)
 
     (is (= 
-         (->Token [(->Temperature 10) (->WindSpeed 30)] {})
+         (->Token [(->Temperature 10 "MCI") (->WindSpeed 30 "MCI")] {})
          @rule-output))))
 
 (deftest test-multiple-simple-rules
@@ -51,15 +51,15 @@
                     (add-rule windy-rule)
                     (new-session))]
 
-    (insert session (->WindSpeed 30))
-    (insert session (->Temperature 10))
+    (insert session (->WindSpeed 30 "MCI"))
+    (insert session (->Temperature 10 "MCI"))
     (fire-rules session)
     ;; Check rule side effects contin the expected token.
     (is (= 
-         (->Token [(->Temperature 10)] {})
+         (->Token [(->Temperature 10 "MCI")] {})
          @cold-rule-output))
     (is (= 
-         (->Token [(->WindSpeed 30)] {})
+         (->Token [(->WindSpeed 30 "MCI")] {})
          @windy-rule-output))))
 
 (deftest test-simple-binding
@@ -71,7 +71,7 @@
                     (add-rule cold-rule)
                     (new-session))]
 
-    (insert session (->Temperature 10))
+    (insert session (->Temperature 10 "MCI"))
     (fire-rules session)
     (is (= 10 @rule-output))))
 
@@ -85,8 +85,8 @@
                     (add-rule same-wind-and-temp)
                     (new-session))]
 
-    (insert session (->Temperature 10))
-    (insert session (->WindSpeed 10))
+    (insert session (->Temperature 10  "MCI"))
+    (insert session (->WindSpeed 10  "MCI"))
     (fire-rules session)
     (is (= 10 @rule-output))))
 
@@ -100,8 +100,8 @@
                     (add-rule same-wind-and-temp)
                     (new-session))]
 
-    (insert session (->Temperature 10))
-    (insert session (->WindSpeed 20))
+    (insert session (->Temperature 10 "MCI"))
+    (insert session (->WindSpeed 20 "MCI"))
     (fire-rules session)
     (is (= nil @rule-output))))
 
@@ -112,9 +112,9 @@
                     (add-query cold-query)
                     (new-session))]
 
-    (insert session (->Temperature 15))
-    (insert session (->Temperature 10))
-    (insert session (->Temperature 80))
+    (insert session (->Temperature 15 "MCI"))
+    (insert session (->Temperature 10 "MCI"))
+    (insert session (->Temperature 80 "MCI"))
 
     ;; The query should identify all items that wer einserted and matchd the
     ;; expected criteria.
@@ -128,11 +128,11 @@
                     (add-query cold-query)
                     (new-session))]
 
-    (insert session (->Temperature 15))
-    (insert session (->Temperature 10))
+    (insert session (->Temperature 15 "MCI"))
+    (insert session (->Temperature 10 "MCI"))
 
-    (is (= #{{:?t #clara.testfacts.Temperature{:temperature 15}} 
-             {:?t #clara.testfacts.Temperature{:temperature 10}}}
+    (is (= #{{:?t #clara.testfacts.Temperature{:temperature 15 :location "MCI"}} 
+             {:?t #clara.testfacts.Temperature{:temperature 10 :location "MCI"}}}
            (into #{} (query session cold-query))))))
 
 (deftest test-condition-and-value-binding
@@ -142,13 +142,144 @@
                     (add-query cold-query)
                     (new-session))]
 
-    (insert session (->Temperature 15))
-    (insert session (->Temperature 10))
+    (insert session (->Temperature 15 "MCI"))
+    (insert session (->Temperature 10 "MCI"))
 
     ;; Ensure the condition's fact and values are all bound.
-    (is (= #{{:?v 10, :?t #clara.testfacts.Temperature{:temperature 10}} 
-             {:?v 15, :?t #clara.testfacts.Temperature{:temperature 15}}}
+    (is (= #{{:?v 10, :?t #clara.testfacts.Temperature{:temperature 10 :location "MCI"}} 
+             {:?v 15, :?t #clara.testfacts.Temperature{:temperature 15 :location "MCI"}}}
            (into #{} (query session cold-query))))))
+
+(deftest test-simple-accumulator
+  (let [lowest-temp (accumulate
+                     :reduce-fn (fn [value item]
+                                  (if (or (= value nil)
+                                          (< (:temperature item) (:temperature value) ))
+                                    item
+                                    value)))
+        coldest-query (new-query [[?t <-- lowest-temp from [Temperature]]])
+
+        session (-> (rete-network) 
+                    (add-query coldest-query)
+                    (new-session))]
+
+    (insert session (->Temperature 15 "MCI"))
+    (insert session (->Temperature 10 "MCI"))
+    (insert session (->Temperature 80 "MCI"))
+
+    ;; Accumulator returns the lowest value.
+    (is (= #{{:?t (->Temperature 10 "MCI")}}
+           (into #{} (query session coldest-query))))))
+
+(defn min-fact 
+  "Function to create a new accumulator for a test."
+  [field]
+  (accumulate
+   :reduce-fn (fn [value item]
+                (if (or (= value nil)
+                        (< (field item) (field value) ))
+                  item
+                  value))))
+
+(deftest test-defined-accumulator 
+  (let [coldest-query (new-query [[?t <-- (min-fact :temperature) from [Temperature]]])
+
+        session (-> (rete-network) 
+                    (add-query coldest-query)
+                    (new-session))]
+
+    (insert session (->Temperature 15 "MCI"))
+    (insert session (->Temperature 10 "MCI"))
+    (insert session (->Temperature 80 "MCI"))
+
+    ;; Accumulator returns the lowest value.
+    (is (= #{{:?t (->Temperature 10 "MCI")}}
+           (into #{} (query session coldest-query))))))
+
+
+(defn average-value 
+  "Test accumulator that returns the average of a field"
+  [field]
+  (accumulate 
+   :initial-value [0 0]
+   :reduce-fn (fn [[value count] item]
+                [(+ value (field item)) (inc count)])
+   :combine-fn (fn [[value1 count1] [value2 count2]]
+                 [(+ value1 value2) (+ count1 count2)])
+   :convert-return-fn (fn [[value count]] (/ value count))))
+
+(deftest test-accumulator-with-result 
+
+  (let [average-temp-query (new-query [[?t <-- (average-value :temperature) from [Temperature]]])
+
+        session (-> (rete-network) 
+                    (add-query average-temp-query)
+                    (new-session))]
+
+    (insert session (->Temperature 10 "MCI"))
+    (insert session (->Temperature 20 "MCI"))
+    (insert session (->Temperature 30 "MCI"))
+    (insert session (->Temperature 40 "MCI"))
+    (insert session (->Temperature 50 "MCI"))
+    (insert session (->Temperature 60 "MCI"))
+
+    ;; Accumulator returns the lowest value.
+    (is (= #{{:?t 35}}
+           (into #{} (query session average-temp-query))))))
+
+(deftest test-accumulate-with-retract
+  (let [coldest-query (new-query [[?t <-- (accumulate
+                                           :reduce-fn (fn [value item]
+                                                        (if (or (= value nil)
+                                                                (< (:temperature item) (:temperature value) ))
+                                                          item
+                                                          value)))
+                                   :from (Temperature (< temperature 20))]])
+
+        session (-> (rete-network) 
+                    (add-query coldest-query)
+                    (new-session))]
+
+    (insert session (->Temperature 15 "MCI"))
+    (insert session (->Temperature 10 "MCI"))
+    (insert session (->Temperature 80 "MCI"))
+    (retract session (->Temperature 10 "MCI"))
+
+    ;; The accumulator result should be 
+    (is (= #{{:?t (->Temperature 15 "MCI")}}
+           (into #{} (query session coldest-query))))))
+
+
+
+(deftest test-joined-accumulator
+  (let [coldest-query (new-query [(WindSpeed (== ?loc location))
+                                  [?t <-- (accumulate
+                                           :reduce-fn (fn [value item]
+                                                        (if (or (= value nil)
+                                                                (< (:temperature item) (:temperature value) ))
+                                                          item
+                                                          value)))
+                                   :from (Temperature (== ?loc location))]])
+
+        session (-> (rete-network) 
+                    (add-query coldest-query)
+                    (new-session))]
+
+    (insert session (->Temperature 15 "MCI"))
+    (insert session (->Temperature 10 "MCI"))
+    (insert session (->Temperature 5 "SFO"))
+
+    ;; Insert last to exercise left activation of accumulate node.
+    (insert session (->WindSpeed 30 "MCI"))
+
+    ;; Only the value that joined to WindSpeed should be visible.
+    (is (= #{{:?t (->Temperature 10 "MCI") :?loc "MCI"}}
+           (into #{} (query session coldest-query))))
+    
+    (retract session (->WindSpeed 30 "MCI"))
+    (is (empty? (query session coldest-query)))
+    ))
+
 
 (deftest test-simple-negation
   (let [not-cold-query (new-query [(not (Temperature (< temperature 20)))])
@@ -163,17 +294,17 @@
            (into #{} (query session not-cold-query))))
     
     ;; Inserting an item into the sesion should invalidate the negation.
-    (insert session (->Temperature 10))
+    (insert session (->Temperature 10 "MCI"))
     (is (empty? (query session not-cold-query)))
 
     ;; Retracting the inserted item should make the negation valid again.
-    (retract session (->Temperature 10))
+    (retract session (->Temperature 10 "MCI"))
     (is (= #{{}}
            (into #{} (query session not-cold-query))))))
 
 
 (deftest test-negation-with-other-conditions
-  (let [windy-but-not-cold-query (new-query [(WindSpeed (> windspeed 30) (== ?w windspeed))
+  (let [windy-but-not-cold-query (new-query [(WindSpeed (> windspeed 30) (== ?w windspeed)) 
                                              (not (Temperature (< temperature 20)))])
 
         session (-> (rete-network) 
@@ -181,17 +312,17 @@
                     (new-session))]
 
     ;; Make it windy, so our query should indicate that.
-    (insert session (->WindSpeed 40))
+    (insert session (->WindSpeed 40 "MCI"))
     (is (= #{{:?w 40}}
            (into #{} (query session windy-but-not-cold-query))))
 
     ;; Make it hot and windy, so our query should still succeed.
-    (insert session (->Temperature 80))
+    (insert session (->Temperature 80 "MCI"))
     (is (= #{{:?w 40}}
            (into #{} (query session windy-but-not-cold-query))))
 
     ;; Make it cold, so our query should return nothing.
-    (insert session (->Temperature 10))
+    (insert session (->Temperature 10 "MCI"))
     (is (empty? (query session windy-but-not-cold-query)))))
 
 
@@ -208,8 +339,8 @@
            (into #{} (query session not-cold-and-windy))))
 
     ;; Make it cold and windy, so there should be no match.
-    (insert session (->WindSpeed 40))
-    (insert session (->Temperature 10))
+    (insert session (->WindSpeed 40 "MCI"))
+    (insert session (->Temperature 10 "MCI"))
     (is (empty? (query session not-cold-and-windy)))))
 
 (deftest test-negated-disjunction
@@ -225,11 +356,11 @@
            (into #{} (query session not-cold-or-windy))))
 
     ;; Make it cold and windy, so there should be no match.
-    (insert session (->WindSpeed 40))
+    (insert session (->WindSpeed 40 "MCI"))
     (is (empty? (query session not-cold-or-windy)))
 
     ;; Retract the added fact and ensure we now match something.
-    (retract session (->WindSpeed 40))
+    (retract session (->WindSpeed 40 "MCI"))
     (is (= #{{}}
            (into #{} (query session not-cold-or-windy))))
     ))
@@ -241,7 +372,7 @@
         session (-> (rete-network) 
                     (add-query cold-query)
                     (new-session))
-        temp (->Temperature 10)]
+        temp (->Temperature 10 "MCI")]
 
     ;; Ensure the item is there as expected.
     (insert session temp)
@@ -261,8 +392,8 @@
                     (new-session))]
 
     ;; Ensure retracting a non-existant item has no ill effects.
-    (insert session (->Temperature 10))
-    (retract session (->Temperature 15))
+    (insert session (->Temperature 10 "MCI"))
+    (retract session (->Temperature 15 "MCI"))
     (is (= #{{:?t 10}}
            (into #{} (query session cold-query))))))
 
@@ -274,15 +405,15 @@
                     (add-query same-wind-and-temp)
                     (new-session))]
 
-    (insert session (->Temperature 10))
-    (insert session (->WindSpeed 10))
+    (insert session (->Temperature 10 "MCI"))
+    (insert session (->WindSpeed 10 "MCI"))
 
     ;; Ensure expected join occurred.
     (is (= #{{:?t 10}}
            (into #{} (query session same-wind-and-temp))))
 
     ;; Ensure item was removed as viewed by the query.
-    (retract session (->Temperature 10))
+    (retract session (->Temperature 10 "MCI"))
     (is (= #{}
            (into #{} (query session same-wind-and-temp))))))
 
@@ -297,8 +428,8 @@
         cold-session (new-session network)
         windy-session (new-session network)]
 
-    (insert cold-session (->Temperature 15))
-    (insert windy-session (->WindSpeed 50))
+    (insert cold-session (->Temperature 15 "MCI"))
+    (insert windy-session (->WindSpeed 50 "MCI"))
 
     (is (= #{{:?t 15}}
            (into #{} (query cold-session or-query))))
@@ -319,9 +450,9 @@
         cold-session (new-session network)
         windy-session (new-session network)]
 
-    (insert cold-session (->Temperature -10))
-    (insert windy-session (->Temperature 15))
-    (insert windy-session (->WindSpeed 50))
+    (insert cold-session (->Temperature -10 "MCI"))
+    (insert windy-session (->Temperature 15 "MCI"))
+    (insert windy-session (->WindSpeed 50 "MCI"))
 
     (is (= #{{:?t -10}}
            (into #{} (query cold-session really-cold-or-cold-and-windy))))
@@ -475,3 +606,19 @@
                          {:type :condition :content :placeholder3}]}                                 
                        {:type :condition :content :placeholder4}
                        {:type :condition :content :placeholder5}]}))))
+
+
+;(test-simple-accumulator)
+
+
+
+
+;(test-accumulate-with-retract)
+
+(run-tests)
+
+
+
+
+
+

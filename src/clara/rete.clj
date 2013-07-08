@@ -85,6 +85,7 @@
         current-facts (get alpha-memory node-bindings)]
     (assoc! alpha-memory node-bindings (conj current-facts [fact fact-bindings]))))
 
+
 (defn- remove-fact
   "Remove a fact from the node's memory. Returns true if it was removed, false otherwise"
   [memory node fact node-bindings]
@@ -110,7 +111,6 @@
         current-tokens (get beta-memory node-bindings)]
     (assoc! beta-memory node-bindings (conj current-tokens token))))
 
-
 (defn- remove-token
   "Removes a token from the beta memory for a node. Returns true if it was removed, false wotherwise"
   [memory node node-bindings token]
@@ -121,8 +121,14 @@
     ;; If the count of tokens changed, we remove something.
     (not= (count current-tokens) (count filtered-tokens))))
 
+(defn add-accum-result [memory node bindings accum-result]
+  (assoc! (get-alpha-memory memory node) [:accum-result bindings] accum-result))
+
+(defn get-accum-result [memory node bindings]
+  (get (get-alpha-memory memory node) [:accum-result bindings]))
+
 (defrecord ProductionNode [production rhs]
-  ILeftActivate
+  ILeftActivate  
   (left-activate [node token memory transport] 
     (let [beta-memory (get-beta-memory memory node)]
       (assoc! beta-memory :tokens (conj (get beta-memory :tokens) token))))
@@ -154,7 +160,7 @@
           matched-facts (get-facts memory node node-bindings)]
       (add-token memory node node-bindings token)
       (doseq [[fact fact-binding] matched-facts 
-              :let [child-token (->Token (conj (:facts token) fact) (conj bindings (:bindings token)))]
+              :let [child-token (->Token (conj (:facts token) fact) (conj fact-binding (:bindings token)))]
               child children]
         ;; Create a new token containing all bindings and left-activate the child.
         (send-token transport child child-token))))
@@ -235,6 +241,106 @@
           ;; The retracted fact removed the negation, so send it to the children.
           (send-token transport child token))))))
 
+;;
+(defrecord Accumulator [result-binding input-condition initial-value reduce-fn combine-fn convert-return-fn])
+
+(defn- retract-accumulated [node accumulator token result transport]
+  (doseq [:let [converted-result ((get-in accumulator [:definition :convert-return-fn]) result)
+                new-facts (conj (:facts token) converted-result)
+                new-bindings (if (:result-binding accumulator) 
+                               (conj (:bindings token) 
+                                     {(:result-binding accumulator) ;; FIXME: include condition bindings, too?
+                                      converted-result}) 
+                               (:bindings token))
+                child-token (->Token new-facts new-bindings)] 
+          child (:children node)]
+    (retract-token transport child child-token)))
+
+(defn- send-accumulated [node accumulator token result transport]
+  (doseq [:let [converted-result ((get-in accumulator [:definition :convert-return-fn]) result)
+                new-bindings (if (:result-binding accumulator) 
+                               (conj (:bindings token) 
+                                     ;; FIXME: include condition bindings, too?
+                                     {(:result-binding accumulator) 
+                                      converted-result})
+                               (:bindings token))
+                child-token (->Token (conj (:facts token) converted-result) new-bindings)]
+          child (:children node)]
+    ;; Create a new token containing all bindings and left-activate the child.
+    (send-token transport child child-token)))
+
+(defrecord AccumulateNode [accumulator definition children binding-keys]
+  ILeftActivate
+  (left-activate [node token memory transport] 
+    (let [bindings (:bindings token)
+          node-bindings (select-keys bindings binding-keys)
+          previous (get-accum-result memory node node-bindings)]
+      (add-token memory node node-bindings token)
+      (when previous
+        (send-accumulated node accumulator token previous transport))))
+
+  (left-retract [node token memory transport] 
+    ;; FIXME: ditto for left retraction...no dice.
+    (let [bindings (:bindings token)
+          node-bindings (select-keys bindings binding-keys)
+          previous (get-accum-result memory node node-bindings)]
+      (when (and (remove-token memory node node-bindings token)
+                 previous)
+        (retract-accumulated node accumulator token previous transport))))
+
+  IRightActivate
+  (right-activate [node fact bindings memory transport]   
+    (let [node-bindings (select-keys bindings binding-keys)
+          matched-tokens (get-tokens memory node node-bindings)
+          previous (get-accum-result memory node node-bindings)]
+      ;; Add fact to the node's working memory for future left activations.
+      (add-fact memory node node-bindings fact bindings)
+
+      ;; If the accumulation result was previously calculated, retract it
+      ;; from the children.
+      (when previous
+        ;; TODO: reuse previous token rather than recreating it?
+        (doseq [token (get-tokens memory node node-bindings)]
+          (retract-accumulated node accumulator token previous transport)))
+
+      ;; Reduce to create a new token and send it downstream.
+      (let [initial (:initial-value definition)
+            reduce-fn (:reduce-fn definition)
+            ;; Get the set of facts that are reducible.
+            reducible-facts (map first (get-facts memory node node-bindings)) ;; Get only facts, not bindings...
+            reduced (r/reduce reduce-fn initial reducible-facts)]
+
+        (add-accum-result memory node node-bindings reduced)
+        (doseq [token matched-tokens]
+          (send-accumulated node accumulator token reduced transport)))))
+
+  (right-retract [node fact bindings memory transport]   
+
+    (let [node-bindings (select-keys bindings binding-keys)]
+      (when (remove-fact memory node fact node-bindings)
+        (let [matched-tokens (get-tokens memory node node-bindings)
+              previous (get-accum-result memory node node-bindings)]
+
+          ;; Add fact to the node's working memory for future left activations.
+          (remove-fact memory node fact node-bindings)
+          ;; If the accumulation result was previously calculated, retract it
+          ;; from the children.
+          (when previous
+            ;; TODO: reuse previous token rather than recreating it?
+            (doseq [token (get-tokens memory node node-bindings)]
+              (retract-accumulated node accumulator token previous transport)))
+
+          ;; Reduce to create a new token and send it downstream.
+          (let [initial (:initial-value definition)
+                reduce-fn (:reduce-fn definition)
+                ;; Get the set of facts that are reducible.
+                reducible-facts (map first (get-facts memory node node-bindings)) ;; Get only facts, not bindings...
+                reduced (r/reduce reduce-fn initial reducible-facts)]
+
+            (add-accum-result memory node node-bindings reduced)
+            (doseq [token matched-tokens]
+              (send-accumulated node accumulator token reduced transport))))))))
+
 (defn- get-fields 
   "Returns a list of fields in the given class."
   ;; TODO: add support for java beans.
@@ -254,14 +360,14 @@
 
 (defn compile-condition 
   "Returns a function definition that can be used in alpha nodes to test the condition."
-  [type constraints fact-binding]
+  [type constraints result-binding]
   (let [fields (get-fields type)
         ;; Create an assignments vector for the let block.
         assignments (mapcat #(list 
                               % 
                               (list (symbol (str ".-" (name %))) 'this)) 
                             fields)
-        initial-bindings (if fact-binding {fact-binding 'this}  {})]
+        initial-bindings (if result-binding {result-binding 'this}  {})]
 
     `(fn [ ~(with-meta 
               'this 
@@ -286,35 +392,40 @@
                              (= \? (first (name item))))] 
               (keyword  item))))
 
-(defn- preparse-condition 
-  "Returns a map containing the following keys: 
-   :type the type of the fact the condition matches
-   :constraints a sequence of constraints
-   :binding-keys the set of all bindings the condition emits
-   :fact-binding the key of the binding used for the condition's fact, or nil if there is no such bidning. 
-                This is also member of the binding-keys."
+(defrecord AccumulatorDef [initial-value reduce-fn combine-fn convert-return-fn])
 
-  [condition]
-
-  (let [fact-binding (if (= '<-- (second condition)) (keyword (first condition)) nil) ; Check if the entire condition is bound.
-        condition (if fact-binding (drop 2 condition) condition) ; drop the condition binding segment if applicable.
+(defn- construct-condition [condition result-binding]
+  (let [type (first condition)
         constraints (apply vector (rest condition))
         binding-keys (variables-as-keywords constraints)]
-
-    ;; Ensure the fact binding symbol is valid.
-    (when (and (not= nil fact-binding)
-               (not= \? (first (name fact-binding))))
-      (throw (IllegalArgumentException. (str "Invalid binding for condition: " fact-binding))))
-
-    {:type (first condition) 
-     :constraints constraints
-     :binding-keys (if fact-binding (conj binding-keys fact-binding) binding-keys)
-     :fact-binding fact-binding}))
+       
+    `(->Condition ~(resolve type) 
+                  '~constraints ~binding-keys 
+                  ~(compile-condition (resolve type) constraints result-binding))))
 
 (defn create-condition [condition]
-  (let [{:keys [type constraints binding-keys fact-binding]} (preparse-condition condition)]
+  ;; Grab the binding of the operation result, if present.
+  (let [result-binding (if (= '<-- (second condition)) (keyword (first condition)) nil)
+        condition (if result-binding (drop 2 condition) condition)]
 
-    `(->Condition ~(resolve type) '~constraints ~binding-keys ~(compile-condition (resolve type) constraints fact-binding))))
+   (when (and (not= nil result-binding)
+               (not= \? (first (name result-binding))))
+      (throw (IllegalArgumentException. (str "Invalid binding for condition: " result-binding))))
+
+    ;; If it's an s-expression, simply let it expand itself, and assoc the binding with the result.
+   (if (#{'from :from} (second condition)) ; If this is an accumulator....
+     `(map->Accumulator 
+       {:result-binding ~result-binding
+        :definition ~(first condition)
+        :input-condition ~(construct-condition (nth condition 2) result-binding)})
+     
+     ;; Not an accumulator, so simply create the condition.
+     (construct-condition condition result-binding))))
+
+(defn accumulate [& {:keys [initial-value reduce-fn combine-fn convert-return-fn] :as args}]
+  (map->Accumulator (if (:convert-return-fn args) 
+                      args
+                      (assoc args :convert-return-fn identity ))))
 
 (def operators #{'and 'or 'not})
 
@@ -331,7 +442,6 @@
    (if (operators (first lhs))
      lhs
      (cons 'and lhs)))) ; "and" is implied if a list of constraints are given without an operator.
-
 
 (defmacro new-query
   "Contains a new query based on a sequence of a conditions."
@@ -411,24 +521,47 @@
          ;; the simply append nested conjunctions to create our DNF.
          :content (apply vector (concat disjunctions conjunctions))  }))))
 
+
+(declare add-rule*)
+
+(defn insert-accumulator [accumulator more production-node alpha-roots ancestor-binding-keys]
+
+  (let [condition (:input-condition accumulator)
+        node-binding-keys (s/intersection ancestor-binding-keys (:binding-keys condition))
+        all-binding-keys (s/union ancestor-binding-keys (:binding-keys condition))
+        [child new-alphas] (add-rule* more production-node alpha-roots all-binding-keys)
+        join-node (->AccumulateNode accumulator (:definition accumulator) [child] node-binding-keys)
+        alpha-node (->AlphaNode condition 
+                                [join-node] 
+                                (:activate-fn condition))]
+        
+    [join-node, 
+     (merge-with concat new-alphas {(get-in alpha-node [:condition :type]) [alpha-node]})]))
+
 (defn- add-rule* 
   "Adds a new production, returning a tuple of a new beta root and a new set of alpha roots"
-  [[expression & more] production-node alpha-roots ancestor-binding-keys]
+  [[expression & more :as expressions] production-node alpha-roots ancestor-binding-keys]
+
+  ;; TODO: start by recursively adding children, then executing node-specific logic.
+  ;; This redundancy needs to be cleaned up.
+
   (condp = (:type expression)
     
     ;; Recursively create children, then create a new join and alpha node for the condition.
     :condition 
-    (let [condition (:content expression)
-          node-binding-keys (s/intersection ancestor-binding-keys (:binding-keys condition))
-          all-binding-keys (s/union ancestor-binding-keys (:binding-keys condition))
-          [child new-alphas] (add-rule* more production-node alpha-roots all-binding-keys)
-          join-node  (->JoinNode condition [child] node-binding-keys)
-          alpha-node (->AlphaNode condition 
-                                  [join-node] 
-                                  (:activate-fn condition))]
-      
-      [join-node, 
-       (merge-with concat new-alphas {(get-in alpha-node [:condition :type]) [alpha-node]})])
+    (if (= "clara.rete.Accumulator" (.getName (class (:content expression)))) ; FIXME: check class?
+      (insert-accumulator (:content expression) more production-node alpha-roots ancestor-binding-keys)
+      (let [condition (:content expression)
+            node-binding-keys (s/intersection ancestor-binding-keys (:binding-keys condition))
+            all-binding-keys (s/union ancestor-binding-keys (:binding-keys condition))
+            [child new-alphas] (add-rule* more production-node alpha-roots all-binding-keys)
+            join-node  (->JoinNode condition [child] node-binding-keys)
+            alpha-node (->AlphaNode condition 
+                                    [join-node] 
+                                    (:activate-fn condition))]
+        
+        [join-node, 
+         (merge-with concat new-alphas {(get-in alpha-node [:condition :type]) [alpha-node]})]))
     
     ;; It's a conjunction, so add all content of the conjunction.
     :and 
