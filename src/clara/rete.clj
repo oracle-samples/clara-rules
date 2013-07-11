@@ -8,7 +8,7 @@
 
 (defrecord Production [lhs rhs])
 
-(defrecord Query [lhs binding-keys])
+(defrecord Query [params lhs binding-keys])
 
 (defrecord Network [alpha-roots beta-roots production-nodes query-nodes])
 
@@ -23,7 +23,7 @@
   (retract [session fact])
   ;; Fires pending rules and returns a new session where they are in a fired state.
   (fire-rules [session])
-  (query [session query]))
+  (query [session query params]))
 
 ;; Left activation protocol for various types of beta nodes.
 (defprotocol ILeftActivate
@@ -121,11 +121,34 @@
     ;; If the count of tokens changed, we remove something.
     (not= (count current-tokens) (count filtered-tokens))))
 
-(defn add-accum-result [memory node bindings accum-result]
-  (assoc! (get-alpha-memory memory node) [:accum-result bindings] accum-result))
+;; FIXME: accumulate should sum independently of node bindings?
+(defn add-accum-result [memory node node-bindings accum-result fact-bindings]
+  (let [alpha-mem (get-alpha-memory memory node)
+        node-binding-map (get alpha-mem [:accum-result node-bindings])
+        node-binding-map (if (= nil node-binding-map)
+                           (let [new-map (transient {})] 
+                             (assoc! alpha-mem [:accum-result node-bindings] new-map) 
+                             new-map)
+                           node-binding-map) ]
+    (assoc! node-binding-map fact-bindings accum-result)))
 
-(defn get-accum-result [memory node bindings]
-  (get (get-alpha-memory memory node) [:accum-result bindings]))
+
+(defn get-accum-result 
+  "Returns the result for the given node and fact bindings, if it exists."
+  [memory node node-bindings fact-bindings]
+  (get-in (get-alpha-memory memory node) [[:accum-result node-bindings] fact-bindings]))
+
+;; FIXME: ugly use of transients. Should go away when we go persistent with everything.
+(defn get-accum-results [memory node node-bindings]
+  (let [alpha-mem (get-alpha-memory memory node)
+        result-map (get alpha-mem [:accum-result node-bindings])
+        results (if result-map
+                  (persistent! result-map)
+                  {})]
+    ;; Replace the map with a transietnt form for future use...
+    (assoc! alpha-mem [:accum-result node-bindings] (transient results))
+
+    results))
 
 (defrecord ProductionNode [production rhs]
   ILeftActivate  
@@ -135,6 +158,18 @@
   (left-retract [node token memory transport] 
     (let [beta-memory (get-beta-memory memory node)]
       (assoc! beta-memory :tokens (filter #(not= % token) (get beta-memory :tokens))))))
+
+(defrecord QueryNode [query param-keys]
+  ILeftActivate  
+  (left-activate [node token memory transport] 
+    (let [bindings (:bindings token)
+          node-bindings (select-keys bindings param-keys)]
+      (add-token memory node node-bindings token)))
+
+  (left-retract [node token memory transport] 
+    (let [bindings (:bindings token)
+          node-bindings (select-keys bindings param-keys)]
+      (remove-token memory node node-bindings token))))
 
 (defrecord AlphaNode [condition children activation]
   IRightActivate
@@ -244,26 +279,25 @@
 ;;
 (defrecord Accumulator [result-binding input-condition initial-value reduce-fn combine-fn convert-return-fn])
 
-(defn- retract-accumulated [node accumulator token result transport]
+(defn- retract-accumulated [node accumulator token result fact-bindings transport]
   (doseq [:let [converted-result ((get-in accumulator [:definition :convert-return-fn]) result)
                 new-facts (conj (:facts token) converted-result)
-                new-bindings (if (:result-binding accumulator) 
-                               (conj (:bindings token) 
-                                     {(:result-binding accumulator) ;; FIXME: include condition bindings, too?
-                                      converted-result}) 
-                               (:bindings token))
+                new-bindings (merge (:bindings token) 
+                                    fact-bindings
+                                    (when (:result-binding accumulator) 
+                                      { (:result-binding accumulator) 
+                                        converted-result}))
                 child-token (->Token new-facts new-bindings)] 
           child (:children node)]
     (retract-token transport child child-token)))
 
-(defn- send-accumulated [node accumulator token result transport]
+(defn- send-accumulated [node accumulator token result fact-bindings transport]
   (doseq [:let [converted-result ((get-in accumulator [:definition :convert-return-fn]) result)
-                new-bindings (if (:result-binding accumulator) 
-                               (conj (:bindings token) 
-                                     ;; FIXME: include condition bindings, too?
-                                     {(:result-binding accumulator) 
-                                      converted-result})
-                               (:bindings token))
+                new-bindings (merge (:bindings token) 
+                                    fact-bindings
+                                    (when (:result-binding accumulator) 
+                                      { (:result-binding accumulator) 
+                                        converted-result}))
                 child-token (->Token (conj (:facts token) converted-result) new-bindings)]
           child (:children node)]
     ;; Create a new token containing all bindings and left-activate the child.
@@ -274,25 +308,24 @@
   (left-activate [node token memory transport] 
     (let [bindings (:bindings token)
           node-bindings (select-keys bindings binding-keys)
-          previous (get-accum-result memory node node-bindings)]
+          previous-results (get-accum-results memory node node-bindings)]
       (add-token memory node node-bindings token)
-      (when previous
-        (send-accumulated node accumulator token previous transport))))
+      (doseq [[fact-bindings previous] previous-results]
+        (send-accumulated node accumulator token previous fact-bindings transport))))
 
   (left-retract [node token memory transport] 
-    ;; FIXME: ditto for left retraction...no dice.
     (let [bindings (:bindings token)
           node-bindings (select-keys bindings binding-keys)
-          previous (get-accum-result memory node node-bindings)]
-      (when (and (remove-token memory node node-bindings token)
-                 previous)
-        (retract-accumulated node accumulator token previous transport))))
+          previous-results (get-accum-results memory node node-bindings)]
+      (doseq [[fact-bindings previous] previous-results
+              :when (remove-token memory node node-bindings token)]
+         (retract-accumulated node accumulator token previous fact-bindings transport))))
 
   IRightActivate
   (right-activate [node fact bindings memory transport]   
     (let [node-bindings (select-keys bindings binding-keys)
           matched-tokens (get-tokens memory node node-bindings)
-          previous (get-accum-result memory node node-bindings)]
+          previous (get-accum-result memory node node-bindings bindings)]
       ;; Add fact to the node's working memory for future left activations.
       (add-fact memory node node-bindings fact bindings)
 
@@ -301,7 +334,7 @@
       (when previous
         ;; TODO: reuse previous token rather than recreating it?
         (doseq [token (get-tokens memory node node-bindings)]
-          (retract-accumulated node accumulator token previous transport)))
+          (retract-accumulated node accumulator token previous bindings transport)))
 
       ;; Reduce to create a new token and send it downstream.
       (let [initial (:initial-value definition)
@@ -310,16 +343,16 @@
             reducible-facts (map first (get-facts memory node node-bindings)) ;; Get only facts, not bindings...
             reduced (r/reduce reduce-fn initial reducible-facts)]
 
-        (add-accum-result memory node node-bindings reduced)
+        (add-accum-result memory node node-bindings reduced bindings)
         (doseq [token matched-tokens]
-          (send-accumulated node accumulator token reduced transport)))))
+          (send-accumulated node accumulator token reduced bindings transport)))))
 
   (right-retract [node fact bindings memory transport]   
 
     (let [node-bindings (select-keys bindings binding-keys)]
       (when (remove-fact memory node fact node-bindings)
         (let [matched-tokens (get-tokens memory node node-bindings)
-              previous (get-accum-result memory node node-bindings)]
+              previous (get-accum-result memory node node-bindings bindings)]
 
           ;; Add fact to the node's working memory for future left activations.
           (remove-fact memory node fact node-bindings)
@@ -328,7 +361,7 @@
           (when previous
             ;; TODO: reuse previous token rather than recreating it?
             (doseq [token (get-tokens memory node node-bindings)]
-              (retract-accumulated node accumulator token previous transport)))
+              (retract-accumulated node accumulator token previous bindings transport)))
 
           ;; Reduce to create a new token and send it downstream.
           (let [initial (:initial-value definition)
@@ -337,9 +370,9 @@
                 reducible-facts (map first (get-facts memory node node-bindings)) ;; Get only facts, not bindings...
                 reduced (r/reduce reduce-fn initial reducible-facts)]
 
-            (add-accum-result memory node node-bindings reduced)
+            (add-accum-result memory node node-bindings reduced bindings)
             (doseq [token matched-tokens]
-              (send-accumulated node accumulator token reduced transport))))))))
+              (send-accumulated node accumulator token reduced bindings transport))))))))
 
 (defn- get-fields 
   "Returns a list of fields in the given class."
@@ -417,7 +450,7 @@
      `(map->Accumulator 
        {:result-binding ~result-binding
         :definition ~(first condition)
-        :input-condition ~(construct-condition (nth condition 2) result-binding)})
+        :input-condition ~(construct-condition (nth condition 2) nil)})
      
      ;; Not an accumulator, so simply create the condition.
      (construct-condition condition result-binding))))
@@ -445,8 +478,10 @@
 
 (defmacro new-query
   "Contains a new query based on a sequence of a conditions."
-  [lhs]
-  `(->Query 
+  [params lhs]
+  ;; TODO: validate params exist as keyworks in the query.
+  `(->Query
+    ~params
     ~(parse-lhs lhs)
     ~(variables-as-keywords lhs)))
 
@@ -586,10 +621,10 @@
     nil [production-node alpha-roots]))
 
 (defn- add-production* 
-  [network production]
+  "Adds a new production to the network."
+  [network production production-node]
 
-  (let [production-node (->ProductionNode production (:rhs production)) 
-        dnf (ast-to-dnf (:lhs production))
+  (let [dnf (ast-to-dnf (:lhs production))
         ;; Get a list of disjunctions, which may be a single item.
         disjunctions (if (= :or (:type dnf)) (:content dnf) [dnf])
         [alpha-roots beta-roots] 
@@ -618,13 +653,13 @@
   "Returns a new rete network identical to the given one, 
    but with the additional production."
   [network production]
-  (add-production* network production))
+  (add-production* network production (->ProductionNode production (:rhs production))))
 
 (defn add-query
   "Returns a new rete network identical to the given one, 
    but with the additional query."
   [network query]
-  (add-production* network query))
+  (add-production* network query (->QueryNode query (:params query))))
 
 
 (defrecord SimpleWorkingMemory [network memory transport]
@@ -647,10 +682,10 @@
     (doseq [node (get-in session [:network :production-nodes])
             token (:tokens (get-beta-memory (:memory session) node))]
       ((:rhs node) session token)))
-  (query [session query]
+  (query [session query params]
     (let [query-node (get-in network [:query-nodes query])
           beta-memory (get-beta-memory memory query-node)]
-      (map :bindings (:tokens beta-memory)))))
+      (map :bindings (get beta-memory params)))))
 
 (defn new-session 
   "Creates a new session using the given rete network."
