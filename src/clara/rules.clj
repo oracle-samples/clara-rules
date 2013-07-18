@@ -37,6 +37,21 @@
   `(do (assoc! ~'?__bindings__ ~(keyword variable) ~content)
        ~content)) ;; TODO: This might be better to use a dynamic var to create bindings.
 
+(defn insert! 
+  "To be executed from with a rule's right-hand side, this inserts a new fact or facts into working memory.
+   Inserted facts are always logical, in that if the support for the insertion is removed, the fact
+   will automatically be retracted."
+  [& facts]
+  (let [{:keys [network transient-memory transport]} eng/*current-session*
+        {:keys [node token]} eng/*rule-context*]
+    (doseq [[cls fact-group] (group-by class facts) 
+            root (get-in network [:alpha-roots cls])]
+
+      ;; Track this insertion in our transient memory so logical retractions will remove it.
+      (mem/add-insertions! transient-memory node token facts)
+      (eng/alpha-activate root fact-group transient-memory transport))))
+
+
 (defmacro new-query
   "Contains a new query based on a sequence of a conditions."
   [params lhs]
@@ -73,7 +88,7 @@
 (defn new-session 
   "Creates a new session using the given rete network."
   [rete-network]
-  (let [memory (mem/to-transient (mem/local-memory))
+  (let [memory (mem/to-transient (mem/local-memory rete-network))
         transport (LocalTransport.)]
 
     ;; Activate the beta roots.

@@ -13,10 +13,12 @@
   (to-transient [memory]))
 
 (defprotocol IMemoryReader
+  (get-rulebase [memory])
   (get-elements [memory node bindings])
   (get-tokens [memory node bindings])
-  (get-accum-result [memory node join-bindings fact-bindings]) ; TODO: Is the join-bindings dimension necessary here?
-  (get-accum-results [memory node join-bindings]))
+  (get-accum-result [memory node join-bindings fact-bindings])
+  (get-accum-results [memory node join-bindings])
+  (get-insertions [memory node token]))
 
 (defprotocol ITransientMemory
   (add-elements! [memory node join-bindings elements])
@@ -24,12 +26,16 @@
   (add-tokens! [memory node join-bindings tokens])
   (remove-tokens! [memory node join-bindings tokens])
   (add-accum-result! [memory node join-bindings accum-result fact-bindings])
+  (add-insertions! [memory node token facts])
+  (remove-insertions! [memory node token])
   (to-persistent! [memory]))
 
 (declare ->PersistentLocalMemory)
 
-(deftype TransientLocalMemory [alpha-memory beta-memory accum-memory] 
+(deftype TransientLocalMemory [rulebase alpha-memory beta-memory accum-memory production-memory] 
   IMemoryReader 
+  (get-rulebase [memory] rulebase)
+
   (get-elements [memory node bindings]
     (get (get-node-memory alpha-memory node) bindings []))
 
@@ -41,6 +47,9 @@
 
   (get-accum-results [memory node join-bindings]
     (get (get-node-memory accum-memory node) join-bindings {}))
+
+  (get-insertions [memory node token]
+    (get (get-node-memory production-memory node) token []))
   
   ITransientMemory  
   (add-elements! [memory node join-bindings elements]
@@ -80,15 +89,32 @@
                              fact-bindings 
                              accum-result)]
       (assoc! accum-mem join-bindings join-binding-map)))
+  
+  (add-insertions! [memory node token facts]
+    (let [production-mem (get-node-memory production-memory node)
+          current-facts (get production-mem token)]
+      (assoc! production-mem token (concat current-facts facts))))
 
+  (remove-insertions! [memory node tokens]
+    (let [production-mem (get-node-memory production-memory node)]
+
+      (doall ; Avoid laziness since we're clearing a transient memory.
+       (flatten
+        ;; Remove all facts for each token and return them.
+        (for [token tokens
+              :let [facts (get production-mem token)]]
+          (do
+            (assoc! production-mem token [])
+            facts))))))
+  
   (to-persistent! [memory]
-    (->PersistentLocalMemory (persistent! alpha-memory) (persistent! beta-memory) (persistent! accum-memory))))
+    (->PersistentLocalMemory rulebase (persistent! alpha-memory) (persistent! beta-memory) (persistent! accum-memory) (persistent! production-memory))))
 
-(defrecord PersistentLocalMemory [alpha-memory beta-memory accum-memory]
+(defrecord PersistentLocalMemory [rulebase alpha-memory beta-memory accum-memory production-memory]
   IPersistentMemory
-  (to-transient [_] (->TransientLocalMemory (transient alpha-memory) (transient beta-memory) (transient accum-memory))))
+  (to-transient [_] (->TransientLocalMemory rulebase (transient alpha-memory) (transient beta-memory) (transient accum-memory) (transient production-memory))))
 
 (defn local-memory 
   "Returns a local, in-process working memory."
-  []
-  (->PersistentLocalMemory {} {} {}))
+  [rulebase]
+  (->PersistentLocalMemory rulebase {} {} {} {}))

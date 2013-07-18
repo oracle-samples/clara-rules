@@ -5,7 +5,7 @@
         clojure.pprint
         clara.testfacts)
   (:refer-clojure :exclude [==])
-  (import [clara.testfacts Temperature WindSpeed]))
+  (import [clara.testfacts Temperature WindSpeed Cold ColdAndWindy]))
 
 (deftest test-simple-rule
   (let [rule-output (atom nil)
@@ -507,7 +507,76 @@
     (is (= #{{:?w 50 :?t 15}}
            (set (query windy-session really-cold-or-cold-and-windy {}))))))
 
+(deftest test-simple-insert 
+    (let [rule-output (atom nil)
+        ;; Insert a new fact and ensure it exists.
+        cold-rule (new-rule [(Temperature (< temperature 20) (== ?t temperature))] 
+                            (insert! (->Cold ?t)) )
 
+        cold-query (new-query [] [(Cold (== ?c temperature))])
+
+        session (-> (rete-network) 
+                    (add-rule cold-rule)
+                    (add-query cold-query)
+                    (new-session)
+                    (insert (->Temperature 10 "MCI"))
+                    (fire-rules))]
+
+      (is (= #{{:?c 10}}
+             (set (query session cold-query {}))))))
+
+(deftest test-insert-and-retract 
+    (let [rule-output (atom nil)
+        ;; Insert a new fact and ensure it exists.
+        cold-rule (new-rule [(Temperature (< temperature 20) (== ?t temperature))] 
+                            (insert! (->Cold ?t)) )
+
+        cold-query (new-query [] [(Cold (== ?c temperature))])
+
+        session (-> (rete-network) 
+                    (add-rule cold-rule)
+                    (add-query cold-query)
+                    (new-session)
+                    (insert (->Temperature 10 "MCI"))
+                    (fire-rules))]
+
+      (is (= #{{:?c 10}}
+             (set (query session cold-query {}))))
+
+      ;; Ensure retracting the temperature also removes the logically inserted fact.
+      (is (empty? 
+           (query 
+            (retract session (->Temperature 10 "MCI"))
+            cold-query
+            {} )))))
+
+
+(deftest test-insert-and-retract-multi-input 
+    (let [rule-output (atom nil)
+        ;; Insert a new fact and ensure it exists.
+        cold-rule (new-rule [(Temperature (< temperature 20) (== ?t temperature))
+                             (WindSpeed (> windspeed 30) (== ?w windspeed))] 
+                            (insert! (->ColdAndWindy ?t ?w)) )
+
+        cold-query (new-query [] [(ColdAndWindy (== ?ct temperature) (== ?cw windspeed))])
+
+        session (-> (rete-network) 
+                    (add-rule cold-rule)
+                    (add-query cold-query)
+                    (new-session)
+                    (insert (->Temperature 10 "MCI"))
+                    (insert (->WindSpeed 40 "MCI"))
+                    (fire-rules))]
+
+      (is (= #{{:?ct 10 :?cw 40}}
+             (set (query session cold-query {}))))
+
+      ;; Ensure retracting the temperature also removes the logically inserted fact.
+      (is (empty? 
+           (query 
+            (retract session (->Temperature 10 "MCI"))
+            cold-query
+            {} )))))
 
 (deftest test-ast-to-dnf 
 

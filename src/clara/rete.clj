@@ -87,12 +87,26 @@
                      memory 
                      transport))))
 
+(defprotocol IAlphaActivate 
+  (alpha-activate [node facts memory transport])
+  (alpha-retract [node facts memory transport]))
+
 (defrecord ProductionNode [production rhs]
   ILeftActivate  
   (left-activate [node join-bindings tokens memory transport]
-    (add-tokens! memory node join-bindings tokens))
+    ;; Tokens added to be pending rule execution.
+    (add-tokens! memory node join-bindings tokens)) 
+
   (left-retract [node join-bindings tokens memory transport] 
-    (remove-tokens! memory node join-bindings tokens))
+    ;; Remove any tokens to avoid future rule execution on retracted items.
+    (remove-tokens! memory node join-bindings tokens)
+
+    ;; Retract any insertions that occurred due to the retracted token.
+    (let [insertions (remove-insertions! memory node tokens)]
+      (doseq [[cls fact-group] (group-by class insertions) 
+              root (get-in (get-rulebase memory) [:alpha-roots cls])]
+        (alpha-retract root fact-group memory transport))))
+
   (get-join-keys [node] []))
 
 (defrecord QueryNode [query param-keys]
@@ -105,9 +119,7 @@
 
   (get-join-keys [node] param-keys))
 
-(defprotocol IAlphaActivate 
-  (alpha-activate [node facts memory transport])
-  (alpha-retract [node facts memory transport]))
+
 
 (defrecord AlphaNode [condition children activation]
   IAlphaActivate
@@ -535,6 +547,11 @@
                    (:production-nodes network) 
                    (assoc (:query-nodes network) production production-node)))))
 
+;; Active session during rule execution.
+(def ^:dynamic *current-session* nil)
+
+;; The token that triggered a rule to fire.
+(def ^:dynamic *rule-context* nil)
 
 (defrecord LocalSession [network memory transport]
   ISession
@@ -558,9 +575,11 @@
   (fire-rules [session]
 
     (let [transient-memory (to-transient memory)]
-      (doseq [node (get-in session [:network :production-nodes])
-              token (get-tokens transient-memory node {})]
-        ((:rhs node) session token))
+      (binding [*current-session* {:network network :transient-memory transient-memory :transport transport}]
+        (doseq [node (get-in session [:network :production-nodes])
+                token (get-tokens transient-memory node {})]
+          (binding [*rule-context* {:token token :node node}]
+            ((:rhs node) session token))))
 
       (->LocalSession network (to-persistent! transient-memory) transport)))
 
