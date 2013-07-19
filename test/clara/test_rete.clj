@@ -723,4 +723,48 @@
                        {:type :condition :content :placeholder4}
                        {:type :condition :content :placeholder5}]}))))
 
-(run-tests)
+(def simple-defrule-side-effect (atom nil))
+
+(defrule test-rule 
+  (Temperature (< temperature 20))
+  =>
+  (reset! simple-defrule-side-effect ?__token__))
+
+(deftest test-simple-defrule
+  (let [session (-> (rete-network) 
+                    (add-rule test-rule)
+                    (new-session)
+                    (insert (->Temperature 10 "MCI")))]
+
+    (fire-rules session)
+
+    (is (= 
+         (->Token [(->Temperature 10 "MCI")] {})
+         @simple-defrule-side-effect))))
+
+(defquery cold-query  
+  [:?l] 
+  (Temperature (< temperature 50)
+               (== ?t temperature)
+               (== ?l location)))
+
+(deftest test-defquery
+  (let [session (-> (rete-network) 
+                    (add-query cold-query)
+                    (new-session)
+                    (insert (->Temperature 15 "MCI"))
+                    (insert (->Temperature 20 "MCI")) ; Test multiple items in result.
+                    (insert (->Temperature 10 "ORD"))
+                    (insert (->Temperature 35 "BOS"))
+                    (insert (->Temperature 80 "BOS")))]
+
+
+    ;; Query by location.
+    (is (= #{{:?l "BOS" :?t 35}}
+           (set (query session cold-query {:?l "BOS"}))))
+
+    (is (= #{{:?l "MCI" :?t 15} {:?l "MCI" :?t 20}}
+           (set (query session cold-query {:?l "MCI"}))))
+
+    (is (= #{{:?l "ORD" :?t 10}}
+           (set (query session cold-query {:?l "ORD"}))))))

@@ -96,3 +96,37 @@
       (eng/left-activate beta-node {} [eng/empty-token] memory transport))
 
     (eng/->LocalSession rete-network (mem/to-persistent! memory) transport)))
+
+(defn- parse-rule-body [[head & more]]
+  (cond
+   ;; Detect the separator for the right-hand side.
+   (= '=> head) {:lhs (list) :rhs (first more)}
+
+   ;; Handle a normal left-hand side element.
+   (sequential? head) (update-in 
+                       (parse-rule-body more)
+                       [:lhs] conj head)
+
+   ;; Handle the <- style assignment
+   (symbol? head) (update-in 
+                       (parse-rule-body (drop 2 more))
+                       [:lhs] conj (conj head (take 2 more)))))
+
+(defn- parse-query-body [[head & more]]
+  (cond
+   (nil? head) (list)
+
+   ;; Handle a normal left-hand side element.
+   (sequential? head) (conj (parse-query-body more) head)
+
+   ;; Handle the <- style assignment
+   (symbol? head) (conj (parse-query-body (drop 2 more)) head)))
+
+
+(defmacro defrule [name & body]
+  (let [{:keys [lhs rhs]} (parse-rule-body body)]
+    `(def ~name (new-rule ~lhs ~rhs))))
+
+(defmacro defquery [name binding & body]
+  `(def ~name (new-query ~binding ~(parse-query-body body))))
+
