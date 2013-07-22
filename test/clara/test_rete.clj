@@ -1,10 +1,11 @@
 (ns clara.test-rete
   (:use clojure.test
         clara.rules
-        [clara.rete :only [->Token ast-to-dnf]]
+        [clara.rete :only [->Token ast-to-dnf load-rules]]
         clojure.pprint
         clara.testfacts)
   (:refer-clojure :exclude [==])
+  (:require [clara.sample-ruleset :as sample])
   (import [clara.testfacts Temperature WindSpeed Cold ColdAndWindy]))
 
 (deftest test-simple-rule
@@ -768,3 +769,19 @@
 
     (is (= #{{:?l "ORD" :?t 10}}
            (set (query session cold-query {:?l "ORD"}))))))
+
+(deftest test-rules-from-ns
+
+  (is (= #{{:?loc "MCI"} {:?loc "BOS"}}
+       (set (-> (new-session 'clara.sample-ruleset)
+                (insert (->Temperature 15 "MCI"))
+                (insert (->Temperature 22 "BOS"))
+                (insert (->Temperature 50 "SFO"))
+                (query sample/freezing-locations {})))))
+
+  (is (= #{{:?fact (->ColdAndWindy 15 45)}}  
+         (set (-> (new-session 'clara.sample-ruleset)
+                  (insert (->Temperature 15 "MCI"))
+                  (insert (->WindSpeed 45 "MCI"))
+                  (fire-rules)
+                  (query sample/find-cold-and-windy {}))))))

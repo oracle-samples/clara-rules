@@ -5,12 +5,19 @@
             [clojure.set :as s])
   (:refer-clojure :exclude [==]))
 
+;; Protocol for loading rules from some arbitrary source.
+(defprotocol IRuleLoader
+  (load-rules [source]))
+
 (defrecord Condition [type constraints binding-keys activate-fn])
 
 (defrecord Production [lhs rhs])
 
 (defrecord Query [params lhs binding-keys])
-(defrecord Network [alpha-roots beta-roots production-nodes query-nodes])
+
+(defrecord Network [alpha-roots beta-roots production-nodes query-nodes]
+  IRuleLoader
+  (load-rules [this] this)) ; A network can be viewed as a rule loader; it simply loads itself.
 
 (defrecord Token [facts bindings])
 

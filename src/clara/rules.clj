@@ -9,7 +9,6 @@
   []
   (eng/->Network {} [] [] {}))
 
-
 (defn insert
   "Inserts one or more facts into a working session."
   [session & facts] 
@@ -75,20 +74,29 @@
 
 (defn add-rule
   "Returns a new rete network identical to the given one, 
-   but with the additional production."
-  [network production]
-  (eng/add-production* network production (eng/->ProductionNode production (:rhs production))))
+   but with the additional rules."
+  ([network] network)
+  ([network production]
+     (eng/add-production* network production 
+                          (eng/->ProductionNode production (:rhs production))))
+  ([network production & more]
+     (add-rule (add-rule network more) production)))
 
 (defn add-query
   "Returns a new rete network identical to the given one, 
-   but with the additional query."
-  [network query]
-  (eng/add-production* network query (eng/->QueryNode query (:params query))))
+   but with the additional queries."
+  ([network] network)
+  ([network query]
+     (eng/add-production* network query 
+                          (eng/->QueryNode query (:params query))))
+  ([network query & more]
+     (add-query (add-query network more) query)))
 
 (defn new-session 
-  "Creates a new session using the given rete network."
-  [rete-network]
-  (let [memory (mem/to-transient (mem/local-memory rete-network))
+  "Creates a new session using the given rule source."
+  [source]
+  (let [rete-network (eng/load-rules source)
+        memory (mem/to-transient (mem/local-memory rete-network))
         transport (LocalTransport.)]
 
     ;; Activate the beta roots.
@@ -122,11 +130,26 @@
    ;; Handle the <- style assignment
    (symbol? head) (conj (parse-query-body (drop 2 more)) head)))
 
+(extend-type clojure.lang.Symbol
+  eng/IRuleLoader
+  (load-rules [sym]
+    (reduce 
+     (fn [network item]
+       (cond 
+        (:rule (meta item))     
+        (eng/add-production* network @item 
+                             (eng/->ProductionNode @item (:rhs @item)))
+        (:query (meta item))  
+        (eng/add-production* network @item 
+                             (eng/->QueryNode @item (:params @item)))
+        :default network))
+     (rete-network)
+     (vals (ns-interns sym)))))
 
 (defmacro defrule [name & body]
   (let [{:keys [lhs rhs]} (parse-rule-body body)]
-    `(def ~name (new-rule ~lhs ~rhs))))
+    `(def ~(vary-meta name assoc :rule true) (new-rule ~lhs ~rhs))))
 
 (defmacro defquery [name binding & body]
-  `(def ~name (new-query ~binding ~(parse-query-body body))))
+  `(def ~(vary-meta name assoc :query true) (new-query ~binding ~(parse-query-body body))))
 
