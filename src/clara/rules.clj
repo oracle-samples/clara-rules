@@ -1,8 +1,8 @@
 (ns clara.rules
-  (:require [clara.rete :as eng]
-            [clara.memory :as mem])
+  (:require [clara.rules.engine :as eng]
+            [clara.rules.memory :as mem])
   (:refer-clojure :exclude [==])
-  (import [clara.rete LocalTransport]))
+  (import [clara.rules.engine LocalTransport]))
 
 (defn rete-network 
   "Creates an empty rete network."

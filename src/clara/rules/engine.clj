@@ -1,5 +1,5 @@
-(ns clara.rete 
-  (:use clara.memory)
+(ns clara.rules.engine
+  (:use clara.rules.memory)
   (:require [clojure.reflect :as reflect]
             [clojure.core.reducers :as r]
             [clojure.set :as s])
@@ -261,7 +261,7 @@
   (get-join-keys [node] binding-keys)
 
   IRightActivate
-  (right-activate [node join-bindings elements memory transport]       
+  (right-activate [node join-bindings elements memory transport]   
     (add-elements! memory node join-bindings elements)
     (doseq [:let [matched-tokens (get-tokens memory node join-bindings)]
             {:keys [fact bindings] :as element} elements
@@ -286,7 +286,7 @@
           (send-accumulated node accumulator token reduced bindings transport memory)))))
 
   (right-retract [node join-bindings elements memory transport]   
-
+    
     (doseq [:let [matched-tokens (get-tokens memory node join-bindings)]
             {:keys [fact bindings] :as element} (remove-elements! memory node elements join-bindings)
             :let [previous (get-accum-result memory node join-bindings bindings)]]
@@ -489,7 +489,7 @@
     
     ;; Recursively create children, then create a new join and alpha node for the condition.
     :condition 
-    (if (= "clara.rete.Accumulator" (.getName (class (:content expression)))) ; FIXME: check class?
+    (if (= "clara.rules.engine.Accumulator" (.getName (class (:content expression)))) ; FIXME: check class?
       (insert-accumulator (:content expression) more production-node alpha-roots ancestor-binding-keys)
       (let [condition (:content expression)
             join-binding-keys (s/intersection ancestor-binding-keys (:binding-keys condition))

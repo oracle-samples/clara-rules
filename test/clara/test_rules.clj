@@ -1,12 +1,12 @@
-(ns clara.test-rete
+(ns clara.test-rules
   (:use clojure.test
         clara.rules
-        [clara.rete :only [->Token ast-to-dnf load-rules]]
+        [clara.rules.engine :only [->Token ast-to-dnf load-rules]]
         clojure.pprint
-        clara.testfacts)
+        clara.rules.testfacts)
   (:refer-clojure :exclude [==])
   (:require [clara.sample-ruleset :as sample])
-  (import [clara.testfacts Temperature WindSpeed Cold ColdAndWindy]))
+  (import [clara.rules.testfacts Temperature WindSpeed Cold ColdAndWindy]))
 
 (deftest test-simple-rule
   (let [rule-output (atom nil)
@@ -160,8 +160,8 @@
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI")))]
 
-    (is (= #{{:?t #clara.testfacts.Temperature{:temperature 15 :location "MCI"}} 
-             {:?t #clara.testfacts.Temperature{:temperature 10 :location "MCI"}}}
+    (is (= #{{:?t #clara.rules.testfacts.Temperature{:temperature 15 :location "MCI"}} 
+             {:?t #clara.rules.testfacts.Temperature{:temperature 10 :location "MCI"}}}
            (set (query session cold-query {}))))))
 
 (deftest test-condition-and-value-binding
@@ -174,8 +174,8 @@
                     (insert (->Temperature 10 "MCI")))]
 
     ;; Ensure the condition's fact and values are all bound.
-    (is (= #{{:?v 10, :?t #clara.testfacts.Temperature{:temperature 10 :location "MCI"}} 
-             {:?v 15, :?t #clara.testfacts.Temperature{:temperature 15 :location "MCI"}}}
+    (is (= #{{:?v 10, :?t #clara.rules.testfacts.Temperature{:temperature 10 :location "MCI"}} 
+             {:?v 15, :?t #clara.rules.testfacts.Temperature{:temperature 15 :location "MCI"}}}
            (set (query session cold-query {}))))))
 
 (deftest test-simple-accumulator

@@ -1,4 +1,4 @@
-(ns clara.memory
+(ns clara.rules.memory
   (:require [clojure.core.reducers :as r]
             [clojure.set :as s]))
 

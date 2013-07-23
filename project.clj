@@ -1,5 +1,5 @@
-(defproject clara "0.1.0-SNAPSHOT"
-  :description "FIXME: write description"
+(defproject clara/clara-rules "0.1.0-SNAPSHOT"
+  :description "Clara Rules Engine"
   :url "http://example.com/FIXME"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}

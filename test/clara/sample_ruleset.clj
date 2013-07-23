@@ -1,8 +1,8 @@
 (ns clara.sample-ruleset
   (:use clara.rules
-        clara.testfacts)
+        clara.rules.testfacts)
   (:refer-clojure :exclude [==])
-  (import [clara.testfacts Temperature WindSpeed Cold ColdAndWindy]))
+  (import [clara.rules.testfacts Temperature WindSpeed Cold ColdAndWindy]))
 
 ;;; These rules are used for unit testing loading from a namespace.
 (defquery freezing-locations
