@@ -94,16 +94,18 @@
 
 (defn new-session 
   "Creates a new session using the given rule source."
-  [source]
-  (let [rete-network (eng/load-rules source)
-        memory (mem/to-transient (mem/local-memory rete-network))
-        transport (LocalTransport.)]
+  ([source]
+    (new-session source {:transport (LocalTransport.)}))
+  ([source options]
+     (let [rete-network (eng/load-rules source)
+           memory (mem/to-transient (mem/local-memory rete-network))
+           transport (:transport options)]
 
-    ;; Activate the beta roots.
-    (doseq [beta-node (:beta-roots rete-network)]
-      (eng/left-activate beta-node {} [eng/empty-token] memory transport))
+       ;; Activate the beta roots.
+       (doseq [beta-node (:beta-roots rete-network)]
+         (eng/left-activate beta-node {} [eng/empty-token] memory transport))
 
-    (eng/->LocalSession rete-network (mem/to-persistent! memory) transport)))
+       (eng/->LocalSession rete-network (mem/to-persistent! memory) transport))))
 
 (defn- parse-rule-body [[head & more]]
   (cond
@@ -117,8 +119,8 @@
 
    ;; Handle the <- style assignment
    (symbol? head) (update-in 
-                       (parse-rule-body (drop 2 more))
-                       [:lhs] conj (conj head (take 2 more)))))
+                   (parse-rule-body (drop 2 more))
+                   [:lhs] conj (conj head (take 2 more)))))
 
 (defn- parse-query-body [[head & more]]
   (cond

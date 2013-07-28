@@ -6,3 +6,4 @@
 (defrecord WindSpeed [windspeed location])
 (defrecord Cold [temperature])
 (defrecord ColdAndWindy [temperature windspeed])
+(defrecord LousyWeather [])

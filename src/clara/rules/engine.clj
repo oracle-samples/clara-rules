@@ -39,6 +39,7 @@
 (defprotocol ILeftActivate
   (left-activate [node join-bindings tokens memory transport])
   (left-retract [node join-bindings tokens memory transport])
+  (description [node])
   (get-join-keys [node]))
 
 ;; Right activation protocol to insert new facts, connect alpha nodes,
@@ -54,11 +55,15 @@
   (retract-elements [transport memory nodes elements])
   (retract-tokens [transport memory nodes tokens]))
 
+;; Enable transport tracing for debugging purposes.
+(def ^:dynamic *trace-transport* false)
 
 ;; Simple, in-memory transport.
 (deftype LocalTransport [] 
   ITransport
   (send-elements [transport memory nodes elements]
+    (when (and *trace-transport* (seq elements)) 
+      (println "ELEMENTS " elements " TO " (map description nodes)))
     (doseq [[bindings element-group] (group-by :bindings elements)
             node nodes]
       (right-activate node 
@@ -68,6 +73,8 @@
                     transport)))
 
   (send-tokens [transport memory nodes tokens]
+    (when (and *trace-transport* (seq tokens)) 
+      (println "TOKENS " tokens " TO " (map description nodes)))
     (doseq [[bindings token-group] (group-by :bindings tokens)
             node nodes]
       (left-activate node 
@@ -77,6 +84,8 @@
                      transport)))
 
   (retract-elements [transport memory nodes elements]
+    (when (and *trace-transport* (seq elements)) 
+      (println "RETRACT ELEMENTS " elements " TO " (map description nodes)))
     (doseq  [[bindings element-group] (group-by :bindings elements)
              node nodes]
       (right-retract node 
@@ -86,6 +95,8 @@
                      transport)))
 
   (retract-tokens [transport memory nodes tokens]
+    (when (and *trace-transport* (seq tokens))
+      (println "RETRACT TOKENS " tokens " TO " (map description nodes)))
     (doseq  [[bindings token-group] (group-by :bindings tokens)
              node nodes]
       (left-retract  node 
@@ -114,7 +125,9 @@
               root (get-in (get-rulebase memory) [:alpha-roots cls])]
         (alpha-retract root fact-group memory transport))))
 
-  (get-join-keys [node] []))
+  (get-join-keys [node] [])
+
+  (description [node] "Production"))
 
 (defrecord QueryNode [query param-keys]
   ILeftActivate  
@@ -124,9 +137,9 @@
   (left-retract [node join-bindings tokens memory transport] 
     (remove-tokens! memory node join-bindings tokens))
 
-  (get-join-keys [node] param-keys))
+  (get-join-keys [node] param-keys)
 
-
+  (description [node] (str "Query of " (pr-str node))))
 
 (defrecord AlphaNode [condition children activation]
   IAlphaActivate
@@ -173,6 +186,8 @@
 
   (get-join-keys [node] binding-keys)
 
+  (description [node] (str "Join of " (:type condition) " constraints: " (:constraints condition)))
+
   IRightActivate
   (right-activate [node join-bindings elements memory transport]         
     (add-elements! memory node join-bindings elements)
@@ -206,6 +221,8 @@
       (retract-tokens transport memory children tokens)))
 
   (get-join-keys [node] binding-keys)
+
+  (description [node] "Negation")
 
   IRightActivate
   (right-activate [node join-bindings elements memory transport]
@@ -259,6 +276,8 @@
          (retract-accumulated node accumulator token previous fact-bindings transport memory))))
 
   (get-join-keys [node] binding-keys)
+
+  (description [node] "Accumulate")
 
   IRightActivate
   (right-activate [node join-bindings elements memory transport]   

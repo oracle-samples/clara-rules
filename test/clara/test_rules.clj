@@ -1,12 +1,13 @@
 (ns clara.test-rules
   (:use clojure.test
         clara.rules
-        [clara.rules.engine :only [->Token ast-to-dnf load-rules]]
+        [clara.rules.engine :only [->Token ast-to-dnf load-rules *trace-transport* description]]
         clojure.pprint
         clara.rules.testfacts)
   (:refer-clojure :exclude [==])
   (:require [clara.sample-ruleset :as sample])
-  (import [clara.rules.testfacts Temperature WindSpeed Cold ColdAndWindy]))
+  (import [clara.rules.testfacts Temperature WindSpeed Cold ColdAndWindy LousyWeather]
+          [clara.rules.engine LocalTransport]))
 
 (deftest test-simple-rule
   (let [rule-output (atom nil)
@@ -65,6 +66,33 @@
     (is (= 
          (->Token [(->WindSpeed 30 "MCI")] {})
          @windy-rule-output))))
+
+
+(deftest test-multiple-rules-same-fact
+
+  (let [cold-rule-output (atom nil)
+        subzero-rule-output (atom nil)
+        cold-rule (new-rule [(Temperature (< temperature 20))] 
+                            (reset! cold-rule-output ?__token__))
+        subzero-rule (new-rule [(Temperature (< temperature 0))] 
+                            (reset! subzero-rule-output ?__token__))
+
+        session (-> (rete-network) 
+                    (add-rule cold-rule)
+                    (add-rule subzero-rule)
+                    (new-session)
+                    (insert (->Temperature -10 "MCI")))]
+
+    (fire-rules session)
+
+    (is (= 
+         (->Token [(->Temperature -10 "MCI")] {})
+         @cold-rule-output))
+
+    (is (= 
+         (->Token [(->Temperature -10 "MCI")] {})
+         @subzero-rule-output))))
+
 
 (deftest test-simple-binding
   (let [rule-output (atom nil)
@@ -778,22 +806,27 @@
 (deftest test-rules-from-ns
 
   (is (= #{{:?loc "MCI"} {:?loc "BOS"}}
-       (set (-> (new-session 'clara.sample-ruleset)
+       (set (-> (new-session 'clara.sample-ruleset
+                             )
                 (insert (->Temperature 15 "MCI"))
                 (insert (->Temperature 22 "BOS"))
                 (insert (->Temperature 50 "SFO"))
                 (query sample/freezing-locations {})))))
 
-  (is (= #{{:?fact (->ColdAndWindy 15 45)}}  
+  (let [session (-> (new-session 'clara.sample-ruleset)
+                    (insert (->Temperature 15 "MCI"))
+                    (insert (->WindSpeed 45 "MCI"))
+                    (fire-rules))]
+
+    (is (= #{{:?fact (->ColdAndWindy 15 45)}}  
+           (set 
+            (query session sample/find-cold-and-windy {}))))))
+
+(deftest test-transitive-rule
+
+  (is (= #{{:?fact (->LousyWeather)}}  
          (set (-> (new-session 'clara.sample-ruleset)
                   (insert (->Temperature 15 "MCI"))
                   (insert (->WindSpeed 45 "MCI"))
                   (fire-rules)
-                  (query sample/find-cold-and-windy {}))))))
-
-
-(run-tests)
-;(test-simple-query)
-
-
-
+                  (query sample/find-lousy-weather {}))))))
