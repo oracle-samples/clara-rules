@@ -294,15 +294,16 @@
                     (insert (->Temperature 5 "SFO"))
 
                     ;; Insert last to exercise left activation of accumulate node.
-                    (insert (->WindSpeed 30 "MCI")))]
+                    (insert (->WindSpeed 30 "MCI")))
+        
+        session-retracted (retract session (->WindSpeed 30 "MCI"))]
 
 
     ;; Only the value that joined to WindSpeed should be visible.
     (is (= #{{:?t (->Temperature 10 "MCI") :?loc "MCI"}}
            (set (query session coldest-query {}))))
     
-    (retract session (->WindSpeed 30 "MCI"))
-    (is (empty? (query session coldest-query {})))))
+    (is (empty? (query session-retracted coldest-query {})))))
 
 (deftest test-bound-accumulator-var
   (let [coldest-query (new-query [:?loc] 
@@ -332,7 +333,9 @@
 
         session (-> (rete-network) 
                     (add-query not-cold-query)
-                    (new-session))]
+                    (new-session))
+        session-with-temp (insert session (->Temperature 10 "MCI"))
+        session-retracted (retract session-with-temp (->Temperature 10 "MCI"))]
 
     ;; No facts for the above criteria exist, so we should see a positive result
     ;; with no bindings.
@@ -340,13 +343,13 @@
            (set (query session not-cold-query {}))))
     
     ;; Inserting an item into the sesion should invalidate the negation.
-    (insert session (->Temperature 10 "MCI"))
-    (is (empty? (query session not-cold-query {})))
+    (is (empty? (query session-with-temp
+                       not-cold-query 
+                       {})))
 
     ;; Retracting the inserted item should make the negation valid again.
-    (retract session (->Temperature 10 "MCI"))
     (is (= #{{}}
-           (set (query session not-cold-query {}))))))
+           (set (query session-retracted not-cold-query {}))))))
 
 
 (deftest test-negation-with-other-conditions
@@ -382,16 +385,18 @@
 
         session (-> (rete-network) 
                     (add-query not-cold-and-windy)
-                    (new-session))]
+                    (new-session))
+
+        session-with-data (-> session
+                              (insert (->WindSpeed 40 "MCI"))
+                              (insert (->Temperature 10 "MCI")))]
 
     ;; It is not cold and windy, so we should have a match.
     (is (= #{{}}
            (set (query session not-cold-and-windy {}))))
 
     ;; Make it cold and windy, so there should be no match.
-    (insert session (->WindSpeed 40 "MCI"))
-    (insert session (->Temperature 10 "MCI"))
-    (is (empty? (query session not-cold-and-windy {})))))
+    (is (empty? (query session-with-data not-cold-and-windy {})))))
 
 (deftest test-negated-disjunction
   (let [not-cold-or-windy (new-query [] [(not (or (WindSpeed (> windspeed 30))
@@ -399,21 +404,21 @@
 
         session (-> (rete-network) 
                     (add-query not-cold-or-windy)
-                    (new-session))]
+                    (new-session))
+
+        session-with-temp (insert session (->WindSpeed 40 "MCI"))
+        session-retracted (retract session-with-temp (->WindSpeed 40 "MCI"))]
 
     ;; It is not cold and windy, so we should have a match.
     (is (= #{{}}
            (set (query session not-cold-or-windy {}))))
 
     ;; Make it cold and windy, so there should be no match.
-    (insert session (->WindSpeed 40 "MCI"))
-    (is (empty? (query session not-cold-or-windy {})))
+    (is (empty? (query session-with-temp not-cold-or-windy {})))
 
     ;; Retract the added fact and ensure we now match something.
-    (retract session (->WindSpeed 40 "MCI"))
     (is (= #{{}}
-           (set (query session not-cold-or-windy {}))))
-    ))
+           (set (query session-retracted not-cold-or-windy {}))))))
 
 
 (deftest test-simple-retraction
@@ -785,3 +790,10 @@
                   (insert (->WindSpeed 45 "MCI"))
                   (fire-rules)
                   (query sample/find-cold-and-windy {}))))))
+
+
+(run-tests)
+;(test-simple-query)
+
+
+
