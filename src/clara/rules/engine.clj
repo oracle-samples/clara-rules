@@ -119,6 +119,10 @@
     ;; Remove any tokens to avoid future rule execution on retracted items.
     (remove-tokens! memory node join-bindings tokens)
 
+    ;; Unmark the node as fired for the given token, so future insertions will work.
+    (doseq [token tokens]
+      (unmark-as-fired! memory node token))
+
     ;; Retract any insertions that occurred due to the retracted token.
     (let [insertions (remove-insertions! memory node tokens)]
       (doseq [[cls fact-group] (group-by class insertions) 
@@ -601,11 +605,25 @@
   (fire-rules [session]
 
     (let [transient-memory (to-transient memory)]
-      (binding [*current-session* {:network network :transient-memory transient-memory :transport transport}]
-        (doseq [node (get-in session [:network :production-nodes])
-                token (get-tokens transient-memory node {})]
-          (binding [*rule-context* {:token token :node node}]
-            ((:rhs node) session token))))
+      (binding [*current-session* {:network network 
+                                   :transient-memory transient-memory 
+                                   :transport transport
+                                   :insertions (atom 0)}]
+        (loop [insertion-count 0]
+          (doseq [node (get-in session [:network :production-nodes])
+                  token (get-tokens transient-memory node {})]
+
+            ;; Fire the node if it has not already been done for the token.
+            (when (not (is-fired-token transient-memory node token))
+              (binding [*rule-context* {:token token :node node}]
+                ((:rhs node) session token)
+                
+                ;; The rule fired for the given token, so mark it as such.
+                (mark-as-fired! transient-memory node token))))
+          
+          ;; If the rules inserted new facts, re-fire to ensure they are accounted for.
+          (when (> (deref (:insertions *current-session*)) insertion-count)
+            (recur (deref (:insertions *current-session*)) ))))
 
       (->LocalSession network (to-persistent! transient-memory) transport)))
 

@@ -41,8 +41,12 @@
    Inserted facts are always logical, in that if the support for the insertion is removed, the fact
    will automatically be retracted."
   [& facts]
-  (let [{:keys [network transient-memory transport]} eng/*current-session*
+  (let [{:keys [network transient-memory transport insertions]} eng/*current-session*
         {:keys [node token]} eng/*rule-context*]
+
+    ;; Update the insertion count.
+    (swap! insertions + (count facts))
+
     (doseq [[cls fact-group] (group-by class facts) 
             root (get-in network [:alpha-roots cls])]
 

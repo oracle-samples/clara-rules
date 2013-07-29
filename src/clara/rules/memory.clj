@@ -26,7 +26,8 @@
   (get-tokens [memory node bindings])
   (get-accum-result [memory node join-bindings fact-bindings])
   (get-accum-results [memory node join-bindings])
-  (get-insertions [memory node token]))
+  (get-insertions [memory node token])
+  (is-fired-token [memory node token]))
 
 (defprotocol ITransientMemory
   (add-elements! [memory node join-bindings elements])
@@ -36,6 +37,8 @@
   (add-accum-result! [memory node join-bindings accum-result fact-bindings])
   (add-insertions! [memory node token facts])
   (remove-insertions! [memory node token])
+  (mark-as-fired! [memory node token])
+  (unmark-as-fired! [memory node token])
   (to-persistent! [memory]))
 
 (declare ->PersistentLocalMemory)
@@ -58,6 +61,11 @@
 
   (get-insertions [memory node token]
     (get (get-node-memory memory persistent-memory :production-memory node) token []))
+
+  (is-fired-token [memory node token]
+    (contains? 
+     (get (get-node-memory memory persistent-memory :production-memory node) :fired-tokens #{})
+     token))
   
   ITransientMemory  
   (add-elements! [memory node join-bindings elements]
@@ -114,6 +122,16 @@
           (do
             (assoc! production-mem token [])
             facts))))))
+
+  (mark-as-fired! [memory node token]
+    (let [production-mem (get-node-memory memory persistent-memory :production-memory node)
+          fired-tokens (get production-mem :fired-tokens #{})]
+      (assoc! production-mem :fired-tokens (conj fired-tokens token))))
+
+  (unmark-as-fired! [memory node token]
+    (let [production-mem (get-node-memory memory persistent-memory :production-memory node)
+          fired-tokens (get production-mem :fired-tokens #{})]
+      (assoc! production-mem :fired-tokens (disj fired-tokens token))))
   
   (to-persistent! [memory]
 

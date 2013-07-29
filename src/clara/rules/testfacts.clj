@@ -7,3 +7,9 @@
 (defrecord Cold [temperature])
 (defrecord ColdAndWindy [temperature windspeed])
 (defrecord LousyWeather [])
+
+;; Test facts for chained rules.
+(defrecord First [])
+(defrecord Second [])
+(defrecord Third [])
+(defrecord Fourth [])

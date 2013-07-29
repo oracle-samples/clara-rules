@@ -6,7 +6,8 @@
         clara.rules.testfacts)
   (:refer-clojure :exclude [==])
   (:require [clara.sample-ruleset :as sample])
-  (import [clara.rules.testfacts Temperature WindSpeed Cold ColdAndWindy LousyWeather]
+  (import [clara.rules.testfacts Temperature WindSpeed Cold ColdAndWindy LousyWeather
+           First Second Third Fourth]
           [clara.rules.engine LocalTransport]))
 
 (deftest test-simple-rule
@@ -830,3 +831,56 @@
                   (insert (->WindSpeed 45 "MCI"))
                   (fire-rules)
                   (query sample/find-lousy-weather {}))))))
+
+
+(deftest test-mark-as-fired
+  (let [rule-output (atom nil)
+        cold-rule (new-rule [[Temperature (< temperature 20)]] 
+                            (reset! rule-output ?__token__) )
+
+        session (-> (rete-network) 
+                    (add-rule cold-rule)
+                    (new-session)
+                    (insert (->Temperature 10 "MCI"))
+                    (fire-rules))]
+
+    (is (= 
+         (->Token [(->Temperature 10 "MCI")] {})
+         @rule-output))
+    
+    ;; Reset the side effect then re-fire the rules
+    ;; to ensure the same one isn't fired twice.
+    (reset! rule-output nil)
+    (fire-rules session)
+    (is (= nil @rule-output))
+
+    ;; Retract and re-add the item to yield a new execution of the rule.
+    (-> session 
+        (retract (->Temperature 10 "MCI"))
+        (insert (->Temperature 10 "MCI"))
+        (fire-rules))
+    
+    (is (= 
+         (->Token [(->Temperature 10 "MCI")] {})
+         @rule-output))))
+
+
+(deftest test-chained-inference
+  (let [item-query (new-query [] [(?item <-- Fourth)])
+
+        session (-> (rete-network)                    
+                    (add-rule (new-rule [(Third)] (insert! (->Fourth)))) ; Rule order shouldn't matter, but test it anyway.
+                    (add-rule (new-rule [(First)] (insert! (->Second))))
+                    (add-rule (new-rule [(Second)] (insert! (->Third))))
+                    (add-query item-query)
+                    (new-session)
+                    (insert (->First))
+                    (fire-rules))]
+
+    ;; The query should identify all items that wer einserted and matchd the
+    ;; expected criteria.
+    (is (= #{{:?item (->Fourth)}}
+           (set (query session item-query {}))))))
+
+
+(run-tests)
