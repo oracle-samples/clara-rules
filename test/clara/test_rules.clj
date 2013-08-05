@@ -1,14 +1,15 @@
 (ns clara.test-rules
   (:use clojure.test
         clara.rules
-        [clara.rules.engine :only [->Token ast-to-dnf load-rules *trace-transport* description]]
+        [clara.rules.engine :only [->Token ast-to-dnf load-rules *trace-transport* 
+                                   description get-alpha-nodes get-beta-nodes]]
         clojure.pprint
         clara.rules.testfacts)
   (:refer-clojure :exclude [==])
   (:require [clara.sample-ruleset :as sample])
   (import [clara.rules.testfacts Temperature WindSpeed Cold ColdAndWindy LousyWeather
            First Second Third Fourth]
-          [clara.rules.engine LocalTransport]))
+          [clara.rules.engine LocalTransport AlphaNode JoinNode ProductionNode]))
 
 (deftest test-simple-rule
   (let [rule-output (atom nil)
@@ -883,4 +884,16 @@
            (set (query session item-query {}))))))
 
 
-(run-tests)
+(deftest test-list-nodes
+   (let [cold-rule (new-rule [(Temperature (< temperature 20))] 
+                            (println "Placeholder"))
+        windy-rule (new-rule [(WindSpeed (> windspeed 25))] 
+                             (println "Placeholder"))
+        network (-> (rete-network) 
+                    (add-rule cold-rule)
+                    (add-rule windy-rule))]
+
+     ;; Ensure the expected number of nodes is present.
+     (is (= 2 (count (get-alpha-nodes network))))
+     (is (= 2 (count (filter #(instance? ProductionNode %)  (get-beta-nodes network)))))
+     (is (= 2 (count (filter #(instance? JoinNode %)  (get-beta-nodes network)))))))

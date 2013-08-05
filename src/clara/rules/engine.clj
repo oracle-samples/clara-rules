@@ -577,6 +577,24 @@
                    (:production-nodes network) 
                    (assoc (:query-nodes network) production production-node)))))
 
+(defn get-nodes
+  "Returns a sequence of nodes in the network."
+  [network]
+  (distinct
+   (mapcat 
+    #(tree-seq :children :children %)
+    (apply concat (vals (:alpha-roots network))))))
+
+(defn get-alpha-nodes
+  "Returns a sequence of alpha nodes in the network."
+  [network]
+  (filter #(instance? AlphaNode %) (get-nodes network)))
+
+(defn get-beta-nodes 
+  "Returns a sequence of beta nodes in the network."
+  [network]
+  (remove #(instance? AlphaNode %) (get-nodes network)))
+
 ;; Active session during rule execution.
 (def ^:dynamic *current-session* nil)
 
