@@ -153,8 +153,3 @@
                             (transient {}) 
                             (transient {})
                             memory)))
-
-(defn local-memory 
-  "Returns a local, in-process working memory."
-  [rulebase]
-  (->PersistentLocalMemory rulebase {} {} {} {}))

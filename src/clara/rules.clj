@@ -102,14 +102,9 @@
     (new-session source {:transport (LocalTransport.)}))
   ([source options]
      (let [rete-network (eng/load-rules source)
-           memory (mem/to-transient (mem/local-memory rete-network))
            transport (:transport options)]
 
-       ;; Activate the beta roots.
-       (doseq [beta-node (:beta-roots rete-network)]
-         (eng/left-activate beta-node {} [eng/empty-token] memory transport))
-
-       (eng/->LocalSession rete-network (mem/to-persistent! memory) transport))))
+       (eng/->LocalSession rete-network (eng/local-memory rete-network transport) transport))))
 
 (defn- parse-rule-body [[head & more]]
   (cond

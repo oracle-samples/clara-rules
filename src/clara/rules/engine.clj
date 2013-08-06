@@ -651,4 +651,11 @@
       (map :bindings (get-tokens (to-transient (:memory session)) query-node params)))))
 
 
+(defn local-memory 
+  "Returns a local, in-process working memory."
+  [rulebase transport]     
+  (let [memory (to-transient (->PersistentLocalMemory rulebase {} {} {} {}))]
+    (doseq [beta-node (:beta-roots rulebase)]
+      (left-activate beta-node {} [empty-token] memory transport))
+    (to-persistent! memory)))
 
