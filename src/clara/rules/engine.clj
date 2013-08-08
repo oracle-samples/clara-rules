@@ -15,7 +15,7 @@
 
 (defrecord Query [params lhs binding-keys])
 
-(defrecord Network [alpha-roots beta-roots production-nodes query-nodes]
+(defrecord Network [alpha-roots beta-roots production-nodes query-nodes node-to-id id-to-node]
   IRuleLoader
   (load-rules [this] this)) ; A network can be viewed as a rule loader; it simply loads itself.
 
@@ -548,6 +548,26 @@
     ;; work our way back up the recursion stack.
     nil [production-node alpha-roots]))
 
+(defn- node-id [node]
+  (->> node
+       (tree-seq 
+        #(or (sequential? %) (map? %) (set? %))
+        (fn [item]
+          (if (map? item)
+            (concat (keys item) (vals item))
+            item)))
+       (filter #(or (keyword? %) (symbol? %) (number? %)))
+       (hash)))
+
+(defn- node-id-map 
+  "Generates a map of unique ids to nodes."
+  [beta-roots]
+  (let [beta-nodes (distinct
+                    (mapcat 
+                     #(tree-seq :children :children %)
+                     beta-roots))]
+    (into {} (for [beta-node beta-nodes] [(node-id beta-node) beta-node]))))
+
 (defn add-production* 
   "Adds a new production to the network."
   [network production production-node]
@@ -565,35 +585,23 @@
                                                      alpha-roots
                                                      #{})]
               (recur alpha-roots (conj beta-roots beta-root) (rest disjunctions)))
-            [alpha-roots beta-roots]))]
+            [alpha-roots beta-roots]))
+        id-to-node (node-id-map beta-roots)
+        node-to-id (s/map-invert id-to-node)]
 
      (if (:rhs production)
         (->Network alpha-roots 
                    beta-roots 
                    (conj (:production-nodes network) production-node) 
-                   (:query-nodes network))
+                   (:query-nodes network)
+                   node-to-id
+                   id-to-node)
         (->Network alpha-roots 
                    beta-roots 
                    (:production-nodes network) 
-                   (assoc (:query-nodes network) production production-node)))))
-
-(defn get-nodes
-  "Returns a sequence of nodes in the network."
-  [network]
-  (distinct
-   (mapcat 
-    #(tree-seq :children :children %)
-    (apply concat (vals (:alpha-roots network))))))
-
-(defn get-alpha-nodes
-  "Returns a sequence of alpha nodes in the network."
-  [network]
-  (filter #(instance? AlphaNode %) (get-nodes network)))
-
-(defn get-beta-nodes 
-  "Returns a sequence of beta nodes in the network."
-  [network]
-  (remove #(instance? AlphaNode %) (get-nodes network)))
+                   (assoc (:query-nodes network) production production-node)
+                   node-to-id
+                   id-to-node))))
 
 ;; Active session during rule execution.
 (def ^:dynamic *current-session* nil)

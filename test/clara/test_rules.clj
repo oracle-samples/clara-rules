@@ -2,11 +2,12 @@
   (:use clojure.test
         clara.rules
         [clara.rules.engine :only [->Token ast-to-dnf load-rules *trace-transport* 
-                                   description get-alpha-nodes get-beta-nodes]]
+                                   description]]
         clojure.pprint
         clara.rules.testfacts)
   (:refer-clojure :exclude [==])
-  (:require [clara.sample-ruleset :as sample])
+  (:require [clara.sample-ruleset :as sample]
+            [clojure.set :as s])
   (import [clara.rules.testfacts Temperature WindSpeed Cold ColdAndWindy LousyWeather
            First Second Third Fourth]
           [clara.rules.engine LocalTransport AlphaNode JoinNode ProductionNode]))
@@ -884,16 +885,29 @@
            (set (query session item-query {}))))))
 
 
-(deftest test-list-nodes
+(deftest test-node-id-map
    (let [cold-rule (new-rule [(Temperature (< temperature 20))] 
                             (println "Placeholder"))
-        windy-rule (new-rule [(WindSpeed (> windspeed 25))] 
-                             (println "Placeholder"))
-        network (-> (rete-network) 
-                    (add-rule cold-rule)
-                    (add-rule windy-rule))]
+         windy-rule (new-rule [(WindSpeed (> windspeed 25))] 
+                              (println "Placeholder"))
+         network (-> (rete-network) 
+                     (add-rule cold-rule)
+                     (add-rule windy-rule))
 
-     ;; Ensure the expected number of nodes is present.
-     (is (= 2 (count (get-alpha-nodes network))))
-     (is (= 2 (count (filter #(instance? ProductionNode %)  (get-beta-nodes network)))))
-     (is (= 2 (count (filter #(instance? JoinNode %)  (get-beta-nodes network)))))))
+         cold-rule2 (new-rule [(Temperature (< temperature 20))] 
+                            (println "Placeholder"))
+         windy-rule2 (new-rule [(WindSpeed (> windspeed 25))] 
+                              (println "Placeholder"))
+
+         network2 (-> (rete-network) 
+                      (add-rule cold-rule2)
+                      (add-rule windy-rule2))]
+
+     ;; The keys should be consistent between maps since the rules are identical.
+     (is (= (keys (:id-to-node network))
+            (keys (:id-to-node network2))))
+
+     ;; Ensure there are beta and production nodes as expected.
+     (is (= 4 (count (:id-to-node network))))
+     
+     (is (= (:id-to-node network) (s/map-invert (:node-to-id network))))))

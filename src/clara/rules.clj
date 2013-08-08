@@ -7,7 +7,7 @@
 (defn rete-network 
   "Creates an empty rete network."
   []
-  (eng/->Network {} [] [] {}))
+  (eng/->Network {} [] [] {} {} {}))
 
 (defn insert
   "Inserts one or more facts into a working session."
