@@ -17,7 +17,7 @@
 
 (defquery find-cold-and-windy
   []
-  (?fact <-- ColdAndWindy))
+  (?fact <- ColdAndWindy))
 
 (defrule is-lousy
   (ColdAndWindy (= temperature 15))
@@ -26,7 +26,7 @@
 
 (defquery find-lousy-weather
   []
-  (?fact <-- LousyWeather))
+  (?fact <- LousyWeather))
 
 
 

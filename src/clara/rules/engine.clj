@@ -6,7 +6,7 @@
   (:refer-clojure :exclude [==]))
 
 ;; Protocol for loading rules from some arbitrary source.
-(defprotocol IRuleLoader
+(defprotocol IRuleSource
   (load-rules [source]))
 
 (defrecord Condition [type constraints binding-keys activate-fn])
@@ -15,15 +15,15 @@
 
 (defrecord Query [params lhs binding-keys])
 
-(defrecord Network [alpha-roots beta-roots production-nodes query-nodes node-to-id id-to-node]
-  IRuleLoader
-  (load-rules [this] this)) ; A network can be viewed as a rule loader; it simply loads itself.
+(defrecord Rulebase [alpha-roots beta-roots production-nodes query-nodes node-to-id id-to-node]
+  IRuleSource
+  (load-rules [this] this)) ; A rulebase can be viewed as a rule loader; it simply loads itself.
 
 (defrecord Token [facts bindings])
 
 ;; A working memory element
 (defrecord Element [fact bindings])
- 
+
 ;; Token with no bindings, used as the root of beta nodes.
 (def empty-token (->Token [] {}))
 
@@ -67,10 +67,10 @@
     (doseq [[bindings element-group] (group-by :bindings elements)
             node nodes]
       (right-activate node 
-                    (select-keys bindings (get-join-keys node))
-                    element-group 
-                    memory 
-                    transport)))
+                      (select-keys bindings (get-join-keys node))
+                      element-group 
+                      memory 
+                      transport)))
 
   (send-tokens [transport memory nodes tokens]
     (when (and *trace-transport* (seq tokens)) 
@@ -210,7 +210,7 @@
      children
      (for [{:keys [fact bindings] :as element} (remove-elements! memory node elements join-bindings)
            token (get-tokens memory node join-bindings)]
-        (->Token (conj (:facts token) fact) (conj (:bindings token) bindings))))))
+       (->Token (conj (:facts token) fact) (conj (:bindings token) bindings))))))
 
 (defrecord NegationNode [condition children binding-keys]
   ILeftActivate
@@ -277,7 +277,7 @@
     (let [previous-results (get-accum-results memory node join-bindings)]
       (doseq [token (remove-tokens! memory node join-bindings tokens)
               [fact-bindings previous] previous-results]
-         (retract-accumulated node accumulator token previous fact-bindings transport memory))))
+        (retract-accumulated node accumulator token previous fact-bindings transport memory))))
 
   (get-join-keys [node] binding-keys)
 
@@ -314,16 +314,16 @@
             {:keys [fact bindings] :as element} (remove-elements! memory node elements join-bindings)
             :let [previous (get-accum-result memory node join-bindings bindings)]]
       
-        ;; If the accumulation result was previously calculated, retract it
-        ;; from the children.
-        
+      ;; If the accumulation result was previously calculated, retract it
+      ;; from the children.
+      
       (when previous
         ;; TODO: reuse previous token rather than recreating it?
         (doseq [token (get-tokens memory node join-bindings)]
           (retract-accumulated node accumulator token previous bindings transport memory)))
 
-        ;; Reduce to create a new token and send it downstream.
-        
+      ;; Reduce to create a new token and send it downstream.
+      
       (let [initial (:initial-value definition)
             reduce-fn (:reduce-fn definition)
             ;; Get the set of facts that are reducible.
@@ -385,29 +385,29 @@
   (let [type (first condition)
         constraints (apply vector (rest condition))
         binding-keys (variables-as-keywords constraints)]
-       
+    
     `(->Condition ~(resolve type) 
                   '~constraints ~binding-keys 
                   ~(compile-condition (resolve type) constraints result-binding))))
 
 (defn create-condition [condition]
   ;; Grab the binding of the operation result, if present.
-  (let [result-binding (if (= '<-- (second condition)) (keyword (first condition)) nil)
+  (let [result-binding (if (= '<- (second condition)) (keyword (first condition)) nil)
         condition (if result-binding (drop 2 condition) condition)]
 
-   (when (and (not= nil result-binding)
+    (when (and (not= nil result-binding)
                (not= \? (first (name result-binding))))
       (throw (IllegalArgumentException. (str "Invalid binding for condition: " result-binding))))
 
     ;; If it's an s-expression, simply let it expand itself, and assoc the binding with the result.
-   (if (#{'from :from} (second condition)) ; If this is an accumulator....
-     `(map->Accumulator 
-       {:result-binding ~result-binding
-        :definition ~(first condition)
-        :input-condition ~(construct-condition (nth condition 2) nil)})
-     
-     ;; Not an accumulator, so simply create the condition.
-     (construct-condition condition result-binding))))
+    (if (#{'from :from} (second condition)) ; If this is an accumulator....
+      `(map->Accumulator 
+        {:result-binding ~result-binding
+         :definition ~(first condition)
+         :input-condition ~(construct-condition (nth condition 2) nil)})
+      
+      ;; Not an accumulator, so simply create the condition.
+      (construct-condition condition result-binding))))
 
 (def operators #{'and 'or 'not})
 
@@ -455,7 +455,7 @@
         
         :or (ast-to-dnf {:type :and 
                          :content (negate-grandchildren)})))
-   
+    
     ;; For all others, recursively process the children.
     (let [children (map ast-to-dnf (:content ast))
           ;; Get all conjunctions, which will not conain any disjunctions since they were processed above.
@@ -497,7 +497,7 @@
         alpha-node (->AlphaNode condition 
                                 [join-node] 
                                 (:activate-fn condition))]
-        
+    
     [join-node, 
      (merge-with concat new-alphas {(get-in alpha-node [:condition :type]) [alpha-node]})]))
 
@@ -569,39 +569,39 @@
     (into {} (for [beta-node beta-nodes] [(node-id beta-node) beta-node]))))
 
 (defn add-production* 
-  "Adds a new production to the network."
-  [network production production-node]
+  "Adds a new production to the rulebase."
+  [rulebase production production-node]
 
   (let [dnf (ast-to-dnf (:lhs production))
         ;; Get a list of disjunctions, which may be a single item.
         disjunctions (if (= :or (:type dnf)) (:content dnf) [dnf])
         [alpha-roots beta-roots] 
-        (loop [alpha-roots (:alpha-roots network)
-               beta-roots (:beta-roots network)
+        (loop [alpha-roots (:alpha-roots rulebase)
+               beta-roots (:beta-roots rulebase)
                disjunctions disjunctions]
           (if (seq disjunctions)
             (let [[beta-root alpha-roots] (add-rule*  [(first disjunctions)] ; FIXME: should accept simple conjunction, not a vec.
-                                                     production-node
-                                                     alpha-roots
-                                                     #{})]
+                                                      production-node
+                                                      alpha-roots
+                                                      #{})]
               (recur alpha-roots (conj beta-roots beta-root) (rest disjunctions)))
             [alpha-roots beta-roots]))
         id-to-node (node-id-map beta-roots)
         node-to-id (s/map-invert id-to-node)]
 
-     (if (:rhs production)
-        (->Network alpha-roots 
-                   beta-roots 
-                   (conj (:production-nodes network) production-node) 
-                   (:query-nodes network)
-                   node-to-id
-                   id-to-node)
-        (->Network alpha-roots 
-                   beta-roots 
-                   (:production-nodes network) 
-                   (assoc (:query-nodes network) production production-node)
-                   node-to-id
-                   id-to-node))))
+    (if (:rhs production)
+      (->Rulebase alpha-roots 
+                  beta-roots 
+                  (conj (:production-nodes rulebase) production-node) 
+                  (:query-nodes rulebase)
+                  node-to-id
+                  id-to-node)
+      (->Rulebase alpha-roots 
+                  beta-roots 
+                  (:production-nodes rulebase) 
+                  (assoc (:query-nodes rulebase) production production-node)
+                  node-to-id
+                  id-to-node))))
 
 ;; Active session during rule execution.
 (def ^:dynamic *current-session* nil)
@@ -609,34 +609,34 @@
 ;; The token that triggered a rule to fire.
 (def ^:dynamic *rule-context* nil)
 
-(defrecord LocalSession [network memory transport]
+(defrecord LocalSession [rulebase memory transport]
   ISession
   (insert [session facts]
     (let [transient-memory (to-transient memory)]
       (doseq [[cls fact-group] (group-by class facts) 
-              root (get-in network [:alpha-roots cls])]
+              root (get-in rulebase [:alpha-roots cls])]
         (alpha-activate root fact-group transient-memory transport))
 
-      (->LocalSession network (to-persistent! transient-memory) transport)))
+      (->LocalSession rulebase (to-persistent! transient-memory) transport)))
 
   (retract [session facts]
 
     (let [transient-memory (to-transient memory)]
       (doseq [[cls fact-group] (group-by class facts) 
-              root (get-in network [:alpha-roots cls])]
+              root (get-in rulebase [:alpha-roots cls])]
         (alpha-retract root fact-group transient-memory transport))
 
-      (->LocalSession network (to-persistent! transient-memory) transport)))
+      (->LocalSession rulebase (to-persistent! transient-memory) transport)))
 
   (fire-rules [session]
 
     (let [transient-memory (to-transient memory)]
-      (binding [*current-session* {:network network 
+      (binding [*current-session* {:rulebase rulebase 
                                    :transient-memory transient-memory 
                                    :transport transport
                                    :insertions (atom 0)}]
         (loop [insertion-count 0]
-          (doseq [node (get-in session [:network :production-nodes])
+          (doseq [node (get-in session [:rulebase :production-nodes])
                   token (get-tokens transient-memory node {})]
 
             ;; Fire the node if it has not already been done for the token.
@@ -651,11 +651,11 @@
           (when (> (deref (:insertions *current-session*)) insertion-count)
             (recur (deref (:insertions *current-session*)) ))))
 
-      (->LocalSession network (to-persistent! transient-memory) transport)))
+      (->LocalSession rulebase (to-persistent! transient-memory) transport)))
 
   ;; TODO: queries shouldn't require the use of transient memory.
   (query [session query params]
-    (let [query-node (get-in network [:query-nodes query])]
+    (let [query-node (get-in rulebase [:query-nodes query])]
       (map :bindings (get-tokens (to-transient (:memory session)) query-node params)))))
 
 

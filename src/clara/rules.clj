@@ -4,10 +4,10 @@
   (:refer-clojure :exclude [==])
   (import [clara.rules.engine LocalTransport]))
 
-(defn rete-network 
-  "Creates an empty rete network."
+(defn mk-rulebase 
+  "Creates an empty rulebase."
   []
-  (eng/->Network {} [] [] {} {} {}))
+  (eng/->Rulebase {} [] [] {} {} {}))
 
 (defn insert
   "Inserts one or more facts into a working session."
@@ -41,21 +41,21 @@
    Inserted facts are always logical, in that if the support for the insertion is removed, the fact
    will automatically be retracted."
   [& facts]
-  (let [{:keys [network transient-memory transport insertions]} eng/*current-session*
+  (let [{:keys [rulebase transient-memory transport insertions]} eng/*current-session*
         {:keys [node token]} eng/*rule-context*]
 
     ;; Update the insertion count.
     (swap! insertions + (count facts))
 
     (doseq [[cls fact-group] (group-by class facts) 
-            root (get-in network [:alpha-roots cls])]
+            root (get-in rulebase [:alpha-roots cls])]
 
       ;; Track this insertion in our transient memory so logical retractions will remove it.
       (mem/add-insertions! transient-memory node token facts)
       (eng/alpha-activate root fact-group transient-memory transport))))
 
 
-(defmacro new-query
+(defmacro mk-query
   "Contains a new query based on a sequence of a conditions."
   [params lhs]
   ;; TODO: validate params exist as keyworks in the query.
@@ -64,7 +64,7 @@
     ~(eng/parse-lhs lhs)
     ~(eng/variables-as-keywords lhs)))
 
-(defmacro new-rule
+(defmacro mk-rule
   "Contains a new rule based on a sequence of a conditions and a righthand side."
   [lhs rhs]
   `(eng/->Production 
@@ -77,34 +77,34 @@
                           (assoc args :convert-return-fn identity ))))
 
 (defn add-rule
-  "Returns a new rete network identical to the given one, 
+  "Returns a new rulebase identical to the given one, 
    but with the additional rules."
-  ([network] network)
-  ([network production]
-     (eng/add-production* network production 
+  ([rulebase] rulebase)
+  ([rulebase production]
+     (eng/add-production* rulebase production 
                           (eng/->ProductionNode production (:rhs production))))
-  ([network production & more]
-     (add-rule (add-rule network more) production)))
+  ([rulebase production & more]
+     (add-rule (add-rule rulebase more) production)))
 
 (defn add-query
-  "Returns a new rete network identical to the given one, 
+  "Returns a new rulebase identical to the given one, 
    but with the additional queries."
-  ([network] network)
-  ([network query]
-     (eng/add-production* network query 
+  ([rulebase] rulebase)
+  ([rulebase query]
+     (eng/add-production* rulebase query 
                           (eng/->QueryNode query (:params query))))
-  ([network query & more]
-     (add-query (add-query network more) query)))
+  ([rulebase query & more]
+     (add-query (add-query rulebase more) query)))
 
-(defn new-session 
+(defn mk-session 
   "Creates a new session using the given rule source."
   ([source]
-    (new-session source {:transport (LocalTransport.)}))
+    (mk-session source {:transport (LocalTransport.)}))
   ([source options]
-     (let [rete-network (eng/load-rules source)
+     (let [rulebase (eng/load-rules source)
            transport (:transport options)]
 
-       (eng/->LocalSession rete-network (eng/local-memory rete-network transport) transport))))
+       (eng/->LocalSession rulebase (eng/local-memory rulebase transport) transport))))
 
 (defn- parse-rule-body [[head & more]]
   (cond
@@ -131,26 +131,27 @@
    ;; Handle the <- style assignment
    (symbol? head) (conj (parse-query-body (drop 2 more)) head)))
 
+;; Treate a symbol as a rule source, loding all items in its namespace.
 (extend-type clojure.lang.Symbol
-  eng/IRuleLoader
+  eng/IRuleSource
   (load-rules [sym]
     (reduce 
-     (fn [network item]
+     (fn [rulebase item]
        (cond 
         (:rule (meta item))     
-        (eng/add-production* network @item 
+        (eng/add-production* rulebase @item 
                              (eng/->ProductionNode @item (:rhs @item)))
         (:query (meta item))  
-        (eng/add-production* network @item 
+        (eng/add-production* rulebase @item 
                              (eng/->QueryNode @item (:params @item)))
-        :default network))
-     (rete-network)
+        :default rulebase))
+     (mk-rulebase)
      (vals (ns-interns sym)))))
 
 (defmacro defrule [name & body]
   (let [{:keys [lhs rhs]} (parse-rule-body body)]
-    `(def ~(vary-meta name assoc :rule true) (new-rule ~lhs ~rhs))))
+    `(def ~(vary-meta name assoc :rule true) (mk-rule ~lhs ~rhs))))
 
 (defmacro defquery [name binding & body]
-  `(def ~(vary-meta name assoc :query true) (new-query ~binding ~(parse-query-body body))))
+  `(def ~(vary-meta name assoc :query true) (mk-query ~binding ~(parse-query-body body))))
 
