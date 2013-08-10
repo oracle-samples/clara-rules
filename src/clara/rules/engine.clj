@@ -383,7 +383,7 @@
 
 (defn- construct-condition [condition result-binding]
   (let [type (first condition)
-        constraints (apply vector (rest condition))
+        constraints (vec (rest condition))
         binding-keys (variables-as-keywords constraints)]
     
     `(->Condition ~(resolve type) 
@@ -414,7 +414,7 @@
 (defn- parse-expression [expression]
   (if (operators (first expression))
     {:type (keyword (first expression)) 
-     :content (apply vector (map parse-expression (rest expression)))}
+     :content (vec (map parse-expression (rest expression)))}
     {:type :condition :content (create-condition expression)}))
 
 (defn parse-lhs
@@ -470,19 +470,19 @@
           
           ;; If there are no disjunctions in the processed children, no further changes are needed.
           {:type :and
-           :content (apply vector children)}
+           :content (vec children)}
           
           ;; The children had disjunctions, so distribute them to convert to DNF.
           {:type :or 
            :content (into [] (for [disjunction disjunctions]
                                {:type :and
-                                :content (apply vector (cons disjunction conjunctions))}))})
+                                :content (vec (cons disjunction conjunctions))}))})
 
         :or
         {:type :or
          ;; Nested disjunctions can be merged into the parent disjunction. We
          ;; the simply append nested conjunctions to create our DNF.
-         :content (apply vector (concat disjunctions conjunctions))  }))))
+         :content (vec (concat disjunctions conjunctions))  }))))
 
 
 (declare add-rule*)
