@@ -656,6 +656,8 @@
   ;; TODO: queries shouldn't require the use of transient memory.
   (query [session query params]
     (let [query-node (get-in rulebase [:query-nodes query])]
+      (when (= nil query-node) 
+        (throw (IllegalArgumentException. "The given query is invalid or not included in the rule base.")))
       (map :bindings (get-tokens (to-transient (:memory session)) query-node params)))))
 
 
