@@ -148,10 +148,21 @@
      (mk-rulebase)
      (vals (ns-interns sym)))))
 
-(defmacro defrule [name & body]
-  (let [{:keys [lhs rhs]} (parse-rule-body body)]
-    `(def ~(vary-meta name assoc :rule true) (mk-rule ~lhs ~rhs))))
+(defmacro defrule 
+  "Defines a rule and stores it in the given var."
+  [name & body]
+  (let [doc (if (string? (first body)) (first body) nil)
+        definition (if doc (rest body) body)
+        {:keys [lhs rhs]} (parse-rule-body definition)]
+    `(def ~(vary-meta name assoc :rule true :doc doc)
+       (mk-rule ~lhs ~rhs))))
 
-(defmacro defquery [name binding & body]
-  `(def ~(vary-meta name assoc :query true) (mk-query ~binding ~(parse-query-body body))))
+(defmacro defquery 
+  "Defines a query and stored it in the given var."
+  [name & body]
+  (let [doc (if (string? (first body)) (first body) nil)
+        binding (if doc (second body) (first body))
+        definition (if doc (drop 2 body) (rest body) )]
+    `(def ~(vary-meta name assoc :query true :doc doc) 
+       (mk-query ~binding ~(parse-query-body definition)))))
 

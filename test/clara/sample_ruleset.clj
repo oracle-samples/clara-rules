@@ -6,10 +6,13 @@
 
 ;;; These rules are used for unit testing loading from a namespace.
 (defquery freezing-locations
+  "Query the freezing locations."
   []
   (Temperature (< temperature 32) (== ?loc location)))
 
 (defrule is-cold-and-windy
+  "Rule to determine whether it is indeed cold and windy."
+
   (Temperature (< temperature 20) (== ?t temperature))
   (WindSpeed (> windspeed 30) (== ?w windspeed))
   =>

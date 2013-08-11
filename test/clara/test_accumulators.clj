@@ -82,5 +82,3 @@
 
     (is (= #{{:?t #{ 80 90}}}
            (set (query session distinct-field {}))))))
-
-(run-tests)
