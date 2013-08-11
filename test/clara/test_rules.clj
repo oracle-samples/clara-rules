@@ -3,14 +3,11 @@
         clara.rules
         [clara.rules.engine :only [->Token ast-to-dnf load-rules *trace-transport* 
                                    description]]
-        clojure.pprint
         clara.rules.testfacts)
   (:refer-clojure :exclude [==])
   (:require [clara.sample-ruleset :as sample]
             [clojure.set :as s])
-  (import [clara.rules.testfacts Temperature WindSpeed Cold ColdAndWindy LousyWeather
-           First Second Third Fourth]
-          [clara.rules.engine LocalTransport AlphaNode JoinNode ProductionNode]))
+  (import [clara.rules.testfacts Temperature WindSpeed Cold ColdAndWindy LousyWeather First Second Third Fourth]))
 
 (deftest test-simple-rule
   (let [rule-output (atom nil)
