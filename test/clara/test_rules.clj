@@ -2,7 +2,7 @@
   (:use clojure.test
         clara.rules
         [clara.rules.engine :only [->Token ast-to-dnf load-rules *trace-transport* 
-                                   description]]
+                                   description print-memory]]
         clara.rules.testfacts)
   (:refer-clojure :exclude [==])
   (:require [clara.sample-ruleset :as sample]
@@ -166,7 +166,6 @@
                     (insert (->Temperature 10 "ORD"))
                     (insert (->Temperature 35 "BOS"))
                     (insert (->Temperature 80 "BOS")))]
-
 
     ;; Query by location.
     (is (= #{{:?l "BOS" :?t 35}}
@@ -883,28 +882,28 @@
 
 
 (deftest test-node-id-map
-   (let [cold-rule (mk-rule [(Temperature (< temperature 20))] 
+  (let [cold-rule (mk-rule [(Temperature (< temperature 20))] 
+                           (println "Placeholder"))
+        windy-rule (mk-rule [(WindSpeed (> windspeed 25))] 
                             (println "Placeholder"))
-         windy-rule (mk-rule [(WindSpeed (> windspeed 25))] 
-                              (println "Placeholder"))
-         rulebase (-> (mk-rulebase) 
-                      (add-rule cold-rule)
-                      (add-rule windy-rule))
+        rulebase (-> (mk-rulebase) 
+                     (add-rule cold-rule)
+                     (add-rule windy-rule))
 
-         cold-rule2 (mk-rule [(Temperature (< temperature 20))] 
+        cold-rule2 (mk-rule [(Temperature (< temperature 20))] 
                             (println "Placeholder"))
-         windy-rule2 (mk-rule [(WindSpeed (> windspeed 25))] 
-                              (println "Placeholder"))
+        windy-rule2 (mk-rule [(WindSpeed (> windspeed 25))] 
+                             (println "Placeholder"))
 
-         rulebase2 (-> (mk-rulebase) 
-                       (add-rule cold-rule2)
-                       (add-rule windy-rule2))]
+        rulebase2 (-> (mk-rulebase) 
+                      (add-rule cold-rule2)
+                      (add-rule windy-rule2))]
 
-     ;; The keys should be consistent between maps since the rules are identical.
-     (is (= (keys (:id-to-node rulebase))
-            (keys (:id-to-node rulebase2))))
+    ;; The keys should be consistent between maps since the rules are identical.
+    (is (= (keys (:id-to-node rulebase))
+           (keys (:id-to-node rulebase2))))
 
-     ;; Ensure there are beta and production nodes as expected.
-     (is (= 4 (count (:id-to-node rulebase))))
-     
-     (is (= (:id-to-node rulebase) (s/map-invert (:node-to-id rulebase))))))
+    ;; Ensure there are beta and production nodes as expected.
+    (is (= 4 (count (:id-to-node rulebase))))
+    
+    (is (= (:id-to-node rulebase) (s/map-invert (:node-to-id rulebase))))))

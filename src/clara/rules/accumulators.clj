@@ -40,7 +40,10 @@
                 [(+ value (field item)) (inc count)])
    :combine-fn (fn [[value1 count1] [value2 count2]]
                  [(+ value1 value2) (+ count1 count2)])
-   :convert-return-fn (fn [[value count]]  (/ value count))))
+   :convert-return-fn (fn [[value count]]  
+                        (if (= 0 count) 
+                          nil
+                          (/ value count)))))
 
 (defn sum
   "Returns an accumulator that returns the sum of values of a given field"

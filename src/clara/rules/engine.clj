@@ -1,5 +1,6 @@
 (ns clara.rules.engine
-  (:use clara.rules.memory)
+  (:use clara.rules.memory
+        clojure.pprint)
   (:require [clojure.reflect :as reflect]
             [clojure.core.reducers :as r]
             [clojure.set :as s])
@@ -9,7 +10,7 @@
 (defprotocol IRuleSource
   (load-rules [source]))
 
-(defrecord Condition [type constraints binding-keys activate-fn])
+(defrecord Condition [type constraints binding-keys activate-fn text])
 
 (defrecord Production [lhs rhs])
 
@@ -131,7 +132,7 @@
 
   (get-join-keys [node] [])
 
-  (description [node] "Production"))
+  (description [node] "ProductionNode"))
 
 (defrecord QueryNode [query param-keys]
   ILeftActivate  
@@ -143,7 +144,7 @@
 
   (get-join-keys [node] param-keys)
 
-  (description [node] (str "Query of " (pr-str node))))
+  (description [node] (str "QueryNode -- " param-keys)))
 
 (defrecord AlphaNode [condition children activation]
   IAlphaActivate
@@ -190,7 +191,7 @@
 
   (get-join-keys [node] binding-keys)
 
-  (description [node] (str "Join of " (:type condition) " constraints: " (:constraints condition)))
+  (description [node] (str "JoinNode -- " (:text condition)))
 
   IRightActivate
   (right-activate [node join-bindings elements memory transport]         
@@ -208,7 +209,7 @@
      transport
      memory
      children
-     (for [{:keys [fact bindings] :as element} (remove-elements! memory node elements join-bindings)
+     (for [{:keys [fact bindings] :as element} (remove-elements! memory node join-bindings elements)
            token (get-tokens memory node join-bindings)]
        (->Token (conj (:facts token) fact) (conj (:bindings token) bindings))))))
 
@@ -226,7 +227,7 @@
 
   (get-join-keys [node] binding-keys)
 
-  (description [node] "Negation")
+  (description [node] (str "NegationNode -- " (:text condition)))
 
   IRightActivate
   (right-activate [node join-bindings elements memory transport]
@@ -281,7 +282,7 @@
 
   (get-join-keys [node] binding-keys)
 
-  (description [node] "Accumulate")
+  (description [node] (str "AccumulateNode -- " (:text accumulator)))
 
   IRightActivate
   (right-activate [node join-bindings elements memory transport]   
@@ -303,15 +304,16 @@
             ;; Get the set of facts that are reducible.
             reducible-facts (map :fact (get-elements memory node join-bindings)) ;; Get only facts, not bindings...
             reduced (r/reduce reduce-fn initial reducible-facts)]
+        
 
         (add-accum-result! memory node join-bindings reduced bindings)
-        (doseq [token matched-tokens]
+        (doseq [token matched-tokens]          
           (send-accumulated node accumulator token reduced bindings transport memory)))))
 
   (right-retract [node join-bindings elements memory transport]   
     
     (doseq [:let [matched-tokens (get-tokens memory node join-bindings)]
-            {:keys [fact bindings] :as element} (remove-elements! memory node elements join-bindings)
+            {:keys [fact bindings] :as element} (remove-elements! memory node join-bindings elements)
             :let [previous (get-accum-result memory node join-bindings bindings)]]
       
       ;; If the accumulation result was previously calculated, retract it
@@ -367,7 +369,7 @@
 
 (defn compile-action [binding-keys rhs]
   (let [assignments (mapcat #(list (symbol (name %)) (list 'get-in '?__token__ [:bindings %])) binding-keys)]
-    `(fn [~'?__session__ ~'?__token__] 
+    `(fn [~'?__token__] 
        (let [~@assignments]
          ~rhs))))
 
@@ -384,11 +386,14 @@
 (defn- construct-condition [condition result-binding]
   (let [type (first condition)
         constraints (vec (rest condition))
-        binding-keys (variables-as-keywords constraints)]
-    
+        binding-keys (variables-as-keywords constraints)
+        text (pr-str condition)]
+       
     `(->Condition ~(resolve type) 
-                  '~constraints ~binding-keys 
-                  ~(compile-condition (resolve type) constraints result-binding))))
+                  '~constraints 
+                  ~binding-keys 
+                  ~(compile-condition (resolve type) constraints result-binding)
+                  ~text)))
 
 (defn create-condition [condition]
   ;; Grab the binding of the operation result, if present.
@@ -404,7 +409,8 @@
       `(map->Accumulator 
         {:result-binding ~result-binding
          :definition ~(first condition)
-         :input-condition ~(construct-condition (nth condition 2) nil)})
+         :input-condition ~(construct-condition (nth condition 2) nil)
+         :text ~(pr-str condition)})
       
       ;; Not an accumulator, so simply create the condition.
       (construct-condition condition result-binding))))
@@ -548,6 +554,7 @@
     ;; work our way back up the recursion stack.
     nil [production-node alpha-roots]))
 
+
 (defn- node-id [node]
   (->> node
        (tree-seq 
@@ -556,7 +563,7 @@
           (if (map? item)
             (concat (keys item) (vals item))
             item)))
-       (filter #(or (keyword? %) (symbol? %) (number? %)))
+       (filter #(or (string? %) (keyword? %) (symbol? %) (number? %)))
        (hash)))
 
 (defn- node-id-map 
@@ -565,8 +572,9 @@
   (let [beta-nodes (distinct
                     (mapcat 
                      #(tree-seq :children :children %)
-                     beta-roots))]
-    (into {} (for [beta-node beta-nodes] [(node-id beta-node) beta-node]))))
+                     beta-roots))
+        items (into {} (for [beta-node beta-nodes] [(node-id beta-node) beta-node]))]
+    items))
 
 (defn add-production* 
   "Adds a new production to the rulebase."
@@ -609,6 +617,8 @@
 ;; The token that triggered a rule to fire.
 (def ^:dynamic *rule-context* nil)
 
+(declare print-memory)
+
 (defrecord LocalSession [rulebase memory transport]
   ISession
   (insert [session facts]
@@ -616,7 +626,6 @@
       (doseq [[cls fact-group] (group-by class facts) 
               root (get-in rulebase [:alpha-roots cls])]
         (alpha-activate root fact-group transient-memory transport))
-
       (->LocalSession rulebase (to-persistent! transient-memory) transport)))
 
   (retract [session facts]
@@ -642,7 +651,7 @@
             ;; Fire the node if it has not already been done for the token.
             (when (not (is-fired-token transient-memory node token))
               (binding [*rule-context* {:token token :node node}]
-                ((:rhs node) session token)
+                ((:rhs node) token)
                 
                 ;; The rule fired for the given token, so mark it as such.
                 (mark-as-fired! transient-memory node token))))
@@ -664,8 +673,19 @@
 (defn local-memory 
   "Returns a local, in-process working memory."
   [rulebase transport]     
-  (let [memory (to-transient (->PersistentLocalMemory rulebase {} {} {} {}))]
+  (let [memory (to-transient (->PersistentLocalMemory rulebase {}))]
     (doseq [beta-node (:beta-roots rulebase)]
       (left-activate beta-node {} [empty-token] memory transport))
     (to-persistent! memory)))
 
+(defn print-memory 
+  "Prints the session memory, usually for troubleshooting, and returns the session."
+  [session]
+  (pprint 
+   (for [[k v] (:content (:memory session))
+         :let [node-id (get k 1)
+               id-to-node (:id-to-node (:rulebase session))
+               node-descrip (description (id-to-node node-id))]]
+     [(assoc k 1 node-descrip) v]))
+
+  session)
