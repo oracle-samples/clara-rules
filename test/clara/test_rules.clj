@@ -907,3 +907,19 @@
     (is (= 4 (count (:id-to-node rulebase))))
     
     (is (= (:id-to-node rulebase) (s/map-invert (:node-to-id rulebase))))))
+
+(deftest test-simple-test
+  (let [distinct-temps-query (mk-query [] [(Temperature (< temperature 20) (== ?t1 temperature))
+                                           (Temperature (< temperature 20) (== ?t2 temperature))
+                                           (test (< ?t1 ?t2))])
+
+        session (-> (mk-rulebase) 
+                    (add-query distinct-temps-query)
+                    (mk-session)
+                    (insert (->Temperature 15 "MCI"))
+                    (insert (->Temperature 10 "MCI"))
+                    (insert (->Temperature 80 "MCI")))]
+
+    ;; Finds two temperatures such that t1 is less than t2.
+    (is (= #{ {:?t1 10, :?t2 15}} 
+           (set (query session distinct-temps-query {}))))))

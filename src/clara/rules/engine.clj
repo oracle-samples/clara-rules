@@ -12,6 +12,9 @@
 
 (defrecord Condition [type constraints binding-keys activate-fn text])
 
+;; Record containing one or more test expressions to evaluate.
+(defrecord Test [test-fn text])
+
 (defrecord Production [lhs rhs])
 
 (defrecord Query [params lhs binding-keys])
@@ -239,6 +242,22 @@
     (remove-elements! memory node elements join-bindings) ;; FIXME: elements must be zero to retract.
     (send-tokens transport memory children (get-tokens memory node join-bindings))))
 
+(defrecord TestNode [test children]
+  ILeftActivate
+  (left-activate [node join-bindings tokens memory transport] 
+    (send-tokens 
+     transport 
+     memory
+     children
+     (filter #((:test-fn test) %) tokens)))
+
+  (left-retract [node join-bindings tokens memory transport] 
+    (retract-tokens transport  memory children tokens))
+
+  (get-join-keys [node] [])
+
+  (description [node] (str "TestNode -- " (:text test))))
+
 ;;
 (defrecord Accumulator [result-binding input-condition initial-value reduce-fn combine-fn convert-return-fn])
 
@@ -415,13 +434,30 @@
       ;; Not an accumulator, so simply create the condition.
       (construct-condition condition result-binding))))
 
-(def operators #{'and 'or 'not})
+;; Let operators be symbols or keywords.
+(def operators #{'and 'or 'not :and :or :not})
+
+(defn mk-test [tests]
+  (let [binding-keys (variables-as-keywords tests)
+        assignments (mapcat #(list (symbol (name %)) (list 'get-in '?__token__ [:bindings %])) binding-keys)]
+    `(->Test 
+      (fn [~'?__token__] 
+        (let [~@assignments]
+          (and ~@tests)))
+      ~(pr-str tests))))
 
 (defn- parse-expression [expression]
-  (if (operators (first expression))
-    {:type (keyword (first expression)) 
-     :content (vec (map parse-expression (rest expression)))}
-    {:type :condition :content (create-condition expression)}))
+  (cond 
+   (operators (first expression))
+   {:type (keyword (first expression)) 
+    :content (vec (map parse-expression (rest expression)))}
+
+   (#{'test :test} (first expression))
+   {:type :test 
+    :content (mk-test (rest expression))}
+
+   :default
+   {:type :condition :content (create-condition expression)}))
 
 (defn parse-lhs
   "Parse the left-hand side and returns an AST"
@@ -437,6 +473,9 @@
   (condp = (:type ast)
     ;; Individual conditions can return unchanged.
     :condition
+    ast
+
+    :test
     ast
 
     ;; Apply de Morgan's law to push negation nodes to the leaves. 
@@ -455,6 +494,8 @@
 
         ;; If the child is a single condition, simply return the ast.
         :condition ast
+
+        :test ast
 
         :and (ast-to-dnf {:type :or
                           :content (negate-grandchildren)})
@@ -532,6 +573,13 @@
         [join-node, 
          (merge-with concat new-alphas {(get-in alpha-node [:condition :type]) [alpha-node]})]))
     
+    ;; Test nodes don't create new bindings oer perform joins, hence the simpler logic here.
+    :test
+    (let [[child new-alphas] (add-rule* more production-node alpha-roots ancestor-binding-keys)
+          test-node (->TestNode (:content expression) [child])]
+
+      [test-node new-alphas])
+
     ;; It's a conjunction, so add all content of the conjunction.
     :and 
     (add-rule* (:content expression) production-node alpha-roots ancestor-binding-keys)
