@@ -69,10 +69,10 @@ Consuming logic can then query the working memory for Promotion facts, returning
             (->Purchase 20 :gizmo)
             (->Purchase 120 :widget)) ; Insert some facts.
     (fire-rules)
-    (query get-best-discount {}))
+    (query get-promotions {}))
 ```
 
-This loads the set of rules and queries defined in the _clara.examples.shopping_ namespace, inserts some facts, fires all rules, and executes a query to get the best discount. The return value is a sequence containing items that matched the query.
+This loads the set of rules and queries defined in the _clara.examples.shopping_ namespace, inserts some facts, fires all rules, and executes a query to get the promotions. The return value is a sequence containing items that matched the query.
 
 Of course, this simple example doesn't demonstrate some of the more powerful aspects of a rules engine, including:
 
