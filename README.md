@@ -1,14 +1,15 @@
 # clara
 
-Clara is a forward-chaining rules engine in Clojure, with strong Java interoperability forthcoming. 
+Clara is a forward-chaining rules engine written in Clojure, with strong Java interoperability forthcoming. 
 
 The expression of arbitrary, frequently changing business logic is a major source of complexity for many systems. Clara aims to reign in this complexity by untangling business logic into composable rules while leveraging the advantages of the Clojure and Java ecosystems.
 
 Other objectives include:
 
-* The rule engine's working memory is a persistent Clojure data structure that can participate in transactions.
-* Working memory facts are typically Clojure records or (soon) Java beans. 
+* Embrace immutability. The rule engine's working memory is a persistent Clojure data structure that can participate in transactions. All changes produce a new working memory that shares state with the previous.
 * Rule constraints and actions are Clojure s-expressions.
+* Working memory facts are typically Clojure records or (soon) Java objects following the Java Bean conventions. 
+* Supports the major advantages of existing rules systems, such as explainability of why a rule fired and automatic truth maintenance.
 * Collections of facts can be reasoned with using accumulators similar to Jess or Drools. These accumulators leverage the reducers API and are transparently parallelized.
 * The working memory is independent of the logic flow, and can be replaced with a distributed processing system. A [prototype that uses Storm](https://github.com/rbrush/clara-storm) to apply rules to a stream of incoming events already exists. Leveraging other processing infrastructures is possible.
 
@@ -22,7 +23,9 @@ This library is targeted at problems that lend themselves to forward-chaining ru
 These are good cases for a rules approach. Instead of adding and updating functions for new business logic, we express logic independently of rules that run against a working memory of our data. We can reason about units of logic independently and apply updates without cascading changes.
 
 ## Example
-Here's a simple example. Imagine a retail setting where discounts and promotions come and go based on arbitrary criteria. We might have a special where anyone who buys a gizmo gets a free lunch, and express it simply:
+Here we look at a simple example using Clara to simplify business logic. Readers familiar with existing rules engines like Jess or Drools may be interested in the more involved [sensors example](https://github.com/rbrush/clara-examples/blob/master/src/clara/examples/sensors.clj).
+
+Imagine a retail setting where discounts and promotions come and go based on arbitrary criteria. We might have a special where anyone who buys a gizmo gets a free lunch, and express it simply:
 
 ```clj
 (defrule free-lunch-with-gizmo
@@ -78,7 +81,14 @@ Of course, this simple example doesn't demonstrate some of the more powerful asp
 * Values in rules can be bound to variables, which the underlying engine will unify with other values.
 * _Accumulators_ support reasoning over collections of facts, using Clojure reducers.
 
-More examples of this can be found in the [clara-examples project](https://github.com/rbrush/clara-examples), with more sophisticated use cases to follow.
+The [sensors example](https://github.com/rbrush/clara-examples/blob/master/src/clara/examples/sensors.clj) shows some of these features in action. 
+
+## The Rules Engine
+Clara implements a variation of the [Rete algorithm](http://en.wikipedia.org/wiki/Rete_algorithm), largely as described in the [Doorenbos paper](http://reports-archive.adm.cs.cmu.edu/anon/1995/CMU-CS-95-113.pdf). It does offer some enhancements and optimizations over classic Rete:
+
+* The engine typically deals with collections of facts rather than individual items for efficiency.
+* Accumulators similar to Jess and Drools allows users to write logic in terms of arbitrary collections of facts.
+* All facts must be immutable. This simplifies the underlying system and makes it possible to distribute facts and processing over multiple machines and processes.
 
 ## Usage
 
