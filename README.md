@@ -2,27 +2,26 @@
 
 Clara is a forward-chaining rules engine written in Clojure, with strong Java interoperability forthcoming. 
 
-The expression of arbitrary, frequently changing business logic is a major source of complexity for many systems. Clara aims to reign in this complexity by untangling business logic into composable rules while leveraging the advantages of the Clojure and Java ecosystems.
+### The Need
+The expression of arbitrary, frequently changing business logic is a major source of complexity. Clara aims to reign in this complexity by untangling business logic, expressing it as composable rules while leveraging the advantages of the Clojure and Java ecosystems. Clara should be usable as a Clojure library to simplify our logic or as an alternative to other Java-based rules engines like Drools.
 
-Other objectives include:
+Objectives include:
 
 * Embrace immutability. The rule engine's working memory is a persistent Clojure data structure that can participate in transactions. All changes produce a new working memory that shares state with the previous.
 * Rule constraints and actions are Clojure s-expressions.
 * Working memory facts are typically Clojure records or (soon) Java objects following the Java Bean conventions. 
-* Supports the major advantages of existing rules systems, such as explainability of why a rule fired and automatic truth maintenance.
+* Support the major advantages of existing rules systems, such as explainability of why a rule fired and automatic truth maintenance.
 * Collections of facts can be reasoned with using accumulators similar to Jess or Drools. These accumulators leverage the reducers API and are transparently parallelized.
 * The working memory is independent of the logic flow, and can be replaced with a distributed processing system. A [prototype that uses Storm](https://github.com/rbrush/clara-storm) to apply rules to a stream of incoming events already exists. Leveraging other processing infrastructures is possible.
 
-Clara should be usable as a Clojure library to simplify our logic or as an alternative to other Java-based rules engines like Drools.
+### Logical Knots
+Two things pop out as Clojure's strengths: the dramatic reduction of our systems' state space, and flexibility to model logic and program flow as simply as possible. Excellent Clojure libraries have emerged to make solving many classes of programs simpler, ranging from web development (ring, hiccup, compojure), to asynchronous program flow (core.async), to logic programming (core.logic), and many others.
 
-## Logical Knots
-Two things pop out as Clojure's strengths: the dramatic reduction of our systems' state space, and the flexibility to represent logic and program flow as simply as possible. Excellent Clojure libraries have emerged to make solving many clases of programs simpler, ranging from web development (ring, hiccup, compojure), to asynchronous program flow (core.async), to logic programming (core.logic), and many others.
-
-This library is targeted at problems that lend themselves to forward-chaining rules. As the state space of our systems shrink our biggest source of complexity comes from what I call logical knots: arbitrary business logic with complex dependencies on other logic and data, with frequent changes involving deep dives into that logic. A functional approach to these problems is helpful, but even that can get complicated. A hierarchy of function calls can get too deep to easily reason about. Evolving business needs may require some function deep in the stack to suddenly require new input, forcing changes to multiple consumers. 
+This library is targeted at problems that lend themselves to forward-chaining rules. As we get better at managing state and program flow, our biggest source of complexity comes from what I call _logical knots_: arbitrary business logic with complex dependencies on other logic and data, with frequent changes that require deep dives into that logic. Even a functional approach to such problems can become unwieldy, with hierarchies of function calls too deep to easily reason about. Evolving business needs may require some function deep in the stack to suddenly require new input, forcing changes to multiple consumers. 
 
 These are good cases for a rules approach. Instead of adding and updating functions for new business logic, we express logic independently of rules that run against a working memory of our data. We can reason about units of logic independently and apply updates without cascading changes.
 
-## Example
+### Example
 Here we look at a simple example using Clara to simplify business logic. Readers familiar with existing rules engines like Jess or Drools may be interested in the more involved [sensors example](https://github.com/rbrush/clara-examples/blob/master/src/clara/examples/sensors.clj).
 
 Imagine a retail setting where discounts and promotions come and go based on arbitrary criteria. We might have a special where anyone who buys a gizmo gets a free lunch, and express it simply:
@@ -35,9 +34,9 @@ Imagine a retail setting where discounts and promotions come and go based on arb
   (insert! (->Promotion :free-lunch-with-gizmo :lunch)))
 ```
 
-In rules engines terms, _Purchase_ is an example of a fact. Clara generally (but not exlusively) represents facts as simple Clojure records. We detect a gizmo purchase in our working memory, and insert the presence of a promotion for a free lunch. 
+In rules engines terms, _Purchase_ is an example of a fact. Clara generally (but not exclusively) represents facts as simple Clojure records. We detect a gizmo purchase in our working memory, and insert the presence of a promotion for a free lunch. 
 
-Now suppose our business declares August as free widget month with orders over $200. Rather than updating some "get-promotions" function to include this as well, we simply add another rule to our rulebase:
+Now suppose our business declares August as "free widget month" for orders over $200. Rather than updating some "get-promotions" function to include this as well, we simply add another rule to our rulebase:
 
 ```clj
 (defrule free-widget-month
@@ -73,7 +72,7 @@ Consuming logic can then query the working memory for Promotion facts, returning
     (query get-best-discount {}))
 ```
 
-This loads a set of rules and queries defined in the _clara.examples.shopping_ namespace, inserts some facts, fires all rules, and runs a query to get the best discount. The return value is a sequence containing items that matched the query.
+This loads the set of rules and queries defined in the _clara.examples.shopping_ namespace, inserts some facts, fires all rules, and executes a query to get the best discount. The return value is a sequence containing items that matched the query.
 
 Of course, this simple example doesn't demonstrate some of the more powerful aspects of a rules engine, including:
 
