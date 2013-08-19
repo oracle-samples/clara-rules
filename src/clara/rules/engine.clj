@@ -667,6 +667,30 @@
 
 (declare print-memory)
 
+(defn fire-rules* 
+   "Fire rules for the given nodes."
+   [rulebase nodes transient-memory transport]
+   (binding [*current-session* {:rulebase rulebase 
+                                :transient-memory transient-memory 
+                                :transport transport
+                                :insertions (atom 0)}]
+
+     (loop [insertion-count 0]
+       (doseq [node nodes
+               token (get-tokens transient-memory node {})]
+
+         ;; Fire the node if it has not already been done for the token.
+         (when (not (is-fired-token transient-memory node token))
+           (binding [*rule-context* {:token token :node node}]
+             ((:rhs node) token)
+             
+             ;; The rule fired for the given token, so mark it as such.
+             (mark-as-fired! transient-memory node token))))
+         
+       ;; If the rules inserted new facts, re-fire to ensure they are accounted for.
+       (when (> (deref (:insertions *current-session*)) insertion-count)
+         (recur (deref (:insertions *current-session*)))))))
+
 (defrecord LocalSession [rulebase memory transport]
   ISession
   (insert [session facts]
@@ -688,25 +712,10 @@
   (fire-rules [session]
 
     (let [transient-memory (to-transient memory)]
-      (binding [*current-session* {:rulebase rulebase 
-                                   :transient-memory transient-memory 
-                                   :transport transport
-                                   :insertions (atom 0)}]
-        (loop [insertion-count 0]
-          (doseq [node (get-in session [:rulebase :production-nodes])
-                  token (get-tokens transient-memory node {})]
-
-            ;; Fire the node if it has not already been done for the token.
-            (when (not (is-fired-token transient-memory node token))
-              (binding [*rule-context* {:token token :node node}]
-                ((:rhs node) token)
-                
-                ;; The rule fired for the given token, so mark it as such.
-                (mark-as-fired! transient-memory node token))))
-          
-          ;; If the rules inserted new facts, re-fire to ensure they are accounted for.
-          (when (> (deref (:insertions *current-session*)) insertion-count)
-            (recur (deref (:insertions *current-session*)) ))))
+      (fire-rules* rulebase 
+	               (get-in session [:rulebase :production-nodes]) 
+	               transient-memory
+	               transport)
 
       (->LocalSession rulebase (to-persistent! transient-memory) transport)))
 
