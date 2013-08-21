@@ -22,11 +22,6 @@
   []
   (?fact <- ColdAndWindy))
 
-(defrule is-lousy
-  (ColdAndWindy (= temperature 15))
-  =>
-  (insert! (->LousyWeather)))
-
 (defquery find-lousy-weather
   []
   (?fact <- LousyWeather))

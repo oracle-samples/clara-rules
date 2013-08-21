@@ -6,6 +6,7 @@
         clara.rules.testfacts)
   (:refer-clojure :exclude [==])
   (:require [clara.sample-ruleset :as sample]
+            [clara.other-ruleset :as other]
             [clojure.set :as s])
   (import [clara.rules.testfacts Temperature WindSpeed Cold ColdAndWindy LousyWeather First Second Third Fourth]))
 
@@ -821,10 +822,24 @@
            (set 
             (query session sample/find-cold-and-windy {}))))))
 
+(deftest test-rules-from-multi-namespaces
+
+  (let [session (-> (mk-session 'clara.sample-ruleset 'clara.other-ruleset)
+                    (insert (->Temperature 15 "MCI"))
+                    (insert (->Temperature 10 "BOS"))
+                    (insert (->Temperature 50 "SFO"))
+                    (insert (->Temperature -10 "CHI")))]
+
+    (is (= #{{:?loc "MCI"} {:?loc "BOS"} {:?loc "CHI"}}
+           (set (query session sample/freezing-locations {}))))
+
+    (is (= #{{:?loc "CHI"}}
+           (set (query session other/subzero-locations {}))))))
+
 (deftest test-transitive-rule
 
   (is (= #{{:?fact (->LousyWeather)}}  
-         (set (-> (mk-session 'clara.sample-ruleset)
+         (set (-> (mk-session 'clara.sample-ruleset 'clara.other-ruleset)
                   (insert (->Temperature 15 "MCI"))
                   (insert (->WindSpeed 45 "MCI"))
                   (fire-rules)

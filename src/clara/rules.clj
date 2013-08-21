@@ -7,7 +7,7 @@
 (defn mk-rulebase 
   "Creates an empty rulebase."
   []
-  (eng/->Rulebase {} [] [] {} {} {}))
+  (eng/->Rulebase {} [] [] [] [] {} {} {}))
 
 (defn insert
   "Inserts one or more facts into a working session."
@@ -98,13 +98,20 @@
 
 (defn mk-session 
   "Creates a new session using the given rule source."
-  ([source]
-    (mk-session source {:transport (LocalTransport.)}))
-  ([source options]
+  ([source & more]
+     ;; Merge all of the sources together and create a session.
      (let [rulebase (eng/load-rules source)
-           transport (:transport options)]
+           transport (LocalTransport.)
+           
+           ;; Merge other rule sessions into one.
+           merged-rules 
+           (reduce           
+            (fn [rulebase other-source]
+              (eng/conj-rulebases rulebase (eng/load-rules other-source)))
+            (eng/load-rules source)
+            more)]
 
-       (eng/->LocalSession rulebase (eng/local-memory rulebase transport) transport))))
+       (eng/->LocalSession merged-rules (eng/local-memory merged-rules transport) transport))))
 
 (defn- parse-rule-body [[head & more]]
   (cond

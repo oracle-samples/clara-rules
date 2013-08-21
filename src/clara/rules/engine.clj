@@ -19,7 +19,7 @@
 
 (defrecord Query [params lhs binding-keys])
 
-(defrecord Rulebase [alpha-roots beta-roots production-nodes query-nodes node-to-id id-to-node]
+(defrecord Rulebase [alpha-roots beta-roots productions queries production-nodes query-nodes node-to-id id-to-node]
   IRuleSource
   (load-rules [this] this)) ; A rulebase can be viewed as a rule loader; it simply loads itself.
 
@@ -647,17 +647,43 @@
 
     (if (:rhs production)
       (->Rulebase alpha-roots 
-                  beta-roots 
+                  beta-roots
+                  (conj (:productions rulebase) production)
+                  (:queries rulebase)
                   (conj (:production-nodes rulebase) production-node) 
                   (:query-nodes rulebase)
                   node-to-id
                   id-to-node)
       (->Rulebase alpha-roots 
                   beta-roots 
+                  (:productions rulebase)
+                  (conj (:queries rulebase) production)
                   (:production-nodes rulebase) 
                   (assoc (:query-nodes rulebase) production production-node)
                   node-to-id
                   id-to-node))))
+
+(defn conj-rulebases 
+  "Conjoin two rulebases, returning a new one with the same rules."
+  [base1 base2]
+  (let [conjed-productions
+        (reduce 
+         (fn [rulebase production]
+           (add-production* rulebase 
+                            production 
+                            (->ProductionNode production (:rhs production))))
+         base1
+         (:productions base2))
+        conjed-queries
+        (reduce
+         (fn [rulebase query]
+           (add-production* rulebase
+                            query
+                            (->QueryNode query (:params query))))
+         conjed-productions
+         (:queries base2))]
+
+    conjed-queries))
 
 ;; Active session during rule execution.
 (def ^:dynamic *current-session* nil)
