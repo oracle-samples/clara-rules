@@ -30,7 +30,12 @@
     (let [query-var (or (resolve (symbol name))
                         (throw (IllegalArgumentException. 
                                  (str "Unable to resolve symbol to query: " name))))
-          results (clara/query session (deref query-var) {})] ;; FIXME: support args.
+
+          ;; Keywordize string keys from Java.
+          keyword-args (into {} 
+                             (for [[k v] args]
+                               [(keyword k) v]))
+          results (clara/query session (deref query-var) keyword-args)]
       (map #(JavaQueryResult. %) results))))
 
 (defn mk-java-session [rulesets]

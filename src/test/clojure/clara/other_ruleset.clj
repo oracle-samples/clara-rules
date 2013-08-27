@@ -15,5 +15,11 @@
   []
   (Temperature (< temperature 0) (== ?loc location)))
 
+(defquery temp-by-location
+  "Query temperatures by location."
+  [:?loc]
+  (Temperature (== ?temp temperature) 
+               (== ?loc location)))
+
 
 

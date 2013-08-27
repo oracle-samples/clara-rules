@@ -38,5 +38,5 @@ public interface WorkingMemory {
      * @param arguments query arguments
      * @return a list of query results
      */
-    Iterable<QueryResult> query(String queryName, Map<String,Object> arguments);
+    public Iterable<QueryResult> query(String queryName, Map<String,Object> arguments);
 }
