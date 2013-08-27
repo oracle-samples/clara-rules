@@ -3,7 +3,7 @@
 Clara is a forward-chaining rules engine written in Clojure, with strong Java interoperability forthcoming. 
 
 ### The Need
-The expression of arbitrary, frequently changing business logic is a major source of complexity. Clara aims to reign in this complexity by untangling business logic, expressing it as composable rules while leveraging the advantages of the Clojure and Java ecosystems. Clara should be usable as a Clojure library to simplify our logic or as an alternative to other Java-based rules engines like Drools.
+The expression of arbitrary, frequently changing business logic is a major source of complexity. Clara aims to rein in this complexity by untangling business logic, expressing it as composable rules while leveraging the advantages of the Clojure and Java ecosystems. Clara should be usable as a Clojure library to simplify our logic or as an alternative to other Java-based rules engines like Drools.
 
 Objectives include:
 
