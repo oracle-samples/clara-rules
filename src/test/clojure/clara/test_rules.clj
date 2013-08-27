@@ -8,7 +8,8 @@
   (:require [clara.sample-ruleset :as sample]
             [clara.other-ruleset :as other]
             [clojure.set :as s])
-  (import [clara.rules.testfacts Temperature WindSpeed Cold ColdAndWindy LousyWeather First Second Third Fourth]))
+  (import [clara.rules.testfacts Temperature WindSpeed Cold ColdAndWindy LousyWeather First Second Third Fourth]
+          [java.util TimeZone]))
 
 (deftest test-simple-rule
   (let [rule-output (atom nil)
@@ -938,3 +939,22 @@
     ;; Finds two temperatures such that t1 is less than t2.
     (is (= #{ {:?t1 10, :?t2 15}} 
            (set (query session distinct-temps-query {}))))))
+
+(deftest test-bean-support
+
+  ;; Use TimeZone for this test as it is an available JavaBean-like object.
+  (let [tz-offset-query (mk-query [:?offset]
+                                  [[TimeZone (== ?offset rawOffset)
+                                             (== ?id ID)]])
+        
+        session (-> (mk-rulebase)
+                    (add-query tz-offset-query)
+                    (mk-session)
+                    (insert (TimeZone/getTimeZone "America/Chicago")
+                            (TimeZone/getTimeZone "UTC")))]
+
+    (is (= #{{:?id "America/Chicago" :?offset -21600000}} 
+           (set (query session tz-offset-query {:?offset -21600000}))))
+
+    (is (= #{{:?id "UTC" :?offset 0}} 
+           (set (query session tz-offset-query {:?offset 0}))))))

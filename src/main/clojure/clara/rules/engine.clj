@@ -355,33 +355,52 @@
         (doseq [token matched-tokens]
           (send-accumulated node accumulator token reduced bindings transport memory))))))
 
-(defn- get-fields 
-  "Returns a list of fields in the given class."
-  ;; TODO: add support for java beans.
-  ;; TODO: consider dynamic support for simple maps.
+(defn- get-field-accessors
+  "Returns a map of field name to a symbol representing the function used to access it."
   [cls]
-  (map :name 
-       (filter #(and (:type %) 
-                     (not (#{'__extmap '__meta} (:name %)))   
-                     (not (:static (:flags %)))) 
-               (:members (reflect/type-reflect cls)))))
+  (into {}
+        (for [member (:members (reflect/type-reflect cls))
+              :when  (and (:type member) 
+                          (not (#{'__extmap '__meta} (:name member)))
+                          (:public (:flags member))
+                          (not (:static (:flags member))))]
+          [(:name member) (symbol (str ".-" (:name member)))])))
 
-(defn compile-condition 
+(defn- get-bean-accessors
+  "Returns a map of bean property name to a symbol representing the function used to access it."
+  [cls]
+  (into {}
+        ;; Iterate through the bean properties, returning tuples and the corresponding methods.
+        (for [property (seq (.. java.beans.Introspector 
+                                (getBeanInfo cls) 
+                                (getPropertyDescriptors)))]
+
+          [(symbol (.. property (getName))) 
+           (symbol (str "." (.. property (getReadMethod) (getName))))])))
+
+(defn- compile-condition 
   "Returns a function definition that can be used in alpha nodes to test the condition."
   [type constraints result-binding]
-  (let [fields (get-fields type)
-        ;; Create an assignments vector for the let block.
-        assignments (mapcat #(list 
-                              % 
-                              (list (symbol (str ".-" (name %))) 'this)) 
-                            fields)
+  (let [;; Get a map of fieldnames to access function symbols.
+        accessors (if (isa? type clojure.lang.IRecord) 
+                    (get-field-accessors type)
+                    (get-bean-accessors type)) ; Treat unrecognized types as beans.
+
+        ;; Convert the accessor map to an assignment block that can be used in a let expression.
+        assignments (mapcat (fn [[name accessor]] 
+                              [name (list accessor 'this)]) 
+                            accessors)
+
+        ;; Initial bindings used in the return of the compiled condition expresion.
         initial-bindings (if result-binding {result-binding 'this}  {})]
 
     `(fn [ ~(with-meta 
               'this 
               {:tag (symbol (.getName type))})] ; Add type hint to avoid runtime refection.
+
        (let [~@assignments
              ~'?__bindings__ (transient ~initial-bindings)]
+
          (if (and ~@constraints)
            (persistent! ~'?__bindings__)
            nil)))))
@@ -721,8 +740,9 @@
   ISession
   (insert [session facts]
     (let [transient-memory (to-transient memory)]
-      (doseq [[cls fact-group] (group-by class facts) 
-              root (get-in rulebase [:alpha-roots cls])]
+      (doseq [[cls fact-group] (group-by class facts)
+              ancestor (conj (ancestors cls) cls) ; Find alpha nodes that match the class or any ancestor
+              root (get-in rulebase [:alpha-roots ancestor])]
         (alpha-activate root fact-group transient-memory transport))
       (->LocalSession rulebase (to-persistent! transient-memory) transport)))
 
