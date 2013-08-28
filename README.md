@@ -82,6 +82,8 @@ Of course, this simple example doesn't demonstrate some of the more powerful asp
 
 The [sensors example](https://github.com/rbrush/clara-examples/blob/master/src/clara/examples/sensors.clj) shows some of these features in action. 
 
+There is also an [example using the Java API](https://github.com/rbrush/clara-examples/tree/master/src/main/java/clara/examples/java), which also demonstrates the use of Java Beans as facts.
+
 ## The Rules Engine
 Clara implements a variation of the [Rete algorithm](http://en.wikipedia.org/wiki/Rete_algorithm), largely as described in the [Doorenbos paper](http://reports-archive.adm.cs.cmu.edu/anon/1995/CMU-CS-95-113.pdf). It does offer some enhancements and optimizations over classic Rete:
 

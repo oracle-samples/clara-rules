@@ -10,14 +10,14 @@ import clojure.lang.Var;
  */
 public class RuleLoader {
 
+    static final Var require = RT.var("clojure.core", "require");
+
     /**
      * Function to make a new Clara session.
      */
     static final IFn makeSession;
 
     static {
-
-        Var require = RT.var("clojure.core", "require");
 
         require.invoke(Symbol.intern("clara.rules.java"));
 
@@ -31,6 +31,10 @@ public class RuleLoader {
      * @return an empty working memory with rules from the given namespaces.
      */
     public static WorkingMemory loadRules(String... namespaces) {
+
+        // Ensure requested namespaces are loaded.
+        for (String namespace: namespaces)
+            require.invoke(Symbol.intern(namespace));
 
         return (WorkingMemory) makeSession.invoke(namespaces);
     }

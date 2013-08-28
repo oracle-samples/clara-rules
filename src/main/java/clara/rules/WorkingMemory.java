@@ -13,14 +13,14 @@ public interface WorkingMemory {
      * @param facts facts to insert into the working memory
      * @return a new working memory with the facts inserted
      */
-    public WorkingMemory insert(Iterable<Object> facts);
+    public WorkingMemory insert(Iterable<?> facts);
 
     /**
      * Returns a new working memory with the given facs retracted
      * @param facts facts to retract from the working memory
      * @return a new working memory with the facts retracted
      */
-    public WorkingMemory retract(Iterable<Object> facts);
+    public WorkingMemory retract(Iterable<?> facts);
 
     /**
      * Fires any pending rules in the working memory, and returns a new
@@ -38,5 +38,14 @@ public interface WorkingMemory {
      * @param arguments query arguments
      * @return a list of query results
      */
-    public Iterable<QueryResult> query(String queryName, Map<String,Object> arguments);
+    public Iterable<QueryResult> query(String queryName, Map<String,?> arguments);
+
+    /**
+     * Runs the query by the given name against the working memory and returns the matching
+     * results. Query names are structured as "namespace/name"
+     *
+     * @param queryName the name of the query to perform, formatted as "namespace/name".
+     * @return a list of query results
+     */
+    public Iterable<QueryResult> query(String queryName);
 }

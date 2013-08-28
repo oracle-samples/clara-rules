@@ -14,6 +14,18 @@
   (toString [_]
     (.toString result)))
 
+(defn- run-query [session name args]
+  (let [query-var (or (resolve (symbol name))
+                      (throw (IllegalArgumentException.
+                              (str "Unable to resolve symbol to query: " name))))
+        
+        ;; Keywordize string keys from Java.
+        keyword-args (into {}
+                           (for [[k v] args]
+                             [(keyword k) v]))
+        results (clara/query session (deref query-var) keyword-args)]
+    (map #(JavaQueryResult. %) results)))
+
 (deftype JavaWorkingMemory [session]
   WorkingMemory
 
@@ -27,16 +39,10 @@
     (JavaWorkingMemory. (clara/fire-rules session)))
 
   (query [this name args] 
-    (let [query-var (or (resolve (symbol name))
-                        (throw (IllegalArgumentException. 
-                                 (str "Unable to resolve symbol to query: " name))))
+   (run-query session name args))
 
-          ;; Keywordize string keys from Java.
-          keyword-args (into {} 
-                             (for [[k v] args]
-                               [(keyword k) v]))
-          results (clara/query session (deref query-var) keyword-args)]
-      (map #(JavaQueryResult. %) results))))
+  (query [this name]
+     (run-query session name {})))
 
 (defn mk-java-session [rulesets]
   (JavaWorkingMemory. 
