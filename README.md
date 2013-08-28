@@ -22,7 +22,7 @@ This library is targeted at problems that lend themselves to forward-chaining ru
 These are good cases for a rules approach. Instead of adding and updating functions for new business logic, we express logic independently of rules that run against a working memory of our data. We can reason about units of logic independently and apply updates without cascading changes.
 
 ### Example
-Here we look at a simple example using Clara to simplify business logic. Readers familiar with existing rules engines like Jess or Drools may be interested in the more involved [sensors example](https://github.com/rbrush/clara-examples/blob/master/src/clara/examples/sensors.clj).
+Here we look at a simple example using Clara to simplify business logic. Readers familiar with existing rules engines like Jess or Drools may be interested in the more involved [sensors example](https://github.com/rbrush/clara-examples/blob/master/src/main/clojure/clara/examples/sensors.clj).
 
 Imagine a retail setting where discounts and promotions come and go based on arbitrary criteria. We might have a special where anyone who buys a gizmo gets a free lunch, and express it simply:
 
@@ -80,7 +80,7 @@ Of course, this simple example doesn't demonstrate some of the more powerful asp
 * Values in rules can be bound to variables, which the underlying engine will unify with other values.
 * _Accumulators_ support reasoning over collections of facts, using Clojure reducers.
 
-The [sensors example](https://github.com/rbrush/clara-examples/blob/master/src/clara/examples/sensors.clj) shows some of these features in action. 
+The [sensors example](https://github.com/rbrush/clara-examples/blob/master/src/main/clojure/clara/examples/sensors.clj) shows some of these features in action. 
 
 There is also an [example using the Java API](https://github.com/rbrush/clara-examples/tree/master/src/main/java/clara/examples/java), which also demonstrates the use of Java Beans as facts.
 
