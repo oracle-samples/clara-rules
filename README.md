@@ -85,6 +85,8 @@ The [sensors example](https://github.com/rbrush/clara-examples/blob/master/src/m
 There is also an [example using the Java API](https://github.com/rbrush/clara-examples/tree/master/src/main/java/clara/examples/java), which also demonstrates the use of Java Beans as facts.
 
 ## The Rules Engine
+See the [architecture overview](https://github.com/rbrush/clara-rules/wiki/Architecture) for details on Clara's design.
+
 Clara implements a variation of the [Rete algorithm](http://en.wikipedia.org/wiki/Rete_algorithm), largely as described in the [Doorenbos paper](http://reports-archive.adm.cs.cmu.edu/anon/1995/CMU-CS-95-113.pdf). It does offer some enhancements and optimizations over classic Rete:
 
 * The engine typically deals with collections of facts rather than individual items for efficiency.
