@@ -1,0 +1,221 @@
+<html>
+   <head>
+      <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+      <meta content="Railroad Diagram Generator 1.25.661" name="generator"><style type="text/css">
+    ::-moz-selection
+    {
+      color: #FFFCF0;
+      background: #4D3D00;
+    }
+    ::selection
+    {
+      color: #FFFCF0;
+      background: #4D3D00;
+    }      
+    .ebnf a
+    {
+      text-decoration: none;
+    }
+    .ebnf a:hover
+    {
+      color: #1A1400;
+      text-decoration: underline;
+    }    
+    .signature
+    {
+      color: #806600;
+      font-size: 11px;
+      text-align: right;
+    }
+    body
+    {
+      font: normal 12px Verdana, sans-serif;
+      color: #4D3D00;
+      background: #FFFCF0;
+    }
+    a:link, a:visited
+    {
+      color: #4D3D00;
+    }
+    a:link.signature, a:visited.signature
+    {
+      color: #806600;
+    }
+    a.button, #tabs li a
+    {
+      padding: 0.25em 0.5em;
+      border: 1px solid #806600;
+      background: #F1E8C6;
+      color: #806600;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    a:hover, #tabs li a:hover
+    {
+      color: #1A1400;
+      background: #FFF5CC;
+      border-color: #1A1400;       
+    }     
+    #tabs
+    {
+      padding: 3px 10px;
+      margin-left: 0;
+      margin-top: 58px;
+      border-bottom: 1px solid #4D3D00;
+    }  
+    #tabs li
+    {
+      list-style: none;
+      margin-left: 5px;
+      display: inline;
+    }
+    #tabs li a
+    {     
+      border-bottom: 1px solid #4D3D00;
+    }
+    #tabs li a.active
+    {
+      color: #4D3D00;
+      background: #FFFCF0;
+      border-color: #4D3D00;
+      border-bottom: 1px solid #FFFCF0;
+      outline: none;
+    }
+    #divs div
+    {
+      display: none;
+      overflow:auto;
+    }
+    #divs div.active
+    {
+      display: block;
+    }
+    #text
+    {
+      border-color: #806600;
+      background: #FFFEFA;
+      color: #1A1400;
+    }
+    td.time
+    {
+      vertical-align: top;
+    }
+    span.time
+    {
+      font-size: 9px;
+      visibility: hidden;
+    }
+    td.time:hover span.time
+    {
+      visibility: visible;
+    }
+    div.download
+    {
+      display:none;
+      background:#FFFCF0;
+      position:absolute;
+      right:34px;
+      top:94px;
+      padding:10px;
+      border:1px dotted #4D3D00;
+    }
+    #divs div.ebnf, div.ebnf
+    {
+      display: block;
+      padding-left: 16px;
+      padding-top: 2px; 
+      padding-bottom: 2px; 
+      background:#FFF5CC;
+    }
+  </style></head>
+   <body>
+      <p style="font-size: 14px; font-weight:bold"><a name="RULE">RULE:</a></p><img border="0" height="52" src="diagram/RULE.png" usemap="#RULE.map" width="780"><map name="RULE.map">
+         <area coords="161,17,247,49" href="#RULENAME" shape="rect" title="RULENAME">
+         <area coords="267,17,361,49" href="#DOCSTRING" shape="rect" title="DOCSTRING">
+         <area coords="401,17,493,49" href="#CONDITION" shape="rect" title="CONDITION">
+         <area coords="593,17,705,49" href="#S-EXPRESSION" shape="rect" title="S-EXPRESSION"></map><p>
+         <div class="ebnf"><pre><a href="#RULE" title="RULE">RULE</a>     ::= '(' 'defrule' <a href="#RULENAME" title="RULENAME">RULENAME</a> <a href="#DOCSTRING" title="DOCSTRING">DOCSTRING</a> <a href="#CONDITION" title="CONDITION">CONDITION</a>+ '=&gt;' <a href="#S-EXPRESSION" title="S-EXPRESSION">S-EXPRESSION</a> ')'</pre></div>
+      </p>
+      <p>no references</p><br><p style="font-size: 14px; font-weight:bold"><a name="QUERY">QUERY:</a></p><img border="0" height="68" src="diagram/QUERY.png" usemap="#QUERY.map" width="938"><map name="QUERY.map">
+         <area coords="173,17,269,49" href="#QUERYNAME" shape="rect" title="QUERYNAME">
+         <area coords="289,17,383,49" href="#DOCSTRING" shape="rect" title="DOCSTRING">
+         <area coords="489,17,533,49" href="#ARG" shape="rect" title="ARG">
+         <area coords="705,17,797,49" href="#CONDITION" shape="rect" title="CONDITION"></map><p>
+         <div class="ebnf"><pre><a href="#QUERY" title="QUERY">QUERY</a>    ::= '(' 'defquery' <a href="#QUERYNAME" title="QUERYNAME">QUERYNAME</a> <a href="#DOCSTRING" title="DOCSTRING">DOCSTRING</a> '[' <a href="#ARG" title="ARG">ARG</a>* ']' '[' <a href="#CONDITION" title="CONDITION">CONDITION</a>+ ']' ')'</pre></div>
+      </p>
+      <p>no references</p><br><p style="font-size: 14px; font-weight:bold"><a name="CONDITON">CONDITON:</a></p><img border="0" height="168" src="diagram/CONDITON.png" usemap="#CONDITON.map" width="236"><map name="CONDITON.map">
+         <area coords="49,1,169,33" href="#BOOLEAN_EXPR" shape="rect" title="BOOLEAN_EXPR">
+         <area coords="49,45,153,77" href="#ACCUM_EXPR" shape="rect" title="ACCUM_EXPR">
+         <area coords="49,89,187,121" href="#FACT_CONSTRAINT" shape="rect" title="FACT_CONSTRAINT">
+         <area coords="49,133,139,165" href="#TEST_EXPR" shape="rect" title="TEST_EXPR"></map><p>
+         <div class="ebnf"><pre><a href="#CONDITON" title="CONDITON">CONDITON</a> ::= <a href="#BOOLEAN_EXPR" title="BOOLEAN_EXPR">BOOLEAN_EXPR</a>
+           | <a href="#ACCUM_EXPR" title="ACCUM_EXPR">ACCUM_EXPR</a>
+           | <a href="#FACT_CONSTRAINT" title="FACT_CONSTRAINT">FACT_CONSTRAINT</a>
+           | <a href="#TEST_EXPR" title="TEST_EXPR">TEST_EXPR</a></pre></div>
+      </p>
+      <p>no references</p><br><p style="font-size: 14px; font-weight:bold"><a name="BOOLEAN_EXPR">BOOLEAN_EXPR:</a></p><img border="0" height="124" src="diagram/BOOLEAN_EXPR.png" usemap="#BOOLEAN_EXPR.map" width="436"><map name="BOOLEAN_EXPR.map">
+         <area coords="203,1,323,33" href="#BOOLEAN_EXPR" shape="rect" title="BOOLEAN_EXPR">
+         <area coords="203,45,341,77" href="#FACT_CONSTRAINT" shape="rect" title="FACT_CONSTRAINT"></map><p>
+         <div class="ebnf"><pre><a href="#BOOLEAN_EXPR" title="BOOLEAN_EXPR">BOOLEAN_EXPR</a>
+         ::= '[' ( ':and' | ':or' | ':not' ) ( <a href="#BOOLEAN_EXPR" title="BOOLEAN_EXPR">BOOLEAN_EXPR</a> | <a href="#FACT_CONSTRAINT" title="FACT_CONSTRAINT">FACT_CONSTRAINT</a> ) ']'</pre></div>
+      </p>
+      <p>referenced by:
+         <ul>
+            <li><a href="#BOOLEAN_EXPR" title="BOOLEAN_EXPR">BOOLEAN_EXPR</a></li>
+            <li><a href="#CONDITON" title="CONDITON">CONDITON</a></li>
+         </ul>
+      </p><br><p style="font-size: 14px; font-weight:bold"><a name="ACCUM_EXPR">ACCUM_EXPR:</a></p><img border="0" height="36" src="diagram/ACCUM_EXPR.png" usemap="#ACCUM_EXPR.map" width="648"><map name="ACCUM_EXPR.map">
+         <area coords="75,1,149,33" href="#BINDING" shape="rect" title="BINDING">
+         <area coords="225,1,339,33" href="#ACCUMULATOR" shape="rect" title="ACCUMULATOR">
+         <area coords="435,1,573,33" href="#FACT_CONSTRAINT" shape="rect" title="FACT_CONSTRAINT"></map><p>
+         <div class="ebnf"><pre><a href="#ACCUM_EXPR" title="ACCUM_EXPR">ACCUM_EXPR</a>
+         ::= '[' <a href="#BINDING" title="BINDING">BINDING</a> '&lt;-' <a href="#ACCUMULATOR" title="ACCUMULATOR">ACCUMULATOR</a> ':from' <a href="#FACT_CONSTRAINT" title="FACT_CONSTRAINT">FACT_CONSTRAINT</a> ']'</pre></div>
+      </p>
+      <p>referenced by:
+         <ul>
+            <li><a href="#CONDITON" title="CONDITON">CONDITON</a></li>
+         </ul>
+      </p><br><p style="font-size: 14px; font-weight:bold"><a name="FACT_CONSTRAINT">FACT_CONSTRAINT:</a></p><img border="0" height="68" src="diagram/FACT_CONSTRAINT.png" usemap="#FACT_CONSTRAINT.map" width="640"><map name="FACT_CONSTRAINT.map">
+         <area coords="95,17,169,49" href="#BINDING" shape="rect" title="BINDING">
+         <area coords="265,17,353,49" href="#FACT_TYPE" shape="rect" title="FACT_TYPE">
+         <area coords="413,17,525,49" href="#S-EXPRESSION" shape="rect" title="S-EXPRESSION"></map><p>
+         <div class="ebnf"><pre><a href="#FACT_CONSTRAINT" title="FACT_CONSTRAINT">FACT_CONSTRAINT</a>
+         ::= '[' ( <a href="#BINDING" title="BINDING">BINDING</a> '&lt;-' )? <a href="#FACT_TYPE" title="FACT_TYPE">FACT_TYPE</a> <a href="#S-EXPRESSION" title="S-EXPRESSION">S-EXPRESSION</a>* ']'</pre></div>
+      </p>
+      <p>referenced by:
+         <ul>
+            <li><a href="#ACCUM_EXPR" title="ACCUM_EXPR">ACCUM_EXPR</a></li>
+            <li><a href="#BOOLEAN_EXPR" title="BOOLEAN_EXPR">BOOLEAN_EXPR</a></li>
+            <li><a href="#CONDITON" title="CONDITON">CONDITON</a></li>
+         </ul>
+      </p><br><p style="font-size: 14px; font-weight:bold"><a name="TEST_EXPR">TEST_EXPR:</a></p><img border="0" height="68" src="diagram/TEST_EXPR.png" usemap="#TEST_EXPR.map" width="412"><map name="TEST_EXPR.map">
+         <area coords="185,17,297,49" href="#S-EXPRESSION" shape="rect" title="S-EXPRESSION"></map><p>
+         <div class="ebnf"><pre><a href="#TEST_EXPR" title="TEST_EXPR">TEST_EXPR</a>
+         ::= '[' ':test' <a href="#S-EXPRESSION" title="S-EXPRESSION">S-EXPRESSION</a>* ']'</pre></div>
+      </p>
+      <p>referenced by:
+         <ul>
+            <li><a href="#CONDITON" title="CONDITON">CONDITON</a></li>
+         </ul>
+      </p><br><p style="font-size: 14px; font-weight:bold"><a name="BINDING">BINDING:</a></p><img border="0" height="36" src="diagram/BINDING.png" width="414"><p>
+         <div class="ebnf"><pre><a href="#BINDING" title="BINDING">BINDING</a>  ::= 'A clojure symbol starting with a question mark. (?)'</pre></div>
+      </p>
+      <p>referenced by:
+         <ul>
+            <li><a href="#ACCUM_EXPR" title="ACCUM_EXPR">ACCUM_EXPR</a></li>
+            <li><a href="#FACT_CONSTRAINT" title="FACT_CONSTRAINT">FACT_CONSTRAINT</a></li>
+         </ul>
+      </p><br><hr>
+      <p>
+         <table border="0" class="signature">
+            <tr>
+               <td style="width: 100%">&nbsp;</td>
+               <td valign="top">
+                  <nobr class="signature">... generated by <a class="signature" href="http://railroad.my28msec.com/" name="Railroad-Diagram-Generator" title="http://railroad.my28msec.com/">Railroad Diagram Generator</a></nobr>
+               </td>
+               <td><img border="0" height="16" src="diagram/.png" width="16"></td>
+            </tr>
+         </table>
+      </p>
+   </body>
+</html>

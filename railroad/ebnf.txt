@@ -1,0 +1,15 @@
+RULE ::= '(' 'defrule' RULENAME DOCSTRING CONDITION+ '=>' S-EXPRESSION ')'
+
+QUERY ::= '(' 'defquery' QUERYNAME DOCSTRING '[' ARG* ']' '[' CONDITION+ ']' ')'
+
+CONDITON ::= BOOLEAN_EXPR | ACCUM_EXPR | FACT_CONSTRAINT | TEST_EXPR
+
+BOOLEAN_EXPR ::= '[' ( ':and' | ':or' | ':not' ) (BOOLEAN_EXPR | FACT_CONSTRAINT) ']'
+
+ACCUM_EXPR ::= '[' BINDING '<-' ACCUMULATOR ':from' FACT_CONSTRAINT ']'
+
+FACT_CONSTRAINT ::= '[' (BINDING '<-')? FACT_TYPE  S-EXPRESSION* ']'
+
+TEST_EXPR ::= '[' ':test' S-EXPRESSION* ']'
+
+BINDING ::= 'A clojure symbol starting with a question mark. (?)'
