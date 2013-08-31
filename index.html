@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8' />
+    <meta http-equiv="X-UA-Compatible" content="chrome=1" />
+    <meta name="description" content="Clara-rules : Forward-chaining rules in Clojure" />
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>Clara-rules</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/rbrush/clara-rules">View on GitHub</a>
+
+          <h1 id="project_title">Clara-rules</h1>
+          <h2 id="project_tagline">Forward-chaining rules in Clojure</h2>
+
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/rbrush/clara-rules/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/rbrush/clara-rules/tarball/master">Download this project as a tar.gz file</a>
+            </section>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <p>Clara is a forward-chaining rules engine written in Clojure with Java interoperability.</p>
+
+<p>The expression of arbitrary, frequently changing business logic is a major source of complexity. Clara aims to rein in this complexity by untangling business logic, expressing it as composable rules while leveraging the advantages of the Clojure and Java ecosystems. Clara should be usable as a Clojure library to simplify our logic or as an alternative to other Java-based rules engines like Drools.</p>
+
+<p>Objectives include:</p>
+
+<ul>
+<li>Embrace immutability. The rule engine's working memory is a persistent Clojure data structure that can participate in transactions. All changes produce a new working memory that shares state with the previous.</li>
+<li>Rule constraints and actions are Clojure s-expressions.</li>
+<li>Working memory facts are typically Clojure records or Java objects following the Java Bean conventions.</li>
+<li>Support the major advantages of existing rules systems, such as explainability of why a rule fired and automatic truth maintenance.</li>
+<li>Collections of facts can be reasoned with using accumulators similar to Jess or Drools. These accumulators leverage the reducers API and are transparently parallelized.</li>
+<li>The working memory is independent of the logic flow, and can be replaced with a distributed processing system. A <a href="https://github.com/rbrush/clara-storm">prototype that uses Storm</a> to apply rules to a stream of incoming events already exists. Leveraging other processing infrastructures is possible.</li>
+</ul><h2>
+<a name="resources" class="anchor" href="#resources"><span class="octicon octicon-link"></span></a>Resources</h2>
+
+<ul>
+<li>The <a href="https://github.com/rbrush/clara-rules/wiki/Introduction">introduction page</a> provides an overview of the project.</li>
+<li>The <a href="https://github.com/rbrush/clara-rules/wiki/Architecture">architecture overview</a> goes into how Clara works.</li>
+<li>The <a href="https://github.com/rbrush/clara-rules/wiki/Guide">developer guide</a> is in progress.</li>
+<li>See the <a href="https://github.com/rbrush/clara-examples">clara-examples project</a> examples page for some examples.</li>
+</ul>
+      </section>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">Clara-rules maintained by <a href="https://github.com/rbrush">rbrush</a></p>
+        <p>Published with <a href="http://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+
+    
+
+  </body>
+</html>
