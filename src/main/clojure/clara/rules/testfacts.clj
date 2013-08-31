@@ -1,4 +1,5 @@
-(ns clara.rules.testfacts)
+(ns clara.rules.testfacts
+  "This namespace exists primary for testing purposes, working around the fact that we cannot AOT compile test classes. This should be moved to the tests once a workaround for this is solved.")
 
 ;; Reflection against records requires them to be compiled AOT, so we temporarily
 ;; place them here as leiningen won't AOT compile test resources.

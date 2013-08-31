@@ -1,4 +1,5 @@
 (ns clara.rules.accumulators 
+  "A set of common accumulators usable in Clara rules."
   (:require [clara.rules.engine :as eng] 
             [clojure.set :as set]
             [clara.rules :refer [accumulate]])

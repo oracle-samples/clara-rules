@@ -1,4 +1,5 @@
 (ns clara.rules.memory
+  "Specification and default implementation of working memory"
   (:require [clojure.core.reducers :as r]
             [clojure.set :as s]))
 

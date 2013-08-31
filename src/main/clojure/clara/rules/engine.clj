@@ -1,4 +1,5 @@
 (ns clara.rules.engine
+  "The Clara rules engine. Most users should use only the clara.rules namespace."
   (:use clara.rules.memory
         clojure.pprint)
   (:require [clojure.reflect :as reflect]

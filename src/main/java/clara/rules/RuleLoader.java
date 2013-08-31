@@ -6,11 +6,15 @@ import clojure.lang.Symbol;
 import clojure.lang.Var;
 
 /**
- * Clara rule loader.
+ * Clara rule loader. Produces a {@link WorkingMemory WorkingMemory} given one or more Clojure
+ * namespaces containing rules.
  */
 public class RuleLoader {
 
-    static final Var require = RT.var("clojure.core", "require");
+    /**
+     * The clojure require function.
+     */
+    static final IFn require = RT.var("clojure.core", "require");
 
     /**
      * Function to make a new Clara session.
@@ -36,6 +40,7 @@ public class RuleLoader {
         for (String namespace: namespaces)
             require.invoke(Symbol.intern(namespace));
 
+        // Create a new working memory.
         return (WorkingMemory) makeSession.invoke(namespaces);
     }
 }

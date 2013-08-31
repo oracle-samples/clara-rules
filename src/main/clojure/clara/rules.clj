@@ -1,29 +1,35 @@
 (ns clara.rules
+  "Forward-chaining rules for Clojure. The primary API is in this namespace"
   (:require [clara.rules.engine :as eng]
             [clara.rules.memory :as mem])
   (:refer-clojure :exclude [==])
   (import [clara.rules.engine LocalTransport]))
 
 (defn mk-rulebase 
-  "Creates an empty rulebase."
+  "Creates an empty rulebase. This is only used when generating rulebases dynamically."
   []
   (eng/->Rulebase {} [] [] [] [] {} {} {}))
 
 (defn insert
-  "Inserts one or more facts into a working session."
+  "Inserts one or more facts into a working session. It does not modify the given
+   session, but returns a new session with the facts added."
   [session & facts] 
   (eng/insert session facts))
 
 (defn retract
-  "Retracts a fact from a working session."
+  "Retracts a fact from a working session. It does not modify the given session,
+   but returns a new session with the facts retracted."
   [session & facts] 
   (eng/retract session facts))
 
 (defn fire-rules 
-  "Fires are rules in the given session."
+  "Fires are rules in the given session. Once a rule is fired, it is labeled in a fired
+   state and will not be re-fired unless facts affecting the rule are added or retracted.
+
+   This function does not modify the given session to mark rules as fired. Instead, it returns
+   a new session in which the rules are marked as fired."
   [session]
   (eng/fire-rules session))
-
 
 (defn query 
   "Runs the given query with the given params against the session."
@@ -31,7 +37,7 @@
   (eng/query session query params))
 
 (defmacro == 
-  "Unifies a variable with a given value."
+  "Unifies a variable with a given value. This should be used only inside the definition of a rule."
   [variable content]
   `(do (assoc! ~'?__bindings__ ~(keyword variable) ~content)
        ~content)) ;; TODO: This might be better to use a dynamic var to create bindings.
@@ -56,7 +62,8 @@
 
 
 (defmacro mk-query
-  "Contains a new query based on a sequence of a conditions."
+  "Creates a new query based on a sequence of a conditions. 
+   This is only used when creating queries dynamically; most users should use defquery instead."
   [params lhs]
   ;; TODO: validate params exist as keyworks in the query.
   `(eng/->Query
@@ -65,7 +72,8 @@
     ~(eng/variables-as-keywords lhs)))
 
 (defmacro mk-rule
-  "Contains a new rule based on a sequence of a conditions and a righthand side."
+  "Creates a new rule based on a sequence of a conditions and a righthand side. 
+   This is only used when creating new rules directly; most users should use defrule instead."
   [lhs rhs]
   `(eng/->Production 
     ~(eng/parse-lhs lhs)
@@ -77,8 +85,8 @@
                           (assoc args :convert-return-fn identity ))))
 
 (defn add-rule
-  "Returns a new rulebase identical to the given one, 
-   but with the additional rules."
+  "Returns a new rulebase identical to the given one, but with the additional rules. 
+   This is only used when dynamically adding rules to a rulebase."
   ([rulebase] rulebase)
   ([rulebase production]
      (eng/add-production* rulebase production 
@@ -87,8 +95,8 @@
      (add-rule (add-rule rulebase more) production)))
 
 (defn add-query
-  "Returns a new rulebase identical to the given one, 
-   but with the additional queries."
+  "Returns a new rulebase identical to the given one, but with the additional queries. 
+   This is only used when dynamically adding queries to a rulebase"
   ([rulebase] rulebase)
   ([rulebase query]
      (eng/add-production* rulebase query 
@@ -97,7 +105,8 @@
      (add-query (add-query rulebase more) query)))
 
 (defn mk-session 
-  "Creates a new session using the given rule source."
+  "Creates a new session using the given rule source. Thew resulting session
+   is immutable, and can be used with insert, retract, fire-rules, and query functions."
   ([source & more]
      ;; Merge all of the sources together and create a session.
      (let [rulebase (eng/load-rules source)
@@ -156,7 +165,19 @@
      (vals (ns-interns sym)))))
 
 (defmacro defrule 
-  "Defines a rule and stores it in the given var."
+  "Defines a rule and stores it in the given var. For instance, a simple rule would look like this:
+
+(defrule hvac-approval
+  \"HVAC repairs need the appropriate paperwork, so insert a validation error if approval is not present.\"
+  [WorkOrder (= type :hvac)]
+  [:not [ApprovalForm (= formname \"27B-6\")]]
+  =>
+  (insert! (->ValidationError 
+            :approval 
+            \"HVAC repairs must include a 27B-6 form.\")))
+  
+  See the guide at https://github.com/rbrush/clara-rules/wiki/Guide for details."
+
   [name & body]
   (let [doc (if (string? (first body)) (first body) nil)
         definition (if doc (rest body) body)
@@ -165,7 +186,16 @@
        (mk-rule ~lhs ~rhs))))
 
 (defmacro defquery 
-  "Defines a query and stored it in the given var."
+  "Defines a query and stored it in the given var. For instance, a simple query that accepts no
+   parameters would look like this:
+    
+(defquery check-job
+  \"Checks the job for validation errors.\"
+  []
+  [?issue <- ValidationError])
+
+   See the guide at https://github.com/rbrush/clara-rules/wiki/Guide for details."
+
   [name & body]
   (let [doc (if (string? (first body)) (first body) nil)
         binding (if doc (second body) (first body))

@@ -1,4 +1,5 @@
 (ns clara.rules.java
+  "Java support. Users should use the Java API, or the clara.rules namespace from Clojure."
   (:require [clara.rules :as clara]
             [clara.rules.engine :as eng]
             [clara.rules.memory :as mem])
