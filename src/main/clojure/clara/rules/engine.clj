@@ -11,22 +11,27 @@
 (defprotocol IRuleSource
   (load-rules [source]))
 
+;; Record defining a single condition in a rule production.
 (defrecord Condition [type constraints binding-keys activate-fn text])
 
 ;; Record containing one or more test expressions to evaluate.
 (defrecord Test [test-fn text])
 
+;; Record defining a production, where lhs is the left-hand side containing constraints, and rhs is right-hand side.
 (defrecord Production [lhs rhs])
 
+;; Record defining a query given the parameters and expected bindings used in the query.
 (defrecord Query [params lhs binding-keys])
 
+;; A rulebase -- essentially an immutable Rete network with a collection of alpha and beta nodes and supporting structure.
 (defrecord Rulebase [alpha-roots beta-roots productions queries production-nodes query-nodes node-to-id id-to-node]
   IRuleSource
   (load-rules [this] this)) ; A rulebase can be viewed as a rule loader; it simply loads itself.
 
+;; A Rete-style token, containing facts and bound variables.
 (defrecord Token [facts bindings])
 
-;; A working memory element
+;; A working memory element, containing a single fact and its corresponding bound variables.
 (defrecord Element [fact bindings])
 
 ;; Token with no bindings, used as the root of beta nodes.
@@ -110,10 +115,12 @@
                      memory 
                      transport))))
 
+;; Protocol for activation of Rete alpha nodes.
 (defprotocol IAlphaActivate 
   (alpha-activate [node facts memory transport])
   (alpha-retract [node facts memory transport]))
 
+;; Record for the production node in the Rete network.
 (defrecord ProductionNode [production rhs]
   ILeftActivate  
   (left-activate [node join-bindings tokens memory transport]
@@ -167,6 +174,9 @@
            :let [bindings (activation fact)] :when bindings]
        (->Element fact bindings)))))
 
+;; Record for the join node, a type of beta node in the rete network. This node performs joins
+;; between left and right activations, creating new tokens when joins match and sending them to 
+;; its descendents.
 (defrecord JoinNode [condition children binding-keys]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport] 
@@ -217,6 +227,9 @@
            token (get-tokens memory node join-bindings)]
        (->Token (conj (:facts token) fact) (conj (:bindings token) bindings))))))
 
+;; The NegationNode is a beta node in the Rete network that simply
+;; negates the incoming tokens from its ancestors. It sends tokens
+;; to its descendent only if the negated condition or join fails (is false).
 (defrecord NegationNode [condition children binding-keys]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport]
@@ -243,6 +256,7 @@
     (remove-elements! memory node elements join-bindings) ;; FIXME: elements must be zero to retract.
     (send-tokens transport memory children (get-tokens memory node join-bindings))))
 
+;; The test node represents a Rete extension in which 
 (defrecord TestNode [test children]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport] 
@@ -259,10 +273,14 @@
 
   (description [node] (str "TestNode -- " (:text test))))
 
-;;
+;; The accumulator is a Rete extension to run an accumulation (such as sum, average, or similar operation)
+;; over a collection of values passing through the Rete network. This object defines the behavior
+;; of an accumulator. See the AccumulatorNode for the actual node implementation in the network.
 (defrecord Accumulator [result-binding input-condition initial-value reduce-fn combine-fn convert-return-fn])
 
-(defn- retract-accumulated [node accumulator token result fact-bindings transport memory]
+(defn- retract-accumulated 
+  "Helper function to retract an accumulated value."
+  [node accumulator token result fact-bindings transport memory]
   (let [converted-result ((get-in accumulator [:definition :convert-return-fn]) result)
         new-facts (conj (:facts token) converted-result)
         new-bindings (merge (:bindings token) 
@@ -274,7 +292,9 @@
     (retract-tokens transport memory (:children node) 
                     [(->Token new-facts new-bindings)])))
 
-(defn- send-accumulated [node accumulator token result fact-bindings transport memory]
+(defn- send-accumulated 
+  "Helper function to send the result of an accumulated value to the node's children."
+  [node accumulator token result fact-bindings transport memory]
   (let [converted-result ((get-in accumulator [:definition :convert-return-fn]) result)
         new-bindings (merge (:bindings token) 
                             fact-bindings
@@ -285,6 +305,9 @@
     (send-tokens transport memory (:children node)
                  [(->Token (conj (:facts token) converted-result) new-bindings)])))
 
+;; The AccumulateNode hosts Accumulators, a Rete extension described above, in the Rete network
+;; It behavios similarly to a JoinNode, but performs an accumulation function on the incoming
+;; working-memory elements before sending a new token to its descendents.
 (defrecord AccumulateNode [accumulator definition children binding-keys]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport] 
@@ -579,7 +602,7 @@
     
     ;; Recursively create children, then create a new join and alpha node for the condition.
     :condition 
-    (if (= "clara.rules.engine.Accumulator" (.getName (class (:content expression)))) ; FIXME: check class?
+    (if (instance? Accumulator (:content expression))
       (insert-accumulator (:content expression) more production-node alpha-roots ancestor-binding-keys)
       (let [condition (:content expression)
             join-binding-keys (s/intersection ancestor-binding-keys (:binding-keys condition))
@@ -621,7 +644,6 @@
     ;; The returned production node will be the child of a join node built as we
     ;; work our way back up the recursion stack.
     nil [production-node alpha-roots]))
-
 
 (defn- node-id [node]
   (->> node
@@ -710,8 +732,6 @@
 
 ;; The token that triggered a rule to fire.
 (def ^:dynamic *rule-context* nil)
-
-(declare print-memory)
 
 (defn fire-rules* 
    "Fire rules for the given nodes."
