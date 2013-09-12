@@ -958,3 +958,33 @@
 
     (is (= #{{:?id "UTC" :?offset 0}} 
            (set (query session tz-offset-query {:?offset 0}))))))
+
+
+(deftest test-multi-insert-retract
+
+  (is (= #{{:?loc "MCI"} {:?loc "BOS"}}
+         (set (-> (mk-session 'clara.sample-ruleset)
+                  (insert (->Temperature 15 "MCI"))
+                  (insert (->Temperature 22 "BOS"))
+
+                  ;; Insert a duplicate and then retract it.
+                  (insert (->Temperature 22 "BOS"))
+                  (retract (->Temperature 22 "BOS"))
+                  (query sample/freezing-locations {})))))
+
+  (let [session (-> (mk-session 'clara.sample-ruleset)
+                    (insert (->Temperature 15 "MCI"))
+                    (insert (->WindSpeed 45 "MCI"))
+                    
+                    ;; Insert a duplicate and then retract it.
+                    (insert (->WindSpeed 45 "MCI")) 
+                    (retract (->WindSpeed 45 "MCI"))
+                    (fire-rules))]
+
+    (is (= #{{:?fact (->ColdAndWindy 15 45)}}  
+           (set 
+            (query session sample/find-cold-and-windy {}))))))
+
+
+
+

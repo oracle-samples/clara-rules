@@ -27,6 +27,19 @@
   (unmark-as-fired! [memory node token])
   (to-persistent! [memory]))
 
+
+(defn- remove-first 
+  "Removes the first item in the collection that
+   matches the predicate, returning the rest unchanged."
+  [pred coll]
+  (lazy-seq 
+   (when-let [s (seq coll)]
+     (let [f (first s)
+           r (rest s)]
+       (if (pred f)
+         r
+         (cons f (remove-first pred r)))))))
+
 (declare ->PersistentLocalMemory)
 
 ;;; Transient local memory implementation. Typically only persistent memory will be visible externally.
@@ -70,7 +83,7 @@
     (let [key [:alpha-memory (node-to-id node) join-bindings]
           current-facts (get content key [])
           element-set (set elements)
-          filtered-facts (filter (fn [candidate] (not (element-set candidate))) current-facts)]
+          filtered-facts (remove-first element-set current-facts)]
 
       ;; Update the memory with the changed facts.
       (assoc-mem! key filtered-facts)
@@ -87,7 +100,7 @@
     (let [key [:beta-memory (node-to-id node) join-bindings]
           current-tokens (get content key [])
           token-set (set tokens)
-          filtered-tokens (filter #(not (token-set %)) current-tokens)]
+          filtered-tokens (remove-first token-set current-tokens)]
 
       (assoc-mem! key filtered-tokens)
       (s/intersection token-set (set current-tokens))))
