@@ -28,17 +28,20 @@
   (to-persistent! [memory]))
 
 
-(defn- remove-first 
-  "Removes the first item in the collection that
-   matches the predicate, returning the rest unchanged."
-  [pred coll]
+(defn- remove-first-of-each 
+  "Remove the first instance of each item in the given set that 
+   appears in the collection."
+  [set coll]
   (lazy-seq 
    (when-let [s (seq coll)]
      (let [f (first s)
            r (rest s)]
-       (if (pred f)
-         r
-         (cons f (remove-first pred r)))))))
+       (if (set f)
+         (if (empty? set)
+           r ; No more items to remove, so return the rest of the list.
+           (remove-first-of-each (disj set f) r)) ; More items to remove, so recur with a smaller set.
+
+         (cons f (remove-first-of-each set r))))))) ; We did not match this item, so simply recur.
 
 (declare ->PersistentLocalMemory)
 
@@ -83,7 +86,7 @@
     (let [key [:alpha-memory (node-to-id node) join-bindings]
           current-facts (get content key [])
           element-set (set elements)
-          filtered-facts (remove-first element-set current-facts)]
+          filtered-facts (remove-first-of-each element-set current-facts)]
 
       ;; Update the memory with the changed facts.
       (assoc-mem! key filtered-facts)
@@ -100,7 +103,7 @@
     (let [key [:beta-memory (node-to-id node) join-bindings]
           current-tokens (get content key [])
           token-set (set tokens)
-          filtered-tokens (remove-first token-set current-tokens)]
+          filtered-tokens (remove-first-of-each token-set current-tokens)]
 
       (assoc-mem! key filtered-tokens)
       (s/intersection token-set (set current-tokens))))

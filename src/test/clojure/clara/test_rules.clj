@@ -972,6 +972,15 @@
                   (retract (->Temperature 22 "BOS"))
                   (query sample/freezing-locations {})))))
 
+  ;; Normal retractions should still work.
+  (is (= #{}
+         (set (-> (mk-session 'clara.sample-ruleset)
+                  (insert (->Temperature 15 "MCI"))
+                  (insert (->Temperature 22 "BOS"))
+                  (retract (->Temperature 22 "BOS") (->Temperature 15 "MCI"))
+                  (query sample/freezing-locations {})))))
+
+
   (let [session (-> (mk-session 'clara.sample-ruleset)
                     (insert (->Temperature 15 "MCI"))
                     (insert (->WindSpeed 45 "MCI"))
@@ -984,7 +993,3 @@
     (is (= #{{:?fact (->ColdAndWindy 15 45)}}  
            (set 
             (query session sample/find-cold-and-windy {}))))))
-
-
-
-
