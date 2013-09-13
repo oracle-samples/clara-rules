@@ -24,7 +24,7 @@
         keyword-args (into {}
                            (for [[k v] args]
                              [(keyword k) v]))
-        results (clara/query session (deref query-var) keyword-args)]
+        results (eng/query session (deref query-var) keyword-args)]
     (map #(JavaQueryResult. %) results)))
 
 (deftype JavaWorkingMemory [session]

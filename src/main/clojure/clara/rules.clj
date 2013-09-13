@@ -32,9 +32,13 @@
   (eng/fire-rules session))
 
 (defn query 
-  "Runs the given query with the given params against the session."
-  [session query params]
-  (eng/query session query params))
+  "Runs the given query with the optional given parameters against the session.
+   The optional parameters should be in map form. For example, a query call might be:
+
+   (query session get-by-last-name :last-name \"Jones\")
+   "
+  [session query & params]
+  (eng/query session query (apply hash-map params)))
 
 (defmacro == 
   "Unifies a variable with a given value. This should be used only inside the definition of a rule."

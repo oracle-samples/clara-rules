@@ -22,7 +22,7 @@
                     (insert (->Temperature 10 "MCI"))
                     (insert (->Temperature 80 "MCI")))]
 
-    (is (= {:?t 80} (first (query session hottest {}))))))
+    (is (= {:?t 80} (first (query session hottest))))))
 
 
 (deftest test-min-max-average
@@ -45,15 +45,15 @@
                     (insert (->Temperature 10 "MCI"))
                     (insert (->Temperature 80 "MCI")))]
 
-    (is (= {:?t 10} (first (query session coldest {}))))
+    (is (= {:?t 10} (first (query session coldest))))
     (is (= #{{:?t (->Temperature 10 "MCI")}}
-           (set (query session coldest-fact {}))))
+           (set (query session coldest-fact))))
 
-    (is (= {:?t 80} (first (query session hottest {}))))   
+    (is (= {:?t 80} (first (query session hottest))))   
     (is (= #{{:?t (->Temperature 80 "MCI")}}
-           (set (query session hottest-fact {}))))
+           (set (query session hottest-fact))))
 
-    (is (= (list {:?t 40}) (query session average-temp {})))))
+    (is (= (list {:?t 40}) (query session average-temp)))))
 
 (deftest test-sum 
   (let [sum (mk-query [] [[?t <- (acc/sum :temperature) from [Temperature]]])
@@ -65,7 +65,7 @@
                     (insert (->Temperature 10 "MCI"))
                     (insert (->Temperature 80 "MCI")))]
 
-    (is (= {:?t 120} (first (query session sum {}))))))
+    (is (= {:?t 120} (first (query session sum))))))
 
 (deftest test-count
   (let [count (mk-query [] [[?c <- (acc/count) from [Temperature]]])
@@ -77,7 +77,7 @@
                     (insert (->Temperature 10 "MCI"))
                     (insert (->Temperature 80 "MCI")))]
 
-    (is (= {:?c 3} (first (query session count {}))))))
+    (is (= {:?c 3} (first (query session count))))))
 
 (deftest test-distinct 
   (let [distinct (mk-query [] [[?t <- (acc/distinct) from [Temperature]]])
@@ -93,7 +93,7 @@
 
     (is (= #{{:?t #{ (->Temperature 80 "MCI")  
                      (->Temperature 90 "MCI")}}}
-           (set (query session distinct {}))))
+           (set (query session distinct))))
 
     (comment (is (= #{{:?t #{ 80 90}}}
-                    (set (query session distinct-field {})))))))
+                    (set (query session distinct-field)))))))
