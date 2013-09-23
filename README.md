@@ -13,7 +13,45 @@ Objectives include:
 * Collections of facts can be reasoned with using accumulators similar to Jess or Drools. These accumulators leverage the reducers API and are transparently parallelized.
 * The working memory is independent of the logic flow, and can be replaced with a distributed processing system. A [prototype that uses Storm](https://github.com/rbrush/clara-storm) to apply rules to a stream of incoming events already exists. Leveraging other processing infrastructures is possible.
 
-## Resources
+## Example
+
+Here's a simple example. The [clara-examples project](https://github.com/rbrush/clara-examples) shows more sophisticated rules and queries.
+
+```clj
+(ns clara.support-example
+  (:refer-clojure :exclude [==])
+  (:require [clara.rules :refer :all]))
+
+(defrecord SupportRequest [client level])
+
+(defrecord ClientRepresentative [name client])
+
+(defrule is-important
+  "Find important support requests."
+  [SupportRequest (= :high level)]
+  =>
+  (println "High support requested!"))
+
+(defrule notify-client-rep
+  "Find the client represntative and send a notification of a support request."
+  [SupportRequest (== ?client client)]
+  [ClientRepresentative (== ?client client) (== ?name name)] ; Join via the ?client binding.
+  =>
+  (println "Notify" ?name "that"  ?client "has a new support request!"))
+
+;; Run the rules! We can just use Clojure's threading macro to wire things up.
+(-> (mk-session)
+    (insert (->ClientRepresentative "Alice" "Acme")
+            (->SupportRequest "Acme" :high))
+    (fire-rules))
+
+;;;; Prints this:
+
+;; High support requested!
+;; Notify Alice that Acme has a new support request!
+```
+
+## Learn more
 
 * The [introduction page](https://github.com/rbrush/clara-rules/wiki/Introduction) provides an overview of the project.
 * The [architecture overview](https://github.com/rbrush/clara-rules/wiki/Architecture) goes into how Clara works.
