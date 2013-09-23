@@ -14,8 +14,7 @@
 (deftest test-max
   (let [hottest (mk-query [] [[?t <- (acc/max :temperature) from [Temperature]]])
 
-        session (-> (mk-rulebase) 
-                    (add-query hottest)
+        session (-> (mk-rulebase hottest) 
                     (mk-session)
                     (insert (->Temperature 30 "MCI"))
                     (insert (->Temperature 10 "MCI"))
@@ -33,12 +32,7 @@
 
         average-temp (mk-query [] [[?t <- (acc/average :temperature) from [Temperature]]])
 
-        session (-> (mk-rulebase) 
-                    (add-query coldest)
-                    (add-query coldest-fact)
-                    (add-query hottest)
-                    (add-query hottest-fact)
-                    (add-query average-temp) 
+        session (-> (mk-rulebase coldest coldest-fact hottest hottest-fact average-temp) 
                     (mk-session)
                     (insert (->Temperature 30 "MCI"))
                     (insert (->Temperature 10 "MCI"))
@@ -58,7 +52,7 @@
   (let [sum (mk-query [] [[?t <- (acc/sum :temperature) from [Temperature]]])
 
         session (-> (mk-rulebase) 
-                    (add-query sum)                 
+                    (add-productions sum)                 
                     (mk-session)
                     (insert (->Temperature 30 "MCI"))
                     (insert (->Temperature 10 "MCI"))
@@ -69,8 +63,7 @@
 (deftest test-count
   (let [count (mk-query [] [[?c <- (acc/count) from [Temperature]]])
 
-        session (-> (mk-rulebase) 
-                    (add-query count)                 
+        session (-> (mk-rulebase count) 
                     (mk-session)
                     (insert (->Temperature 30 "MCI"))
                     (insert (->Temperature 10 "MCI"))

@@ -125,7 +125,7 @@
                                      (reset! rule-output ?t) )
 
         session (-> (mk-rulebase) 
-                    (add-rule same-wind-and-temp)
+                    (add-productions same-wind-and-temp)
                     (mk-session)
                     (insert (->Temperature 10 "MCI"))
                     (insert (->WindSpeed 20 "MCI")))]
@@ -162,7 +162,7 @@
 
     (comment
       (println "OLD:")
-      (println (:query-nodes (add-query (mk-rulebase) cold-query)))
+      (println (:query-nodes (add-productions (mk-rulebase) cold-query)))
       (println "NEW:")
       (println (:query-nodes (mk-rulebase cold-query))))
 
@@ -417,7 +417,7 @@
                                                  (Temperature (< temperature 20))))])
 
         session (-> (mk-rulebase) 
-                    (add-query not-cold-or-windy)
+                    (add-productions not-cold-or-windy)
                     (mk-session))
 
         session-with-temp (insert session (->WindSpeed 40 "MCI"))
@@ -821,7 +821,7 @@
                             (reset! rule-output ?__token__) )
 
         session (-> (mk-rulebase) 
-                    (add-rule cold-rule)
+                    (add-productions cold-rule)
                     (mk-session)
                     (insert (->Temperature 10 "MCI"))
                     (fire-rules))]
@@ -851,10 +851,10 @@
   (let [item-query (mk-query [] [(?item <- Fourth)])
 
         session (-> (mk-rulebase)                    
-                    (add-rule (mk-rule [(Third)] (insert! (->Fourth)))) ; Rule order shouldn't matter, but test it anyway.
-                    (add-rule (mk-rule [(First)] (insert! (->Second))))
-                    (add-rule (mk-rule [(Second)] (insert! (->Third))))
-                    (add-query item-query)
+                    (add-productions (mk-rule [(Third)] (insert! (->Fourth)))) ; Rule order shouldn't matter, but test it anyway.
+                    (add-productions (mk-rule [(First)] (insert! (->Second))))
+                    (add-productions (mk-rule [(Second)] (insert! (->Third))))
+                    (add-productions item-query)
                     (mk-session)
                     (insert (->First))
                     (fire-rules))]
@@ -870,18 +870,15 @@
                            (println "Placeholder"))
         windy-rule (mk-rule [(WindSpeed (> windspeed 25))] 
                             (println "Placeholder"))
-        rulebase (-> (mk-rulebase) 
-                     (add-rule cold-rule)
-                     (add-rule windy-rule))
+
+        rulebase  (mk-rulebase cold-rule windy-rule) 
 
         cold-rule2 (mk-rule [(Temperature (< temperature 20))] 
                             (println "Placeholder"))
         windy-rule2 (mk-rule [(WindSpeed (> windspeed 25))] 
                              (println "Placeholder"))
 
-        rulebase2 (-> (mk-rulebase) 
-                      (add-rule cold-rule2)
-                      (add-rule windy-rule2))]
+        rulebase2 (mk-rulebase cold-rule2 windy-rule2)]
 
     ;; The keys should be consistent between maps since the rules are identical.
     (is (= (keys (:id-to-node rulebase))
@@ -898,7 +895,7 @@
                                            (test (< ?t1 ?t2))])
 
         session (-> (mk-rulebase) 
-                    (add-query distinct-temps-query)
+                    (add-productions distinct-temps-query)
                     (mk-session)
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI"))
@@ -916,7 +913,7 @@
                                              (== ?id ID)]])
         
         session (-> (mk-rulebase)
-                    (add-query tz-offset-query)
+                    (add-productions tz-offset-query)
                     (mk-session)
                     (insert (TimeZone/getTimeZone "America/Chicago")
                             (TimeZone/getTimeZone "UTC")))]

@@ -3,7 +3,7 @@
   (:require [clara.rules.engine :as eng]
             [clara.rules.memory :as mem])
   (:refer-clojure :exclude [==])
-  (import [clara.rules.engine LocalTransport]))
+  (import [clara.rules.engine LocalTransport LocalSession]))
 
 (defn mk-rulebase 
   "Creates a rulebase with the given productions. This is only used when generating rulebases dynamically."
@@ -98,20 +98,7 @@
       (eng/shred-rules)
       (eng/compile-shredded-rules)))
 
-;; TODO: remove?
-(defn add-rule
-  "Returns a new rulebase identical to the given one, but with the additional rules."
-  [rulebase & productions]
-  (apply add-productions rulebase productions))
-
-;; TODO: remove?
-(defn add-query
-  "Returns a new rulebase identical to the given one, but with the additional queries. 
-   This is only used when dynamically adding queries to a rulebase"
-  [rulebase & productions]
-  (apply add-productions rulebase productions))
-
-(defn mk-session 
+(defn mk-session* 
   "Creates a new session using the given rule source. Thew resulting session
    is immutable, and can be used with insert, retract, fire-rules, and query functions."
   ([source & more]
@@ -127,7 +114,17 @@
             (eng/load-rules source)
             more)]
 
-       (eng/->LocalSession merged-rules (eng/local-memory merged-rules transport) transport))))
+       (LocalSession. merged-rules (eng/local-memory merged-rules transport) transport))))
+
+(defmacro mk-session
+   "Creates a new session using the given rule sources. Thew resulting session
+   is immutable, and can be used with insert, retract, fire-rules, and query functions.
+
+   If no sources are provided, it will attempt to load rules from the caller's namespace."
+  [& sources]
+  (if (seq sources)
+    `(apply mk-session* ~(vec sources))
+    `(mk-session* (ns-name *ns*))))
 
 (defn- parse-rule-body [[head & more]]
   (cond

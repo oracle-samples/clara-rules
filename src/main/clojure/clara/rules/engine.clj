@@ -93,11 +93,21 @@
 
 ;; Returns a new session with the additional facts inserted.
 (defprotocol ISession
+
+  ;; Inserts a fact.
   (insert [session fact])
+
+  ;; Retracts a fact.
   (retract [session fact])
+
   ;; Fires pending rules and returns a new session where they are in a fired state.
   (fire-rules [session])
-  (query [session query params]))
+
+  ;; Runs a query agains thte session.
+  (query [session query params])
+
+  ;; Returns the working memory implementation used by the session.
+  (working-memory [session]))
 
 ;; Left activation protocol for various types of beta nodes.
 (defprotocol ILeftActivate
@@ -895,7 +905,7 @@
        (when (> (deref (:insertions *current-session*)) insertion-count)
          (recur (deref (:insertions *current-session*)))))))
 
-(defrecord LocalSession [rulebase memory transport]
+(deftype LocalSession [rulebase memory transport]
   ISession
   (insert [session facts]
     (let [transient-memory (to-transient memory)]
@@ -903,7 +913,7 @@
               ancestor (conj (ancestors cls) cls) ; Find alpha nodes that match the class or any ancestor
               root (get-in rulebase [:alpha-roots ancestor])]
         (alpha-activate root fact-group transient-memory transport))
-      (->LocalSession rulebase (to-persistent! transient-memory) transport)))
+      (LocalSession. rulebase (to-persistent! transient-memory) transport)))
 
   (retract [session facts]
 
@@ -912,24 +922,26 @@
               root (get-in rulebase [:alpha-roots cls])]
         (alpha-retract root fact-group transient-memory transport))
 
-      (->LocalSession rulebase (to-persistent! transient-memory) transport)))
+      (LocalSession. rulebase (to-persistent! transient-memory) transport)))
 
   (fire-rules [session]
 
     (let [transient-memory (to-transient memory)]
       (fire-rules* rulebase 
-	               (get-in session [:rulebase :production-nodes]) 
-	               transient-memory
-	               transport)
+                   (:production-nodes rulebase)
+                   transient-memory
+                   transport)
 
-      (->LocalSession rulebase (to-persistent! transient-memory) transport)))
+      (LocalSession. rulebase (to-persistent! transient-memory) transport)))
 
   ;; TODO: queries shouldn't require the use of transient memory.
   (query [session query params]
     (let [query-node (get-in rulebase [:query-nodes query])]
       (when (= nil query-node) 
         (throw (IllegalArgumentException. "The given query is invalid or not included in the rule base.")))
-      (map :bindings (get-tokens (to-transient (:memory session)) query-node params)))))
+      (map :bindings (get-tokens (to-transient (working-memory session)) query-node params))))
+  
+  (working-memory [session] memory))
 
 
 (defn local-memory 
@@ -944,7 +956,7 @@
   "Prints the session memory, usually for troubleshooting, and returns the session."
   [session]
   (pprint 
-   (for [[k v] (:content (:memory session))
+   (for [[k v] (:content (working-memory session))
          :let [node-id (get k 1)
                id-to-node (:id-to-node (:rulebase session))
                node-descrip (description (id-to-node node-id))]]
