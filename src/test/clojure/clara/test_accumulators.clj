@@ -15,7 +15,6 @@
   (let [hottest (mk-query [] [[?t <- (acc/max :temperature) from [Temperature]]])
 
         session (-> (mk-rulebase) 
-
                     (add-query hottest)
                     (mk-session)
                     (insert (->Temperature 30 "MCI"))
@@ -83,9 +82,7 @@
   (let [distinct (mk-query [] [[?t <- (acc/distinct) from [Temperature]]])
         distinct-field (mk-query [] [[?t <- (acc/distinct :temperature) from [Temperature]]])
 
-        session (-> (mk-rulebase) 
-                    (add-query distinct)                 
-                    (add-query distinct-field)    
+        session (-> (mk-rulebase distinct distinct-field) 
                     (mk-session)
                     (insert (->Temperature 80 "MCI"))
                     (insert (->Temperature 80 "MCI"))

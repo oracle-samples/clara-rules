@@ -6,9 +6,11 @@
   (import [clara.rules.engine LocalTransport]))
 
 (defn mk-rulebase 
-  "Creates an empty rulebase. This is only used when generating rulebases dynamically."
-  []
-  (eng/->Rulebase {} [] [] [] [] {} {} {}))
+  "Creates a rulebase with the given productions. This is only used when generating rulebases dynamically."
+  [& productions]
+  (if (seq productions)
+    (eng/compile-shredded-rules (eng/shred-rules productions))
+    (eng/->Rulebase {} [] [] [] [] {} {} {})))
 
 (defn insert
   "Inserts one or more facts into a working session. It does not modify the given
@@ -88,25 +90,26 @@
                           args
                           (assoc args :convert-return-fn identity ))))
 
-(defn add-rule
-  "Returns a new rulebase identical to the given one, but with the additional rules. 
-   This is only used when dynamically adding rules to a rulebase."
-  ([rulebase] rulebase)
-  ([rulebase production]
-     (eng/add-production* rulebase production 
-                          (eng/->ProductionNode production (:rhs production))))
-  ([rulebase production & more]
-     (add-rule (add-rule rulebase more) production)))
+(defn add-productions
+  "Returns a new rulebase identical to the given one, but with the additional
+   rules or queries. This is only used when dynamically adding rules to a rulebase."
+  [rulebase & productions]
+  (-> (concat (:productions rulebase) (:queries rulebase) productions)
+      (eng/shred-rules)
+      (eng/compile-shredded-rules)))
 
+;; TODO: remove?
+(defn add-rule
+  "Returns a new rulebase identical to the given one, but with the additional rules."
+  [rulebase & productions]
+  (apply add-productions rulebase productions))
+
+;; TODO: remove?
 (defn add-query
   "Returns a new rulebase identical to the given one, but with the additional queries. 
    This is only used when dynamically adding queries to a rulebase"
-  ([rulebase] rulebase)
-  ([rulebase query]
-     (eng/add-production* rulebase query 
-                          (eng/->QueryNode query (:params query))))
-  ([rulebase query & more]
-     (add-query (add-query rulebase more) query)))
+  [rulebase & productions]
+  (apply add-productions rulebase productions))
 
 (defn mk-session 
   "Creates a new session using the given rule source. Thew resulting session
@@ -155,18 +158,15 @@
 (extend-type clojure.lang.Symbol
   eng/IRuleSource
   (load-rules [sym]
-    (reduce 
-     (fn [rulebase item]
-       (cond 
-        (:rule (meta item))     
-        (eng/add-production* rulebase @item 
-                             (eng/->ProductionNode @item (:rhs @item)))
-        (:query (meta item))  
-        (eng/add-production* rulebase @item 
-                             (eng/->QueryNode @item (:params @item)))
-        :default rulebase))
-     (mk-rulebase)
-     (vals (ns-interns sym)))))
+
+    ;; Find the rules and queries in the namespace, shred them,
+    ;; and compile them into a rule base.
+    (->> (ns-interns sym)
+         (vals) ; Get the references in the namespace.
+         (filter #(or (:rule (meta %)) (:query (meta %)))) ; Filter down to rules and queries.
+         (map deref) ; Get the rules from the symbols.
+         (eng/shred-rules) ; Shred the rules.
+         (eng/compile-shredded-rules)))) ; Compile into a knowledge base.
 
 (defmacro defrule 
   "Defines a rule and stores it in the given var. For instance, a simple rule would look like this:

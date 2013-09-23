@@ -16,25 +16,22 @@
         cold-rule (mk-rule [[Temperature (< temperature 20)]] 
                             (reset! rule-output ?__token__) )
 
-        session (-> (mk-rulebase) 
-                    (add-rule cold-rule)
+        session (-> (mk-rulebase cold-rule)
                     (mk-session)
-                    (insert (->Temperature 10 "MCI")))]
-
-    (fire-rules session)
+                    (insert (->Temperature 10 "MCI"))
+                    (fire-rules))]
 
     (is (= 
          (->Token [(->Temperature 10 "MCI")] {})
          @rule-output))))
-
 
 (deftest test-multiple-condition-rule
   (let [rule-output (atom nil)
         cold-windy-rule (mk-rule [(Temperature (< temperature 20))
                                    (WindSpeed (> windspeed 25))] 
                                   (reset! rule-output ?__token__))
-        session (-> (mk-rulebase) 
-                    (add-rule cold-windy-rule)
+
+        session (-> (mk-rulebase cold-windy-rule) 
                     (mk-session)
                     (insert (->WindSpeed 30 "MCI"))
                     (insert (->Temperature 10 "MCI")))]
@@ -46,15 +43,16 @@
          @rule-output))))
 
 (deftest test-multiple-simple-rules
+
   (let [cold-rule-output (atom nil)
         windy-rule-output (atom nil)
+
         cold-rule (mk-rule [(Temperature (< temperature 20))] 
                             (reset! cold-rule-output ?__token__))
+
         windy-rule (mk-rule [(WindSpeed (> windspeed 25))] 
                              (reset! windy-rule-output ?__token__))
-        session (-> (mk-rulebase) 
-                    (add-rule cold-rule)
-                    (add-rule windy-rule)
+        session (-> (mk-rulebase cold-rule windy-rule) 
                     (mk-session)
                     (insert (->WindSpeed 30 "MCI"))
                     (insert (->Temperature 10 "MCI")))]
@@ -65,10 +63,10 @@
     (is (= 
          (->Token [(->Temperature 10 "MCI")] {})
          @cold-rule-output))
+
     (is (= 
          (->Token [(->WindSpeed 30 "MCI")] {})
          @windy-rule-output))))
-
 
 (deftest test-multiple-rules-same-fact
 
@@ -79,9 +77,7 @@
         subzero-rule (mk-rule [(Temperature (< temperature 0))] 
                             (reset! subzero-rule-output ?__token__))
 
-        session (-> (mk-rulebase) 
-                    (add-rule cold-rule)
-                    (add-rule subzero-rule)
+        session (-> (mk-rulebase cold-rule subzero-rule) 
                     (mk-session)
                     (insert (->Temperature -10 "MCI")))]
 
@@ -95,14 +91,12 @@
          (->Token [(->Temperature -10 "MCI")] {})
          @subzero-rule-output))))
 
-
 (deftest test-simple-binding
   (let [rule-output (atom nil)
         cold-rule (mk-rule [(Temperature (< temperature 20) (== ?t temperature))] 
                             (reset! rule-output ?t) )
 
-        session (-> (mk-rulebase) 
-                    (add-rule cold-rule)
+        session (-> (mk-rulebase cold-rule) 
                     (mk-session)
                     (insert (->Temperature 10 "MCI")))]
 
@@ -116,8 +110,7 @@
                                       (WindSpeed (== ?t windspeed))] 
                                      (reset! rule-output ?t) )
 
-        session (-> (mk-rulebase) 
-                    (add-rule same-wind-and-temp)
+        session (-> (mk-rulebase same-wind-and-temp) 
                     (mk-session)
                     (insert (->Temperature 10  "MCI"))
                     (insert (->WindSpeed 10  "MCI")))]
@@ -143,8 +136,7 @@
 (deftest test-simple-query
   (let [cold-query (mk-query [] [(Temperature (< temperature 20) (== ?t temperature))])
 
-        session (-> (mk-rulebase) 
-                    (add-query cold-query)
+        session (-> (mk-rulebase cold-query) 
                     (mk-session)
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI"))
@@ -160,14 +152,19 @@
                                                   (== ?t temperature)
                                                   (== ?l location))])
 
-        session (-> (mk-rulebase) 
-                    (add-query cold-query)
+        session (-> (mk-rulebase cold-query) 
                     (mk-session)
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 20 "MCI")) ; Test multiple items in result.
                     (insert (->Temperature 10 "ORD"))
                     (insert (->Temperature 35 "BOS"))
                     (insert (->Temperature 80 "BOS")))]
+
+    (comment
+      (println "OLD:")
+      (println (:query-nodes (add-query (mk-rulebase) cold-query)))
+      (println "NEW:")
+      (println (:query-nodes (mk-rulebase cold-query))))
 
     ;; Query by location.
     (is (= #{{:?l "BOS" :?t 35}}
@@ -179,12 +176,10 @@
     (is (= #{{:?l "ORD" :?t 10}}
            (set (query session cold-query :?l "ORD"))))))
 
-
 (deftest test-simple-condition-binding
   (let [cold-query (mk-query [] [(?t <- Temperature (< temperature 20))])
 
-        session (-> (mk-rulebase) 
-                    (add-query cold-query)
+        session (-> (mk-rulebase cold-query) 
                     (mk-session)
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI")))]
@@ -196,8 +191,7 @@
 (deftest test-condition-and-value-binding
   (let [cold-query (mk-query [] [(?t <- Temperature (< temperature 20) (== ?v temperature))])
 
-        session (-> (mk-rulebase) 
-                    (add-query cold-query)
+        session (-> (mk-rulebase cold-query) 
                     (mk-session)
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI")))]
@@ -216,8 +210,7 @@
                                     value)))
         coldest-query (mk-query [] [[?t <- lowest-temp from [Temperature]]])
 
-        session (-> (mk-rulebase) 
-                    (add-query coldest-query)
+        session (-> (mk-rulebase coldest-query) 
                     (mk-session)
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI"))
@@ -240,8 +233,7 @@
 (deftest test-defined-accumulator 
   (let [coldest-query (mk-query [] [[?t <- (min-fact :temperature) from [Temperature]]])
 
-        session (-> (mk-rulebase) 
-                    (add-query coldest-query)
+        session (-> (mk-rulebase coldest-query) 
                     (mk-session)
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI"))
@@ -267,8 +259,7 @@
 
   (let [average-temp-query (mk-query [] [[?t <- (average-value :temperature) from [Temperature]]])
 
-        session (-> (mk-rulebase) 
-                    (add-query average-temp-query)
+        session (-> (mk-rulebase average-temp-query) 
                     (mk-session)
                     (insert (->Temperature 10 "MCI"))
                     (insert (->Temperature 20 "MCI"))
@@ -291,8 +282,7 @@
                                                           value)))
                                    :from (Temperature (< temperature 20))]])
 
-        session (-> (mk-rulebase) 
-                    (add-query coldest-query)
+        session (-> (mk-rulebase coldest-query) 
                     (mk-session)
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI"))
@@ -315,8 +305,7 @@
                                                           value)))
                                    :from (Temperature (== ?loc location))]])
 
-        session (-> (mk-rulebase) 
-                    (add-query coldest-query)
+        session (-> (mk-rulebase coldest-query) 
                     (mk-session)
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI"))
@@ -344,8 +333,7 @@
                                                           value)))
                                    :from (Temperature (== ?loc location))]])
 
-        session (-> (mk-rulebase) 
-                    (add-query coldest-query)
+        session (-> (mk-rulebase coldest-query) 
                     (mk-session)
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI"))
@@ -360,9 +348,9 @@
 (deftest test-simple-negation
   (let [not-cold-query (mk-query [] [(not (Temperature (< temperature 20)))])
 
-        session (-> (mk-rulebase) 
-                    (add-query not-cold-query)
+        session (-> (mk-rulebase not-cold-query) 
                     (mk-session))
+
         session-with-temp (insert session (->Temperature 10 "MCI"))
         session-retracted (retract session-with-temp (->Temperature 10 "MCI"))]
 
@@ -384,8 +372,7 @@
   (let [windy-but-not-cold-query (mk-query [] [(WindSpeed (> windspeed 30) (== ?w windspeed)) 
                                                (not (Temperature (< temperature 20)))])
 
-        session (-> (mk-rulebase) 
-                    (add-query windy-but-not-cold-query)
+        session (-> (mk-rulebase windy-but-not-cold-query) 
                     (mk-session))
 
         ;; Make it windy, so our query should indicate that.
@@ -411,8 +398,7 @@
   (let [not-cold-and-windy (mk-query [] [(not (and (WindSpeed (> windspeed 30))
                                                  (Temperature (< temperature 20))))])
 
-        session (-> (mk-rulebase) 
-                    (add-query not-cold-and-windy)
+        session (-> (mk-rulebase not-cold-and-windy) 
                     (mk-session))
 
         session-with-data (-> session
@@ -454,8 +440,7 @@
 
         temp (->Temperature 10 "MCI")
 
-        session (-> (mk-rulebase) 
-                    (add-query cold-query)
+        session (-> (mk-rulebase cold-query) 
                     (mk-session)
                     (insert temp))]
 
@@ -470,8 +455,7 @@
 (deftest test-noop-retraction
   (let [cold-query (mk-query [] [[Temperature (< temperature 20) (== ?t temperature)]])
 
-        session (-> (mk-rulebase) 
-                    (add-query cold-query)
+        session (-> (mk-rulebase cold-query) 
                     (mk-session)
                     (insert (->Temperature 10 "MCI"))
                     (retract (->Temperature 15 "MCI")))] ; Ensure retracting a non-existant item has no ill effects.
@@ -483,8 +467,7 @@
   (let [same-wind-and-temp (mk-query [] [(Temperature (== ?t temperature))
                                       (WindSpeed (== ?t windspeed))])
 
-        session (-> (mk-rulebase) 
-                    (add-query same-wind-and-temp)
+        session (-> (mk-rulebase same-wind-and-temp) 
                     (mk-session)
                     (insert (->Temperature 10 "MCI"))
                     (insert (->WindSpeed 10 "MCI")))]
@@ -505,8 +488,7 @@
   (let [or-query (mk-query [] [(or (Temperature (< temperature 20) (== ?t temperature))
                                  (WindSpeed (> windspeed 30) (== ?w windspeed)))])
 
-        rulebase (-> (mk-rulebase) 
-                    (add-query or-query))
+        rulebase (-> (mk-rulebase or-query))
 
         cold-session (insert (mk-session rulebase) (->Temperature 15 "MCI"))
         windy-session (insert (mk-session rulebase) (->WindSpeed 50 "MCI"))  ]
@@ -524,8 +506,7 @@
                           (and (Temperature (< temperature 20) (== ?t temperature))
                                (WindSpeed (> windspeed 30) (== ?w windspeed))))])
 
-        rulebase (-> (mk-rulebase) 
-                    (add-query really-cold-or-cold-and-windy))
+        rulebase (mk-rulebase really-cold-or-cold-and-windy) 
 
         cold-session (-> (mk-session rulebase)
                          (insert (->Temperature -10 "MCI")))
@@ -548,9 +529,7 @@
 
         cold-query (mk-query [] [(Cold (== ?c temperature))])
 
-        session (-> (mk-rulebase) 
-                    (add-rule cold-rule)
-                    (add-query cold-query)
+        session (-> (mk-rulebase cold-rule cold-query) 
                     (mk-session)
                     (insert (->Temperature 10 "MCI"))
                     (fire-rules))]
@@ -566,9 +545,7 @@
 
         cold-query (mk-query [] [(Cold (== ?c temperature))])
 
-        session (-> (mk-rulebase) 
-                    (add-rule cold-rule)
-                    (add-query cold-query)
+        session (-> (mk-rulebase cold-rule cold-query) 
                     (mk-session)
                     (insert (->Temperature 10 "MCI"))
                     (fire-rules))]
@@ -592,9 +569,7 @@
 
         cold-query (mk-query [] [(ColdAndWindy (== ?ct temperature) (== ?cw windspeed))])
 
-        session (-> (mk-rulebase) 
-                    (add-rule cold-rule)
-                    (add-query cold-query)
+        session (-> (mk-rulebase cold-rule cold-query) 
                     (mk-session)
                     (insert (->Temperature 10 "MCI"))
                     (insert (->WindSpeed 40 "MCI"))
@@ -762,8 +737,7 @@
   (reset! simple-defrule-side-effect ?__token__))
 
 (deftest test-simple-defrule
-  (let [session (-> (mk-rulebase) 
-                    (add-rule test-rule)
+  (let [session (-> (mk-rulebase test-rule) 
                     (mk-session)
                     (insert (->Temperature 10 "MCI")))]
 
@@ -780,8 +754,7 @@
                (== ?l location)))
 
 (deftest test-defquery
-  (let [session (-> (mk-rulebase) 
-                    (add-query cold-query)
+  (let [session (-> (mk-rulebase cold-query) 
                     (mk-session)
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 20 "MCI")) ; Test multiple items in result.
@@ -803,8 +776,7 @@
 (deftest test-rules-from-ns
 
   (is (= #{{:?loc "MCI"} {:?loc "BOS"}}
-       (set (-> (mk-session 'clara.sample-ruleset
-                             )
+       (set (-> (mk-session 'clara.sample-ruleset)
                 (insert (->Temperature 15 "MCI"))
                 (insert (->Temperature 22 "BOS"))
                 (insert (->Temperature 50 "SFO"))
