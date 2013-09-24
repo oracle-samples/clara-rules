@@ -51,6 +51,23 @@ Here's a simple example. The [clara-examples project](https://github.com/rbrush/
 ;; Notify Alice that Acme has a new support request!
 ```
 
+## Usage
+Add the following to your project.clj:
+
+```clj
+[org.toomuchcode/clara-rules "0.1.0"]
+```
+
+or to your Maven POM:
+
+```xml
+<dependency>
+  <groupId>org.toomuchcode</groupId>
+  <artifactId>clara-rules</artifactId>
+  <version>0.1.0</version>
+</dependency>
+```
+
 ## Learn more
 
 * The [introduction page](https://github.com/rbrush/clara-rules/wiki/Introduction) provides an overview of the project.
