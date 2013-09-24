@@ -1,6 +1,6 @@
-(defproject clara/clara-rules "0.1.0-SNAPSHOT"
+(defproject org.toomuchcode/clara-rules "0.1.0"
   :description "Clara Rules Engine"
-  :url "http://example.com/FIXME"
+  :url "http://rbrush.github.io/clara-rules/"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.5.1"]
