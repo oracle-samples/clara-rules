@@ -34,7 +34,7 @@
     (JavaWorkingMemory. (apply clara/insert session facts)))
 
   (retract [this facts]
-    (JavaWorkingMemory. (apply clara/insert session facts)))
+    (JavaWorkingMemory. (apply clara/retract session facts)))
 
   (fireRules [this]
     (JavaWorkingMemory. (clara/fire-rules session)))
