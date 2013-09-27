@@ -153,7 +153,7 @@
    (sequential? head) (conj (parse-query-body more) head)
 
    ;; Handle the <- style assignment
-   (symbol? head) (conj (parse-query-body (drop 2 more)) head)))
+   (symbol? head) (conj (parse-query-body (drop 2 more)) (conj head (take 2 more)))))
 
 ;; Treate a symbol as a rule source, loding all items in its namespace.
 (extend-type clojure.lang.Symbol
