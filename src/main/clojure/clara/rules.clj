@@ -126,10 +126,14 @@
     `(apply mk-session* ~(vec sources))
     `(mk-session* (ns-name *ns*))))
 
+(defn ^:private separator?
+  "True iff `x` is a rule body separator symbol."
+  [x] (and (symbol? x) (= "=>" (name x))))
+
 (defn- parse-rule-body [[head & more]]
   (cond
    ;; Detect the separator for the right-hand side.
-   (= '=> head) {:lhs (list) :rhs (first more)}
+   (separator? head) {:lhs (list) :rhs (first more)}
 
    ;; Handle a normal left-hand side element.
    (sequential? head) (update-in 
