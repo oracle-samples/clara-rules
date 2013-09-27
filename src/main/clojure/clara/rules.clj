@@ -46,7 +46,7 @@
   "Unifies a variable with a given value. This should be used only inside the definition of a rule."
   [variable content]
   `(do (swap! ~'?__bindings__ assoc ~(keyword variable) ~content)
-       ~content)) ;; TODO: This might be better to use a dynamic var to create bindings.
+       true)) ;; TODO: This might be better to use a dynamic var to create bindings.
 
 (defn insert! 
   "To be executed from with a rule's right-hand side, this inserts a new fact or facts into working memory.
