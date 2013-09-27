@@ -576,6 +576,15 @@
      lhs
      (cons 'and lhs)))) ; "and" is implied if a list of constraints are given without an operator.
 
+(defn- cartesian-join [lists lst]
+    (if (seq lists)
+      (let [[h & t] lists]
+        (mapcat 
+         (fn [l]
+           (map #(conj % l) (cartesian-join t lst)))
+         h))
+      [lst]))
+
 (defn ast-to-dnf 
   "Convert an AST to disjunctive normal form."
   [ast] 
@@ -614,32 +623,30 @@
     
     ;; For all others, recursively process the children.
     (let [children (map ast-to-dnf (:content ast))
-          ;; Get all conjunctions, which will not conain any disjunctions since they were processed above.
-          conjunctions (filter #(#{:and :condition :not} (:type %)) children)
-          ;; Merge all child disjunctions into a single list.
-          disjunctions (mapcat :content (filter #(#{:or} (:type %)) children))]
+           ;; Get all conjunctions, which will not conain any disjunctions since they were processed above.
+          conjunctions (filter #(#{:and :condition :not} (:type %)) children)]
+      
 
       ;; TODO: Nodes with only a single expression as a child can be flattened.      
       (condp = (:type ast)
 
         :and
-        (if (= 0 (count disjunctions))
-          
-          ;; If there are no disjunctions in the processed children, no further changes are needed.
-          {:type :and
-           :content (vec children)}
-          
-          ;; The children had disjunctions, so distribute them to convert to DNF.
-          {:type :or 
-           :content (into [] (for [disjunction disjunctions]
-                               {:type :and
-                                :content (vec (cons disjunction conjunctions))}))})
+        (let [disjunctions (map :content (filter #(#{:or} (:type %)) children))]
+          (if (empty? disjunctions)
+            {:type :and
+             :content (vec children)}
 
+            {:type :or 
+             :content (vec (for [c (cartesian-join disjunctions conjunctions)] 
+                          {:type :and
+                           :content c}))}))
         :or
-        {:type :or
-         ;; Nested disjunctions can be merged into the parent disjunction. We
-         ;; the simply append nested conjunctions to create our DNF.
-         :content (vec (concat disjunctions conjunctions))}))))
+        ;; Merge all child disjunctions into a single list.
+        (let [disjunctions (mapcat :content (filter #(#{:or} (:type %)) children))]
+          {:type :or
+           ;; Nested disjunctions can be merged into the parent disjunction. We
+           ;; the simply append nested conjunctions to create our DNF.
+           :content (vec (concat disjunctions conjunctions))})))))
 
 (defn- conjunction-to-cond-seq
   "Convert a conjunction expression to a sequence of ICondition objects."
