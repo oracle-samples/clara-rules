@@ -438,11 +438,17 @@
         (doseq [token matched-tokens]
           (send-accumulated node accumulator token reduced bindings transport memory))))))
 
+(def ^:private reflector
+  "For some reason (bug?) the default reflector doesn't use the
+  Clojure dynamic class loader, which prevents reflecting on
+  `defrecords`.  Work around by supplying our own which does."
+  (clojure.reflect.JavaReflector. (clojure.lang.RT/baseLoader)))
+
 (defn- get-field-accessors
   "Returns a map of field name to a symbol representing the function used to access it."
   [cls]
   (into {}
-        (for [member (:members (reflect/type-reflect cls))
+        (for [member (:members (reflect/type-reflect cls :reflector reflector))
               :when  (and (:type member) 
                           (not (#{'__extmap '__meta} (:name member)))
                           (:public (:flags member))
