@@ -482,10 +482,10 @@
               {:tag (symbol (.getName type))})] ; Add type hint to avoid runtime refection.
 
        (let [~@assignments
-             ~'?__bindings__ (transient ~initial-bindings)]
+             ~'?__bindings__ (atom ~initial-bindings)]
 
          (if (and ~@constraints)
-           (persistent! ~'?__bindings__)
+           (deref ~'?__bindings__)
            nil)))))
 
 (defn compile-action [binding-keys rhs]
