@@ -13,5 +13,4 @@
   :javadoc-opts {:package-names ["clara.rules"]}
   :source-paths ["src/main/clojure"]
   :test-paths ["src/test/clojure"]
-  :java-source-paths ["src/main/java"]
-  :aot :all)
+  :java-source-paths ["src/main/java"])
