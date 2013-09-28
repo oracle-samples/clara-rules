@@ -49,9 +49,18 @@
        true)) ;; TODO: This might be better to use a dynamic var to create bindings.
 
 (defn insert! 
-  "To be executed from with a rule's right-hand side, this inserts a new fact or facts into working memory.
+  "To be executed within a rule's right-hand side, this inserts a new fact or facts into working memory.
+
    Inserted facts are always logical, in that if the support for the insertion is removed, the fact
-   will automatically be retracted."
+   will automatically be retracted. For instance, if there is a rule that inserts a \"Cold\" fact
+   if a \"Temperature\" fact is below a threshold, and the \"Temperature\" fact that triggered
+   the rule is retracted, the \"Cold\" fact the rule inserted is also retracted. This is the underlying
+   truth maintenance facillity.
+
+   This truth maintenance is also transitive: if a rule depends on some criteria to fire, and a 
+   criterion becomes invalid, it may retract facts that invalidate other rules, which in turn
+   retract their conclusions. This way we can ensure that information inferred by rules is always
+   in a consistent state."
   [& facts]
   (let [{:keys [rulebase transient-memory transport insertions]} eng/*current-session*
         {:keys [node token]} eng/*rule-context*]
@@ -66,6 +75,29 @@
       (mem/add-insertions! transient-memory node token facts)
       (eng/alpha-activate root fact-group transient-memory transport))))
 
+(defn retract!
+  "To be executed within a rule's right-hand side, this retracts a fact or facts from the working memory.
+
+   Retracting facts from the right-hand side has slightly different semantics than insertion. As described
+   in the insert! documentation, inserts are logical and will automatically be retracted if the rule
+   that inserted them becomes false. This retract! function does not follow the inverse; retracted items
+   are simply removed, and not re-added if the rule that retracted them becomes false.
+
+   The reason for this is that retractions remove information from the knowledge base, and doing truth
+   maintenance over retractions would require holding onto all retracted items, which would be an issue
+   in some use cases. This retract! method is included to help with certain use cases, but unless you 
+   have a specific need, it is better to simply do inserts on the rule's right-hand side, and let
+   Clara's underlying truth maintenance retract inserted items if their support becomes false."
+  [& facts]
+  (let [{:keys [rulebase transient-memory transport insertions]} eng/*current-session*]
+
+    ;; Update the count so the rule engine will know when we have normalized.
+    (swap! insertions + (count facts))
+
+    (doseq [[cls fact-group] (group-by class facts) 
+            root (get-in rulebase [:alpha-roots cls])]
+
+      (eng/alpha-retract root fact-group transient-memory transport))))
 
 (defmacro mk-query
   "Creates a new query based on a sequence of a conditions. 
@@ -126,7 +158,7 @@
     `(apply mk-session* ~(vec sources))
     `(mk-session* (ns-name *ns*))))
 
-(defn ^:private separator?
+(defn- separator?
   "True iff `x` is a rule body separator symbol."
   [x] (and (symbol? x) (= "=>" (name x))))
 
@@ -155,7 +187,7 @@
    ;; Handle the <- style assignment
    (symbol? head) (conj (parse-query-body (drop 2 more)) (conj head (take 2 more)))))
 
-;; Treate a symbol as a rule source, loding all items in its namespace.
+;; Treate a symbol as a rule source, loading all items in its namespace.
 (extend-type clojure.lang.Symbol
   eng/IRuleSource
   (load-rules [sym]
