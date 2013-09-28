@@ -87,3 +87,17 @@
 
     (comment (is (= #{{:?t #{ 80 90}}}
                     (set (query session distinct-field)))))))
+
+(deftest test-max-min-avg
+  ;; Tests a single query that gets the maximum, minimum, and average temperatures.
+  (let [max-min-avg (mk-query [] [[?max <- (acc/max :temperature) from [Temperature]]
+                                  [?min <- (acc/min :temperature) from [Temperature]]
+                                  [?avg <- (acc/average :temperature) from [Temperature]]])
+
+        session (-> (mk-rulebase max-min-avg) 
+                    (mk-session)
+                    (insert (->Temperature 30 "MCI")
+                            (->Temperature 10 "MCI")
+                            (->Temperature 80 "MCI")))]
+
+    (is (= {:?max 80 :?min 10 :?avg 40} (first (query session max-min-avg))))))
