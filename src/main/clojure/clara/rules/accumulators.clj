@@ -70,10 +70,10 @@
      (accumulate 
       :initial-value #{}
       :reduce-fn (fn [items value] (conj items value))
-      :combine-fn (set/union)))
+      :combine-fn set/union))
   ([field]
      (accumulate 
       :initial-value #{}
       :reduce-fn (fn [items value] (conj items (field value)))
-      :combine-fn (set/union))))
+      :combine-fn set/union)))
 

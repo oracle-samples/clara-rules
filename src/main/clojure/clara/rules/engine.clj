@@ -116,11 +116,19 @@
   (description [node])
   (get-join-keys [node]))
 
-;; Right activation protocol to insert new facts, connect alpha nodes,
+;; Right activation protocol to insert new facts, connecting alpha nodes
 ;; and beta nodes.
 (defprotocol IRightActivate
   (right-activate [node join-bindings elements memory transport])
   (right-retract [node join-bindings elements memory transport]))
+
+;; Right 
+(defprotocol IAccumRightActivate
+  ;; Pre-reduces elements, returning a map of bindings to reduced elements.
+  (pre-reduce [node elements])
+
+  ;; Right-activate the node with items reduced in the above pre-reduce step.
+  (right-activate-reduced [node join-bindings reduced  memory transport]))
 
 ;; The transport protocol for sending and retracting items between nodes.
 (defprotocol ITransport
@@ -370,14 +378,14 @@
 (defrecord AccumulateNode [accumulator definition children binding-keys]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport] 
-    (let [previous-results (get-accum-results memory node join-bindings)]
+    (let [previous-results (get-accum-reduced-all memory node join-bindings)]
       (add-tokens! memory node join-bindings tokens)
       (doseq [token tokens
               [fact-bindings previous] previous-results]
         (send-accumulated node accumulator token previous fact-bindings transport memory))))
 
   (left-retract [node join-bindings tokens memory transport] 
-    (let [previous-results (get-accum-results memory node join-bindings)]
+    (let [previous-results (get-accum-reduced-all memory node join-bindings)]
       (doseq [token (remove-tokens! memory node join-bindings tokens)
               [fact-bindings previous] previous-results]
         (retract-accumulated node accumulator token previous fact-bindings transport memory))))
@@ -386,57 +394,74 @@
 
   (description [node] (str "AccumulateNode -- " (:text accumulator)))
 
-  IRightActivate
-  (right-activate [node join-bindings elements memory transport]   
-    (add-elements! memory node join-bindings elements)
+  IAccumRightActivate
+  (pre-reduce [node elements]    
+    ;; Return a map of bindings to the pre-reduced value.
+    (for [[bindings element-group] (group-by :bindings elements)]      
+      [bindings 
+       (r/reduce (:reduce-fn definition) 
+                 (:initial-value definition) 
+                 (r/map :fact element-group))])) 
+ 
+  (right-activate-reduced [node join-bindings reduced-seq  memory transport]
+    ;; Combine previously reduced items together, join to matching tokens,
+    ;; and emit child tokens.
     (doseq [:let [matched-tokens (get-tokens memory node join-bindings)]
-            {:keys [fact bindings] :as element} elements
-            :let [previous (get-accum-result memory node join-bindings bindings)]]
+            [bindings reduced] reduced-seq
+            :let [previous (get-accum-reduced memory node join-bindings bindings)]]
 
       ;; If the accumulation result was previously calculated, retract it
       ;; from the children.
       (when previous
-        ;; TODO: reuse previous token rather than recreating it?
+      
         (doseq [token (get-tokens memory node join-bindings)]
           (retract-accumulated node accumulator token previous bindings transport memory)))
 
-      ;; Reduce to create a new token and send it downstream.
-      (let [initial (:initial-value definition)
-            reduce-fn (:reduce-fn definition)
-            ;; Get the set of facts that are reducible.
-            reducible-facts (map :fact (get-elements memory node join-bindings)) ;; Get only facts, not bindings...
-            reduced (r/reduce reduce-fn initial reducible-facts)]
-        
+      ;; Combine the newly reduced values with any previous items.
+      (let [combined (if previous
+                       ((:combine-fn definition) previous reduced)
+                       reduced)]        
 
-        (add-accum-result! memory node join-bindings reduced bindings)
+        (add-accum-reduced! memory node join-bindings combined bindings)
         (doseq [token matched-tokens]          
-          (send-accumulated node accumulator token reduced bindings transport memory)))))
+          (send-accumulated node accumulator token combined bindings transport memory)))))
+
+  IRightActivate
+  (right-activate [node join-bindings elements memory transport]
+
+    ;; Simple right-activate implementation simple defers to
+    ;; accumulator-specific logic.
+    (right-activate-reduced
+     node 
+     join-bindings
+     (pre-reduce node elements)
+     memory 
+     transport))
 
   (right-retract [node join-bindings elements memory transport]   
-    
+
     (doseq [:let [matched-tokens (get-tokens memory node join-bindings)]
-            {:keys [fact bindings] :as element} (remove-elements! memory node join-bindings elements)
-            :let [previous (get-accum-result memory node join-bindings bindings)]]
-      
-      ;; If the accumulation result was previously calculated, retract it
-      ;; from the children.
-      
-      (when previous
-        ;; TODO: reuse previous token rather than recreating it?
-        (doseq [token (get-tokens memory node join-bindings)]
-          (retract-accumulated node accumulator token previous bindings transport memory)))
+            {:keys [fact bindings] :as element} elements
+            :let [previous (get-accum-reduced memory node join-bindings bindings)]
+            
+            ;; No need to retract anything if there was no previous item.
+            :when previous
 
-      ;; Reduce to create a new token and send it downstream.
-      
-      (let [initial (:initial-value definition)
-            reduce-fn (:reduce-fn definition)
-            ;; Get the set of facts that are reducible.
-            reducible-facts (map :fact (get-elements memory node join-bindings)) ;; Get only facts
-            reduced (r/reduce reduce-fn initial reducible-facts)]
+            ;; Get all of the previously matched tokens so we can retract and re-send them.
+            token matched-tokens
 
-        (add-accum-result! memory node join-bindings reduced bindings)
-        (doseq [token matched-tokens]
-          (send-accumulated node accumulator token reduced bindings transport memory))))))
+            ;; Compute the new version with the retracted information.
+            :let [retracted ((:retract-fn definition) previous fact)]]
+
+      ;; Add our newly retracted information to our node.
+      (add-accum-reduced! memory node join-bindings retracted bindings)
+
+      ;; Retract the previous token.
+      (retract-accumulated node accumulator token previous bindings transport memory)
+
+      ;; Send a new accumulated token with our new, retracted information.
+      (when retracted
+        (send-accumulated node accumulator token retracted bindings transport memory)))))
 
 (def ^:private reflector
   "For some reason (bug?) the default reflector doesn't use the

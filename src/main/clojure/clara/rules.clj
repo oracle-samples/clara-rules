@@ -117,10 +117,24 @@
     ~(eng/parse-lhs lhs)
     ~(eng/compile-action (eng/variables-as-keywords lhs) rhs)))
 
-(defn accumulate [& {:keys [initial-value reduce-fn combine-fn convert-return-fn] :as args}]
-  (eng/map->Accumulator (if (:convert-return-fn args) 
-                          args
-                          (assoc args :convert-return-fn identity ))))
+(defn accumulate 
+  "Creates a new accumulator based on the given properties:
+
+   * An initial-value to be used with the reduced operations.
+   * A reduce-fn that can be used with the Clojure Reducers library to reduce items.
+   * A combine-fn that can be used with the Clojure Reducers library to combine reduced items.
+   * An optional retract-fn that can remove a retracted fact from a previously reduced computation
+   * An optional convert-return-fn that converts the reduced data into something useful to the caller.
+     Simply uses identity by default.
+    "
+  [& {:keys [initial-value reduce-fn combine-fn retract-fn convert-return-fn] :as args}]
+  (eng/map->Accumulator
+   (merge
+    {:combine-fn reduce-fn ; Default combine function is simply the reduce.
+     :convert-return-fn identity ; Default conversion does nothing, so use identity.
+     :retract-fn (fn [reduced retracted] reduced) ; Retractions do nothing by default.
+     }
+    args)))
 
 (defn add-productions
   "Returns a new rulebase identical to the given one, but with the additional

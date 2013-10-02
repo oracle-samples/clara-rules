@@ -275,17 +275,29 @@
 
 (deftest test-accumulate-with-retract
   (let [coldest-query (mk-query [] [[?t <- (accumulate
-                                           :reduce-fn (fn [value item]
-                                                        (if (or (= value nil)
-                                                                (< (:temperature item) (:temperature value) ))
-                                                          item
-                                                          value)))
+                                            :initial-value []
+                                            :reduce-fn conj
+                                            :combine-fn concat
+
+                                            ;; Retract by removing the retracted item.
+                                            ;; In general, this would need to remove
+                                            ;; only the first matching item to achieve expected semantics.
+                                            :retract-fn (fn [reduced item] 
+                                                          (remove #{item} reduced))
+
+                                            ;; Sort here and return the smallest.
+                                            :convert-return-fn (fn [reduced] 
+                                                                 (first 
+                                                                  (sort #(< (:temperature %1) (:temperature %2))
+                                                                        reduced))))
+
                                    :from (Temperature (< temperature 20))]])
 
         session (-> (mk-rulebase coldest-query) 
                     (mk-session)
+                    (insert (->Temperature 10 "MCI"))            
+                    (insert (->Temperature 17 "MCI"))
                     (insert (->Temperature 15 "MCI"))
-                    (insert (->Temperature 10 "MCI"))
                     (insert (->Temperature 80 "MCI"))
                     (retract (->Temperature 10 "MCI")))]
 
