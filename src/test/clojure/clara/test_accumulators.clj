@@ -5,7 +5,6 @@
         [clara.rules.engine :only [->Token ast-to-dnf load-rules *trace-transport* 
                                    description print-memory]]
         clara.rules.testfacts)
-  (:refer-clojure :exclude [==])
   (:require [clara.sample-ruleset :as sample]
             [clojure.set :as s]
             [clara.rules.accumulators :as acc])
