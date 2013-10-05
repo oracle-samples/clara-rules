@@ -19,7 +19,6 @@ Here's a simple example. The [clara-examples project](https://github.com/rbrush/
 
 ```clj
 (ns clara.support-example
-  (:refer-clojure :exclude [==])
   (:require [clara.rules :refer :all]))
 
 (defrecord SupportRequest [client level])
@@ -34,8 +33,8 @@ Here's a simple example. The [clara-examples project](https://github.com/rbrush/
 
 (defrule notify-client-rep
   "Find the client represntative and send a notification of a support request."
-  [SupportRequest (== ?client client)]
-  [ClientRepresentative (== ?client client) (== ?name name)] ; Join via the ?client binding.
+  [SupportRequest (= ?client client)]
+  [ClientRepresentative (= ?client client) (= ?name name)] ; Join via the ?client binding.
   =>
   (println "Notify" ?name "that"  ?client "has a new support request!"))
 
