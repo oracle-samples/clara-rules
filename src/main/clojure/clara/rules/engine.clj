@@ -499,7 +499,7 @@
            compiled-rest (compile-constraints rest assigment-set)
            containEq? (and (symbol? cmp) (let [cmp-str (name cmp)] (or (= cmp-str "=") (= cmp-str "==")))) 
            a-in-assigment (and containEq? (and (symbol? a) (assigment-set (keyword a))))
-           b-in-assigment (and containEq? (and (symbol? b) (assigment-set (keyword b))))] ;;look at the trick with =>
+           b-in-assigment (and containEq? (and (symbol? b) (assigment-set (keyword b))))]
        (cond
         a-in-assigment
         (if b-in-assigment
