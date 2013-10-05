@@ -492,9 +492,28 @@
           [(symbol (.. property (getName))) 
            (symbol (str "." (.. property (getReadMethod) (getName))))])))
 
+(defn- compile-constraints [exp-seq assigment-set]
+  (if (empty? exp-seq)
+    `((deref ~'?__bindings__))
+    (let [ [[cmp a b :as exp] & rest] exp-seq
+           compiled-rest (compile-constraints rest assigment-set)
+           containEq? (and (symbol? cmp) (let [cmp-str (name cmp)] (or (= cmp-str "=") (= cmp-str "==")))) 
+           a-in-assigment (and containEq? (and (symbol? a) (assigment-set (keyword a))))
+           b-in-assigment (and containEq? (and (symbol? b) (assigment-set (keyword b))))]
+       (cond
+        a-in-assigment
+        (if b-in-assigment
+          (cons `(swap! ~'?__bindings__ assoc ~(keyword a) (~'?__bindings__ ~(keyword b))) compiled-rest)
+          (cons `(swap! ~'?__bindings__ assoc ~(keyword a) ~b) compiled-rest))
+        b-in-assigment
+        (cons `(swap! ~'?__bindings__ assoc ~(keyword b) ~a) compiled-rest)
+        ;; not a unification
+        :else
+        (list (list 'if exp (cons 'do compiled-rest) nil))))))  
+
 (defn- compile-condition 
   "Returns a function definition that can be used in alpha nodes to test the condition."
-  [type constraints result-binding]
+  [type constraints binding-keys result-binding]
   (let [;; Get a map of fieldnames to access function symbols.
         accessors (if (isa? type clojure.lang.IRecord) 
                     (get-field-accessors type)
@@ -514,10 +533,7 @@
 
        (let [~@assignments
              ~'?__bindings__ (atom ~initial-bindings)]
-
-         (if (and ~@constraints)
-           (deref ~'?__bindings__)
-           nil)))))
+         (do ~@(compile-constraints constraints (set binding-keys)))))))
 
 (defn compile-action [binding-keys rhs]
   (let [assignments (mapcat #(list (symbol (name %)) (list 'get-in '?__token__ [:bindings %])) binding-keys)]
@@ -544,7 +560,7 @@
     `(map->Condition {:type ~(resolve type) 
                       :constraints '~constraints 
                       :binding-keys ~binding-keys 
-                      :activate-fn ~(compile-condition (resolve type) constraints result-binding)
+                      :activate-fn ~(compile-condition (resolve type) constraints binding-keys result-binding)
                       :text ~text})))
 
 (defn create-condition [condition]
