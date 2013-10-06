@@ -991,3 +991,30 @@
                            (insert (->Temperature 80 "MCI"))
                            (fire-rules)) 
                        cold-query))))))
+
+(deftest test-destructured-args
+  (let [cold-query (mk-query [] [(Temperature [{temp-arg :temperature}] (< temp-arg 20) (== ?t temp-arg))])
+
+        session (-> (mk-rulebase cold-query) 
+                    (mk-session)
+                    (insert (->Temperature 15 "MCI"))
+                    (insert (->Temperature 10 "MCI"))
+                    (insert (->Temperature 80 "MCI")))]
+
+    (is (= #{{:?t 15} {:?t 10}}
+           (set (query session cold-query))))))
+
+(deftest test-general-map
+  (let [cold-query (mk-query []
+                             [[:temperature [{temp :value}] (< temp 20) (== ?t temp)]])
+
+        session (-> (mk-rulebase cold-query) 
+                    (mk-session :fact-type-fn :type)
+                    (insert {:type :temperature :value 15 :location "MCI"}
+                            {:type :temperature :value 10 :location "MCI"}
+                            {:type :windspeed :value 5 :location "MCI"}
+                            {:type :temperature :value 80 :location "MCI"}))]
+
+    (is (= #{{:?t 15} {:?t 10}}
+           (set (query session cold-query))))))
+

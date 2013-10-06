@@ -513,23 +513,31 @@
 
 (defn- compile-condition 
   "Returns a function definition that can be used in alpha nodes to test the condition."
-  [type constraints binding-keys result-binding]
+  [type destructured-fact constraints binding-keys result-binding]
   (let [;; Get a map of fieldnames to access function symbols.
-        accessors (if (isa? type clojure.lang.IRecord) 
-                    (get-field-accessors type)
-                    (get-bean-accessors type)) ; Treat unrecognized types as beans.
+        accessors (cond 
+                   (isa? type clojure.lang.IRecord) (get-field-accessors type)
+                   (class? type) (get-bean-accessors type) ; Treat unrecognized classes as beans.
+                   :default []) ; Other types have no accessors.
 
-        ;; Convert the accessor map to an assignment block that can be used in a let expression.
-        assignments (mapcat (fn [[name accessor]] 
-                              [name (list accessor 'this)]) 
-                            accessors)
+        ;; The assignments should use the argument destructuring if provided, or default to accessors otherwise.
+        assignments (if destructured-fact
+                      ;; Simply destructure the fact if arguments are provided.
+                      [destructured-fact '?__fact__]
+                      ;; No argument provided, so use our default destructuring logic.
+                      (concat '(this ?__fact__)
+                              (mapcat (fn [[name accessor]] 
+                                        [name (list accessor '?__fact__)]) 
+                                      accessors)))
 
         ;; Initial bindings used in the return of the compiled condition expresion.
         initial-bindings (if result-binding {result-binding 'this}  {})]
 
-    `(fn [ ~(with-meta 
-              'this 
-              {:tag (symbol (.getName type))})] ; Add type hint to avoid runtime refection.
+    `(fn [~(if (symbol? type) 
+             (with-meta 
+               '?__fact__ 
+               {:tag (symbol (.getName type))})  ; Add type hint to avoid runtime refection.
+             '?__fact__)]
 
        (let [~@assignments
              ~'?__bindings__ (atom ~initial-bindings)]
@@ -552,15 +560,21 @@
 (defrecord AccumulatorDef [initial-value reduce-fn combine-fn convert-return-fn])
 
 (defn- construct-condition [condition result-binding]
-  (let [type (first condition)
-        constraints (vec (rest condition))
+  (let [type (if (symbol? (first condition)) (resolve (first condition)) (first condition))
+        ;; Args is an optional vector of arguments following the type.
+        args (if (vector? (second condition)) (second condition) nil)
+        constraints (vec (if args (drop 2 condition) (rest condition)))
         binding-keys (variables-as-keywords constraints)
         text (pr-str condition)]
+
+    (when (> (count args) 1)
+      (throw (IllegalArgumentException. "Only one argument can be passed to a condition.")))
        
-    `(map->Condition {:type ~(resolve type) 
+    `(map->Condition {:type ~type 
+                      :args '~(first args)
                       :constraints '~constraints 
                       :binding-keys ~binding-keys 
-                      :activate-fn ~(compile-condition (resolve type) constraints binding-keys result-binding)
+                      :activate-fn ~(compile-condition type (first args) constraints binding-keys result-binding)
                       :text ~text})))
 
 (defn create-condition [condition]
@@ -959,24 +973,24 @@
        (when (> (deref (:insertions *current-session*)) insertion-count)
          (recur (deref (:insertions *current-session*)))))))
 
-(deftype LocalSession [rulebase memory transport]
+(deftype LocalSession [rulebase memory transport fact-type-fn]
   ISession
   (insert [session facts]
     (let [transient-memory (to-transient memory)]
-      (doseq [[cls fact-group] (group-by class facts)
+      (doseq [[cls fact-group] (group-by fact-type-fn facts)
               ancestor (conj (ancestors cls) cls) ; Find alpha nodes that match the class or any ancestor
               root (get-in rulebase [:alpha-roots ancestor])]
         (alpha-activate root fact-group transient-memory transport))
-      (LocalSession. rulebase (to-persistent! transient-memory) transport)))
+      (LocalSession. rulebase (to-persistent! transient-memory) transport fact-type-fn)))
 
   (retract [session facts]
 
     (let [transient-memory (to-transient memory)]
-      (doseq [[cls fact-group] (group-by class facts) 
+      (doseq [[cls fact-group] (group-by type facts) 
               root (get-in rulebase [:alpha-roots cls])]
         (alpha-retract root fact-group transient-memory transport))
 
-      (LocalSession. rulebase (to-persistent! transient-memory) transport)))
+      (LocalSession. rulebase (to-persistent! transient-memory) transport fact-type-fn)))
 
   (fire-rules [session]
 
@@ -986,7 +1000,7 @@
                    transient-memory
                    transport)
 
-      (LocalSession. rulebase (to-persistent! transient-memory) transport)))
+      (LocalSession. rulebase (to-persistent! transient-memory) transport fact-type-fn)))
 
   ;; TODO: queries shouldn't require the use of transient memory.
   (query [session query params]

@@ -144,6 +144,11 @@
      ;; Merge all of the sources together and create a session.
      (let [rulebase (eng/load-rules source)
            transport (LocalTransport.)
+           other-sources (take-while (complement keyword?) more)
+           options (apply hash-map (drop-while (complement keyword?) more))
+
+           ;; The fact-type uses Clojure's type function unless overridden.
+           fact-type-fn (get options :fact-type-fn type)
            
            ;; Merge other rule sessions into one.
            merged-rules 
@@ -151,19 +156,19 @@
             (fn [rulebase other-source]
               (eng/conj-rulebases rulebase (eng/load-rules other-source)))
             (eng/load-rules source)
-            more)]
+            other-sources)]
 
-       (LocalSession. merged-rules (eng/local-memory merged-rules transport) transport))))
+       (LocalSession. merged-rules (eng/local-memory merged-rules transport) transport fact-type-fn))))
 
 (defmacro mk-session
    "Creates a new session using the given rule sources. Thew resulting session
    is immutable, and can be used with insert, retract, fire-rules, and query functions.
 
    If no sources are provided, it will attempt to load rules from the caller's namespace."
-  [& sources]
-  (if (seq sources)
-    `(apply mk-session* ~(vec sources))
-    `(mk-session* (ns-name *ns*))))
+  [& args]
+  (if (and (seq args) (not (keyword? (first args))))
+    `(apply mk-session* ~(vec args)) ; At least one namespace given, so use it.
+    `(apply mk-session* (concat [(ns-name *ns*)] args)))) ; No namespace given, so use the current one.
 
 (defn- separator?
   "True iff `x` is a rule body separator symbol."
