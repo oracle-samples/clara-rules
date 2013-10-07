@@ -8,8 +8,12 @@ BOOLEAN_EXPR ::= '[' ( ':and' | ':or' | ':not' ) (BOOLEAN_EXPR | FACT_CONSTRAINT
 
 ACCUM_EXPR ::= '[' BINDING '<-' ACCUMULATOR ':from' FACT_CONSTRAINT ']'
 
-FACT_CONSTRAINT ::= '[' (BINDING '<-')? FACT_TYPE  S-EXPRESSION* ']'
+FACT_CONSTRAINT ::= '[' (BINDING '<-')? FACT_TYPE ( '[' DESTRUCTURED_FACT ']' )?  S-EXPRESSION* ']'
 
 TEST_EXPR ::= '[' ':test' S-EXPRESSION* ']'
 
 BINDING ::= 'A clojure symbol starting with a question mark. (?)'
+
+FACT_TYPE ::= ( KEYWORD | CLASS )
+
+DESTRUCTURED_ARGS ::= 'An optionally destructured argument, just as one would destructructure arguments to a Clojure function.'

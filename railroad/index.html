@@ -1,16 +1,16 @@
 <html>
    <head>
       <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-      <meta content="Railroad Diagram Generator 1.25.661" name="generator"><style type="text/css">
+      <meta content="Railroad Diagram Generator 1.30.712" name="generator"><style type="text/css">
     ::-moz-selection
     {
       color: #FFFCF0;
-      background: #4D3D00;
+      background: #0F0C00;
     }
     ::selection
     {
       color: #FFFCF0;
-      background: #4D3D00;
+      background: #0F0C00;
     }      
     .ebnf a
     {
@@ -18,7 +18,7 @@
     }
     .ebnf a:hover
     {
-      color: #1A1400;
+      color: #050400;
       text-decoration: underline;
     }    
     .signature
@@ -30,12 +30,12 @@
     body
     {
       font: normal 12px Verdana, sans-serif;
-      color: #4D3D00;
+      color: #0F0C00;
       background: #FFFCF0;
     }
     a:link, a:visited
     {
-      color: #4D3D00;
+      color: #0F0C00;
     }
     a:link.signature, a:visited.signature
     {
@@ -50,18 +50,18 @@
       text-decoration: none;
       font-weight: bold;
     }
-    a:hover, #tabs li a:hover
+    a.button:hover, #tabs li a:hover
     {
-      color: #1A1400;
-      background: #FFF5CC;
-      border-color: #1A1400;       
+      color: #050400;
+      background: #FFF6D1;
+      border-color: #050400;       
     }     
     #tabs
     {
       padding: 3px 10px;
       margin-left: 0;
       margin-top: 58px;
-      border-bottom: 1px solid #4D3D00;
+      border-bottom: 1px solid #0F0C00;
     }  
     #tabs li
     {
@@ -71,13 +71,13 @@
     }
     #tabs li a
     {     
-      border-bottom: 1px solid #4D3D00;
+      border-bottom: 1px solid #0F0C00;
     }
     #tabs li a.active
     {
-      color: #4D3D00;
+      color: #0F0C00;
       background: #FFFCF0;
-      border-color: #4D3D00;
+      border-color: #0F0C00;
       border-bottom: 1px solid #FFFCF0;
       outline: none;
     }
@@ -94,30 +94,37 @@
     {
       border-color: #806600;
       background: #FFFEFA;
-      color: #1A1400;
+      color: #050400;
     }
-    td.time
+    .small
     {
       vertical-align: top;
-    }
-    span.time
-    {
+      text-align: right;
       font-size: 9px;
+      font-weight: normal;
+      line-height: 120%;
+    }
+    td.small
+    {
+      padding-top: 0px;
+    }
+    .hidden
+    {
       visibility: hidden;
     }
-    td.time:hover span.time
+    td:hover .hidden 
     {
       visibility: visible;
     }
     div.download
     {
-      display:none;
-      background:#FFFCF0;
-      position:absolute;
-      right:34px;
-      top:94px;
-      padding:10px;
-      border:1px dotted #4D3D00;
+      display: none;
+      background: #FFFCF0;
+      position: absolute;
+      right: 34px;
+      top: 94px;
+      padding: 10px;
+      border: 1px dotted #0F0C00;
     }
     #divs div.ebnf, div.ebnf
     {
@@ -125,7 +132,31 @@
       padding-left: 16px;
       padding-top: 2px; 
       padding-bottom: 2px; 
-      background:#FFF5CC;
+      background: #FFF6D1;
+    }
+    table.palette
+    {
+      border-top: 1px solid #050400;
+      border-right: 1px solid #050400;
+      margin-bottom: 4px
+    }
+    td.palette
+    {
+      border-bottom: 1px solid #050400;
+      border-left: 1px solid #050400;
+    }
+    a.palette
+    {
+      padding: 2px 3px 2px 10px;
+      text-decoration: none;
+    }
+    .palette
+    {
+      -webkit-user-select: none;
+      -khtml-user-select: none;
+      -moz-user-select: none;
+      -o-user-select: none;
+      -ms-user-select: none;
     }
   </style></head>
    <body>
@@ -175,12 +206,13 @@
          <ul>
             <li><a href="#CONDITON" title="CONDITON">CONDITON</a></li>
          </ul>
-      </p><br><p style="font-size: 14px; font-weight:bold"><a name="FACT_CONSTRAINT">FACT_CONSTRAINT:</a></p><img border="0" height="68" src="diagram/FACT_CONSTRAINT.png" usemap="#FACT_CONSTRAINT.map" width="640"><map name="FACT_CONSTRAINT.map">
+      </p><br><p style="font-size: 14px; font-weight:bold"><a name="FACT_CONSTRAINT">FACT_CONSTRAINT:</a></p><img border="0" height="68" src="diagram/FACT_CONSTRAINT.png" usemap="#FACT_CONSTRAINT.map" width="950"><map name="FACT_CONSTRAINT.map">
          <area coords="95,17,169,49" href="#BINDING" shape="rect" title="BINDING">
          <area coords="265,17,353,49" href="#FACT_TYPE" shape="rect" title="FACT_TYPE">
-         <area coords="413,17,525,49" href="#S-EXPRESSION" shape="rect" title="S-EXPRESSION"></map><p>
+         <area coords="439,17,597,49" href="#DESTRUCTURED_FACT" shape="rect" title="DESTRUCTURED_FACT">
+         <area coords="723,17,835,49" href="#S-EXPRESSION" shape="rect" title="S-EXPRESSION"></map><p>
          <div class="ebnf"><pre><a href="#FACT_CONSTRAINT" title="FACT_CONSTRAINT">FACT_CONSTRAINT</a>
-         ::= '[' ( <a href="#BINDING" title="BINDING">BINDING</a> '&lt;-' )? <a href="#FACT_TYPE" title="FACT_TYPE">FACT_TYPE</a> <a href="#S-EXPRESSION" title="S-EXPRESSION">S-EXPRESSION</a>* ']'</pre></div>
+         ::= '[' ( <a href="#BINDING" title="BINDING">BINDING</a> '&lt;-' )? <a href="#FACT_TYPE" title="FACT_TYPE">FACT_TYPE</a> ( '[' <a href="#DESTRUCTURED_FACT" title="DESTRUCTURED_FACT">DESTRUCTURED_FACT</a> ']' )? <a href="#S-EXPRESSION" title="S-EXPRESSION">S-EXPRESSION</a>* ']'</pre></div>
       </p>
       <p>referenced by:
          <ul>
@@ -205,15 +237,30 @@
             <li><a href="#ACCUM_EXPR" title="ACCUM_EXPR">ACCUM_EXPR</a></li>
             <li><a href="#FACT_CONSTRAINT" title="FACT_CONSTRAINT">FACT_CONSTRAINT</a></li>
          </ul>
-      </p><br><hr>
+      </p><br><p style="font-size: 14px; font-weight:bold"><a name="FACT_TYPE">FACT_TYPE:</a></p><img border="0" height="80" src="diagram/FACT_TYPE.png" usemap="#FACT_TYPE.map" width="180"><map name="FACT_TYPE.map">
+         <area coords="49,1,131,33" href="#KEYWORD" shape="rect" title="KEYWORD">
+         <area coords="49,45,109,77" href="#CLASS" shape="rect" title="CLASS"></map><p>
+         <div class="ebnf"><pre><a href="#FACT_TYPE" title="FACT_TYPE">FACT_TYPE</a>
+         ::= <a href="#KEYWORD" title="KEYWORD">KEYWORD</a>
+           | <a href="#CLASS" title="CLASS">CLASS</a></pre></div>
+      </p>
+      <p>referenced by:
+         <ul>
+            <li><a href="#FACT_CONSTRAINT" title="FACT_CONSTRAINT">FACT_CONSTRAINT</a></li>
+         </ul>
+      </p><br><p style="font-size: 14px; font-weight:bold"><a name="DESTRUCTURED_ARGS">DESTRUCTURED_ARGS:</a></p><img border="0" height="36" src="diagram/DESTRUCTURED_ARGS.png" width="764"><p>
+         <div class="ebnf"><pre><a href="#DESTRUCTURED_ARGS" title="DESTRUCTURED_ARGS">DESTRUCTURED_ARGS</a>
+         ::= 'An optionally destructured argument, just as one would destructructure arguments to a Clojure function.'</pre></div>
+      </p>
+      <p>no references</p><br><hr>
       <p>
          <table border="0" class="signature">
             <tr>
                <td style="width: 100%">&nbsp;</td>
                <td valign="top">
-                  <nobr class="signature">... generated by <a class="signature" href="http://railroad.my28msec.com/" name="Railroad-Diagram-Generator" title="http://railroad.my28msec.com/">Railroad Diagram Generator</a></nobr>
+                  <nobr class="signature">... generated by <a class="signature" href="http://railroad.my28msec.com/rr/ui" name="Railroad-Diagram-Generator" target="_blank" title="http://railroad.my28msec.com/rr/ui">Railroad Diagram Generator</a></nobr>
                </td>
-               <td><img border="0" height="16" src="diagram/.png" width="16"></td>
+               <td><a href="http://railroad.my28msec.com/rr/ui" name="Railroad-Diagram-Generator" target="_blank" title="http://railroad.my28msec.com/rr/ui"><img border="0" height="16" src="diagram/Railroad-Diagram-Generator.png" width="16"></a></td>
             </tr>
          </table>
       </p>
