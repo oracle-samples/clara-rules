@@ -54,7 +54,7 @@ Here's a simple example. The [clara-examples project](https://github.com/rbrush/
 Add the following to your project.clj:
 
 ```clj
-[org.toomuchcode/clara-rules "0.1.1"]
+[org.toomuchcode/clara-rules "0.2.0"]
 ```
 
 or to your Maven POM:
@@ -63,15 +63,15 @@ or to your Maven POM:
 <dependency>
   <groupId>org.toomuchcode</groupId>
   <artifactId>clara-rules</artifactId>
-  <version>0.1.1</version>
+  <version>0.2.0</version>
 </dependency>
 ```
 
 ## Learn more
 
 * The [introduction page](https://github.com/rbrush/clara-rules/wiki/Introduction) provides an overview of the project.
+* The [developer guide](https://github.com/rbrush/clara-rules/wiki/Guide).
 * The [architecture overview](https://github.com/rbrush/clara-rules/wiki/Architecture) goes into how Clara works.
-* The [developer guide](https://github.com/rbrush/clara-rules/wiki/Guide) is in progress.
 * See the [clara-examples project](https://github.com/rbrush/clara-examples) examples page for some examples.
 
 ## License
