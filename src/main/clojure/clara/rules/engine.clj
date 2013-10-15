@@ -11,7 +11,8 @@
 (defprotocol IRuleSource
   (load-rules [source]))
 
-
+;; Protocol representing a single condition in
+;; a rule or a query.
 (defprotocol ICondition
   ;; Returns a key uniquely identifying the condition.
   (condition-key [condition])
@@ -122,7 +123,10 @@
   (right-activate [node join-bindings elements memory transport])
   (right-retract [node join-bindings elements memory transport]))
 
-;; Right 
+;; Specialized right activation interface for accumulator nodes,
+;; where the caller has the option of pre-reducing items
+;; to reduce the data sent to the node. This would be useful
+;; if the caller is not in the same memory space as the accumulator node itself.
 (defprotocol IAccumRightActivate
   ;; Pre-reduces elements, returning a map of bindings to reduced elements.
   (pre-reduce [node elements])
@@ -217,6 +221,8 @@
 
   (description [node] "ProductionNode"))
 
+;; The QueryNode is a terminal node that stores the
+;; state that can be queried by a rule user.
 (defrecord QueryNode [id query param-keys]
   ILeftActivate  
   (left-activate [node join-bindings tokens memory transport] 
@@ -229,6 +235,9 @@
 
   (description [node] (str "QueryNode -- " param-keys)))
 
+;; Record representing alpha nodes in the Rete network,
+;; each of which evaluates a single condition and
+;; propagates matches to its children.
 (defrecord AlphaNode [condition children activation]
   IAlphaActivate
   (alpha-activate [node facts memory transport]
@@ -543,7 +552,9 @@
              ~'?__bindings__ (atom ~initial-bindings)]
          (do ~@(compile-constraints constraints (set binding-keys)))))))
 
-(defn compile-action [binding-keys rhs]
+(defn compile-action
+  "Compile the right-hand-side action of a rule, returning a function to execute it."
+  [binding-keys rhs]
   (let [assignments (mapcat #(list (symbol (name %)) (list 'get-in '?__token__ [:bindings %])) binding-keys)]
     `(fn [~'?__token__] 
        (let [~@assignments]
@@ -557,6 +568,7 @@
                              (= \? (first (name item))))] 
               (keyword  item))))
 
+;; Record representing a compiled accumulator definition.
 (defrecord AccumulatorDef [initial-value reduce-fn combine-fn convert-return-fn])
 
 (defn- construct-condition [condition result-binding]
