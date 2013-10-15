@@ -78,7 +78,7 @@
 (defrecord Query [params lhs binding-keys])
 
 ;; A rulebase -- essentially an immutable Rete network with a collection of alpha and beta nodes and supporting structure.
-(defrecord Rulebase [alpha-roots beta-roots productions queries production-nodes query-nodes node-to-id id-to-node]
+(defrecord Rulebase [alpha-roots beta-roots productions queries production-nodes query-nodes id-to-node]
   IRuleSource
   (load-rules [this] this)) ; A rulebase can be viewed as a rule loader; it simply loads itself.
 
@@ -193,7 +193,7 @@
   (alpha-retract [node facts memory transport]))
 
 ;; Record for the production node in the Rete network.
-(defrecord ProductionNode [production rhs]
+(defrecord ProductionNode [id production rhs]
   ILeftActivate  
   (left-activate [node join-bindings tokens memory transport]
     ;; Tokens added to be pending rule execution.
@@ -217,7 +217,7 @@
 
   (description [node] "ProductionNode"))
 
-(defrecord QueryNode [query param-keys]
+(defrecord QueryNode [id query param-keys]
   ILeftActivate  
   (left-activate [node join-bindings tokens memory transport] 
     (add-tokens! memory node join-bindings tokens))
@@ -249,7 +249,7 @@
 ;; Record for the join node, a type of beta node in the rete network. This node performs joins
 ;; between left and right activations, creating new tokens when joins match and sending them to 
 ;; its descendents.
-(defrecord JoinNode [condition children binding-keys]
+(defrecord JoinNode [id condition children binding-keys]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport] 
     ;; Add token to the node's working memory for future right activations.
@@ -302,7 +302,7 @@
 ;; The NegationNode is a beta node in the Rete network that simply
 ;; negates the incoming tokens from its ancestors. It sends tokens
 ;; to its descendent only if the negated condition or join fails (is false).
-(defrecord NegationNode [condition children binding-keys]
+(defrecord NegationNode [id condition children binding-keys]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport]
     ;; Add token to the node's working memory for future right activations.
@@ -329,7 +329,7 @@
     (send-tokens transport memory children (get-tokens memory node join-bindings))))
 
 ;; The test node represents a Rete extension in which 
-(defrecord TestNode [test children]
+(defrecord TestNode [id test children]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport] 
     (send-tokens 
@@ -375,7 +375,7 @@
 ;; The AccumulateNode hosts Accumulators, a Rete extension described above, in the Rete network
 ;; It behavios similarly to a JoinNode, but performs an accumulation function on the incoming
 ;; working-memory elements before sending a new token to its descendents.
-(defrecord AccumulateNode [accumulator definition children binding-keys]
+(defrecord AccumulateNode [id accumulator definition children binding-keys]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport] 
     (let [previous-results (get-accum-reduced-all memory node join-bindings)]
@@ -810,6 +810,21 @@
            :queries []} 
           productions))
 
+
+(defn- node-id 
+  "Generates a unique id for a node's children and some content identifying the node itself."
+  [children content]
+  (->> children
+       (tree-seq 
+        #(or (sequential? %) (map? %) (set? %))
+        (fn [item]
+          (if (map? item)
+            (concat (keys item) (vals item))
+            item)))
+       (filter #(or (string? %) (keyword? %) (symbol? %) (number? %)))
+       (hash)
+       (* (hash content))))
+
 (defn- compile-beta-node
   "Compile a given beta node with a condition key and children,
    returning tuple of [beta-node node-map], where node-map is
@@ -819,11 +834,11 @@
   (condp = condition-key
 
     :production
-    (let [production (->ProductionNode children (:rhs children))]
+    (let [production (->ProductionNode (node-id children condition-key) children (:rhs children))]
       [production {:production [production]}])
 
     :query
-    (let [query (->QueryNode children (:params children))]
+    (let [query (->QueryNode (node-id children condition-key) children (:params children))]
       [query {:query [query]}])
 
     ;; The node is neither a production or query terminal node, so compile the condition.
@@ -846,25 +861,26 @@
           child-maps (map second child-tuples)
 
           ;; Create a map to all children nodes by merging them together.
-          node-map (apply merge-with concat child-maps)]
+          node-map (apply merge-with concat child-maps)
+          id (node-id child-nodes condition-key)]
       
       (condp = (mode condition)
 
         :normal
-        (let [join-node (->JoinNode condition child-nodes join-binding-keys)]
+        (let [join-node (->JoinNode id condition child-nodes join-binding-keys)]
           [join-node (update-in node-map [condition-key] #(conj % join-node))])
         
         :accumulator
-        (let [accumulate-node (->AccumulateNode condition (:definition condition) child-nodes join-binding-keys)]
+        (let [accumulate-node (->AccumulateNode id condition (:definition condition) child-nodes join-binding-keys)]
           [accumulate-node (update-in node-map [condition-key] #(conj % accumulate-node))])
 
         ;; TODO: some inconsistency here in how we access the nested condition to be cleaned up.
         :negation
-        (let [negation-node (->NegationNode (alpha-condition condition) child-nodes join-binding-keys)]
+        (let [negation-node (->NegationNode id (alpha-condition condition) child-nodes join-binding-keys)]
           [negation-node (update-in node-map [condition-key] #(conj % negation-node))])
         
         :test
-        (let [test-node (->TestNode condition child-nodes)]
+        (let [test-node (->TestNode id condition child-nodes)]
           [test-node (update-in node-map [condition-key] #(conj % test-node))])))))
 
 (defn- compile-alpha-nodes
@@ -882,18 +898,7 @@
     ;; Create the alpha node with corresponding beta node children.
     (->AlphaNode (alpha-condition condition) beta-nodes (activate-fn condition))))
 
-(defn- node-id 
-  "Generates hash functions for each node for use as short identifiers."
-  [node]
-  (->> node
-       (tree-seq 
-        #(or (sequential? %) (map? %) (set? %))
-        (fn [item]
-          (if (map? item)
-            (concat (keys item) (vals item))
-            item)))
-       (filter #(or (string? %) (keyword? %) (symbol? %) (number? %)))
-       (hash)))
+
 
 (defn- node-id-map 
   "Generates a map of unique ids to nodes."
@@ -902,13 +907,13 @@
                     (mapcat 
                      #(tree-seq :children :children %)
                      beta-roots))
-        items (into {} (for [beta-node beta-nodes] [(node-id beta-node) beta-node]))]
+        items (into {} (for [beta-node beta-nodes] [(:id beta-node) beta-node]))]
     items))
 
 (defn compile-shredded-rules 
   "Compile shredded rules into a digraph representing the rule base, sharing nodes when possible"
   [shredded-rules] (let [compiled-betas (for [[condition-key children] (:beta-tree shredded-rules)]
-                         (compile-beta-node condition-key children [] (:conditions shredded-rules)))
+                                          (compile-beta-node condition-key children [] (:conditions shredded-rules)))
 
         beta-roots (map first compiled-betas)
         child-maps (map second compiled-betas)
@@ -922,8 +927,7 @@
         query-map (into {} (for [query-node (:query beta-node-map)]
                              [(:query query-node) query-node]))
 
-        id-to-node (node-id-map beta-roots) ; TODO: use the beta node map instead of parsing again?
-        node-to-id (s/map-invert id-to-node)]
+        id-to-node (node-id-map beta-roots)]
    
     (map->Rulebase 
        {:alpha-roots alpha-map
@@ -932,7 +936,6 @@
         :queries (:queries shredded-rules)
         :production-nodes (:production beta-node-map)
         :query-nodes query-map
-        :node-to-id node-to-id
         :id-to-node id-to-node})))
 
 (defn conj-rulebases 

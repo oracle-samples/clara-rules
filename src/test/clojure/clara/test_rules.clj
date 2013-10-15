@@ -896,9 +896,7 @@
            (keys (:id-to-node rulebase2))))
 
     ;; Ensure there are beta and production nodes as expected.
-    (is (= 4 (count (:id-to-node rulebase))))
-    
-    (is (= (:id-to-node rulebase) (s/map-invert (:node-to-id rulebase))))))
+    (is (= 4 (count (:id-to-node rulebase))))))
 
 (deftest test-simple-test
   (let [distinct-temps-query (mk-query [] [(Temperature (< temperature 20) (== ?t1 temperature))

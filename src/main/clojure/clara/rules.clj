@@ -9,7 +9,7 @@
   [& productions]
   (if (seq productions)
     (eng/compile-shredded-rules (eng/shred-rules productions))
-    (eng/->Rulebase {} [] [] [] [] {} {} {})))
+    (eng/->Rulebase {} [] [] [] [] {} {})))
 
 (defn insert
   "Inserts one or more facts into a working session. It does not modify the given

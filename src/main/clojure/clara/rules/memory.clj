@@ -92,38 +92,38 @@
 (defmacro assoc-mem! [k v]
   `(set! ~'content (assoc! ~'content ~k ~v)))
 
-(deftype TransientLocalMemory [rulebase node-to-id ^:unsynchronized-mutable content]
+(deftype TransientLocalMemory [rulebase ^:unsynchronized-mutable content]
   IMemoryReader
   (get-rulebase [memory] rulebase)
 
   (get-elements [memory node bindings]
-    (get content [:alpha-memory (node-to-id node) bindings] []))
+    (get content [:alpha-memory (:id node) bindings] []))
 
   (get-tokens [memory node bindings]
-    (get content [:beta-memory (node-to-id node) bindings] []))
+    (get content [:beta-memory (:id node) bindings] []))
 
   (get-accum-reduced [memory node join-bindings fact-bindings]
-    (get-in content [[:accum-memory (node-to-id node) join-bindings] fact-bindings]))
+    (get-in content [[:accum-memory (:id node) join-bindings] fact-bindings]))
 
   (get-accum-reduced-all [memory node join-bindings]
-    (get content [:accum-memory (node-to-id node) join-bindings] {}))
+    (get content [:accum-memory (:id node) join-bindings] {}))
 
   (get-insertions [memory node token]
-    (get content [:production-memory (node-to-id node) token] []))
+    (get content [:production-memory (:id node) token] []))
 
   (is-fired-token [memory node token]
     (contains?
-     (get content [:production-memory (node-to-id node) :fired-tokens] #{})
+     (get content [:production-memory (:id node) :fired-tokens] #{})
      token))
   
   ITransientMemory  
   (add-elements! [memory node join-bindings elements]
-    (let [key [:alpha-memory (node-to-id node) join-bindings]
+    (let [key [:alpha-memory (:id node) join-bindings]
           current-facts (get content key [])]
       (assoc-mem! key (concat current-facts elements)) ))
 
   (remove-elements! [memory node join-bindings elements]
-    (let [key [:alpha-memory (node-to-id node) join-bindings]
+    (let [key [:alpha-memory (:id node) join-bindings]
           current-facts (get content key [])
           element-set (set elements)
           filtered-facts (remove-first-of-each element-set current-facts)]
@@ -135,12 +135,12 @@
       (s/intersection element-set (set current-facts))))
 
   (add-tokens! [memory node join-bindings tokens]
-    (let [key [:beta-memory (node-to-id node) join-bindings]
+    (let [key [:beta-memory (:id node) join-bindings]
           current-tokens (get content key [])]
       (assoc-mem! key (concat current-tokens tokens))))
 
   (remove-tokens! [memory node join-bindings tokens]
-    (let [key [:beta-memory (node-to-id node) join-bindings]
+    (let [key [:beta-memory (:id node) join-bindings]
           current-tokens (get content key [])
           token-set (set tokens)
           filtered-tokens (remove-first-of-each token-set current-tokens)]
@@ -149,14 +149,14 @@
       (s/intersection token-set (set current-tokens))))
 
   (add-accum-reduced! [memory node join-bindings accum-result fact-bindings]
-    (let [key [:accum-memory (node-to-id node) join-bindings]
+    (let [key [:accum-memory (:id node) join-bindings]
           updated-bindings (assoc (get content key {})
                              fact-bindings
                              accum-result)]
       (assoc-mem! key updated-bindings)))
   
   (add-insertions! [memory node token facts]
-    (let [key [:production-memory (node-to-id node) token]
+    (let [key [:production-memory (:id node) token]
           current-facts (get content key [])]
       (assoc-mem! key (concat current-facts facts))))
 
@@ -166,23 +166,23 @@
     (let [results (doall
                    (flatten
                     (for [token tokens
-                          :let [key [:production-memory (node-to-id node) token]]]
+                          :let [key [:production-memory (:id node) token]]]
                       (get content key))))]
 
       ;; Clear the keys.
       (doseq [token tokens
-              :let [key [:production-memory (node-to-id node) token]]]
+              :let [key [:production-memory (:id node) token]]]
         (assoc-mem! key []))
 
       results))
 
   (mark-as-fired! [memory node token]
-    (let [key [:production-memory (node-to-id node) :fired-tokens]
+    (let [key [:production-memory (:id node) :fired-tokens]
           fired-tokens (get content key #{})]
       (assoc-mem! key (conj fired-tokens token))))
 
   (unmark-as-fired! [memory node token]
-    (let [key [:production-memory (node-to-id node) :fired-tokens]
+    (let [key [:production-memory (:id node) :fired-tokens]
           fired-tokens (get content key #{})]
       (assoc-mem! key (disj fired-tokens token))))
 
@@ -193,4 +193,4 @@
 (defrecord PersistentLocalMemory [rulebase content]
   IPersistentMemory
   (to-transient [memory] 
-    (TransientLocalMemory. rulebase (:node-to-id rulebase) (transient content))))
+    (TransientLocalMemory. rulebase (transient content))))
