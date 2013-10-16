@@ -168,7 +168,7 @@
   [& args]
   (if (and (seq args) (not (keyword? (first args))))
     `(apply mk-session* ~(vec args)) ; At least one namespace given, so use it.
-    `(apply mk-session* (concat [(ns-name *ns*)] args)))) ; No namespace given, so use the current one.
+    `(apply mk-session* (concat [(ns-name *ns*)] ~(vec args))))) ; No namespace given, so use the current one.
 
 (defn- separator?
   "True iff `x` is a rule body separator symbol."
