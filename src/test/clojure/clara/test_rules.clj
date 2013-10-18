@@ -1016,3 +1016,15 @@
     (is (= #{{:?t 15} {:?t 10}}
            (set (query session cold-query))))))
 
+(defrecord RecordWithDash [test-field])
+
+(deftest test-bean-with-dash
+  (let [test-query (mk-query [] [[RecordWithDash (= ?f test-field)]])
+
+        session (-> (mk-rulebase test-query) 
+                    (mk-session)
+                    (insert (->RecordWithDash 15)))]
+
+    (is (= #{{:?f 15}}
+           (set (query session test-query))))))
+

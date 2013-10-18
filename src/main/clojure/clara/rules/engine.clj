@@ -4,7 +4,8 @@
         clojure.pprint)
   (:require [clojure.reflect :as reflect]
             [clojure.core.reducers :as r]
-            [clojure.set :as s])
+            [clojure.set :as s]
+            [clojure.string :as string])
   (:refer-clojure :exclude [==]))
 
 ;; Protocol for loading rules from some arbitrary source.
@@ -487,7 +488,8 @@
                           (not (#{'__extmap '__meta} (:name member)))
                           (:public (:flags member))
                           (not (:static (:flags member))))]
-          [(:name member) (symbol (str ".-" (:name member)))])))
+          [(symbol (string/replace (:name member) #"_" "-")) ; Replace underscore with idiomatic dash.
+           (symbol (str ".-" (:name member)))])))
 
 (defn- get-bean-accessors
   "Returns a map of bean property name to a symbol representing the function used to access it."
@@ -498,7 +500,7 @@
                                 (getBeanInfo cls) 
                                 (getPropertyDescriptors)))]
 
-          [(symbol (.. property (getName))) 
+          [(symbol (string/replace (.. property (getName)) #"_" "-")) ; Replace underscore with idiomatic dash.
            (symbol (str "." (.. property (getReadMethod) (getName))))])))
 
 (defn- compile-constraints [exp-seq assigment-set]
