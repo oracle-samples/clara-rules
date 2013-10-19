@@ -3,6 +3,9 @@
   (:require [clojure.core.reducers :as r]
             [clojure.set :as s]))
 
+;; Activation record used by get-activations and add-activations! below.
+(defrecord Activation [node token])
+
 (defprotocol IPersistentMemory
   (to-transient [memory]))
 
@@ -28,9 +31,8 @@
   ;; Returns insertions that occurred at the given node.
   (get-insertions [memory node token])
 
-  ;; Returns true if the token has resulted in a rule execution
-  ;; at the given node.
-  (is-fired-token [memory node token]))
+  ;; Returns all pending activations.
+  (get-activations [memory]))
 
 (defprotocol ITransientMemory
 
@@ -57,12 +59,11 @@
   ;; due to the given token. Used for truth maintenance.
   (remove-insertions! [memory node token])
 
-  ;; Mark the given node (a production node) was fired
-  ;; due to the given token.
-  (mark-as-fired! [memory node token])
+  ;; Add activations.
+  (add-activations! [memory node tokens])
 
-  ;; Unmark a node as fired due to the given token.
-  (unmark-as-fired! [memory node token])
+  ;; Clear all activations from the working memory
+  (clear-activations! [memory])
 
   ;; Converts the transient memory to persistent form.
   (to-persistent! [memory]))
@@ -111,10 +112,8 @@
   (get-insertions [memory node token]
     (get content [:production-memory (:id node) token] []))
 
-  (is-fired-token [memory node token]
-    (contains?
-     (get content [:production-memory (:id node) :fired-tokens] #{})
-     token))
+  (get-activations [memory]
+    (:activations content))
   
   ITransientMemory  
   (add-elements! [memory node join-bindings elements]
@@ -176,15 +175,14 @@
 
       results))
 
-  (mark-as-fired! [memory node token]
-    (let [key [:production-memory (:id node) :fired-tokens]
-          fired-tokens (get content key #{})]
-      (assoc-mem! key (conj fired-tokens token))))
+  (add-activations! [memory node tokens]
+    (assoc-mem! :activations 
+                (concat (:activations content)  
+                        (for [token tokens]
+                          (->Activation node token)))))
 
-  (unmark-as-fired! [memory node token]
-    (let [key [:production-memory (:id node) :fired-tokens]
-          fired-tokens (get content key #{})]
-      (assoc-mem! key (disj fired-tokens token))))
+  (clear-activations! [memory]
+    (assoc-mem! :activations []))
 
   (to-persistent! [memory]
 

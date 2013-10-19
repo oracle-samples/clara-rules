@@ -201,16 +201,17 @@
 (defrecord ProductionNode [id production rhs]
   ILeftActivate  
   (left-activate [node join-bindings tokens memory transport]
-    ;; Tokens added to be pending rule execution.
-    (add-tokens! memory node join-bindings tokens)) 
+
+    ;; Preserve tokens that fired for the rule so we
+    ;; can perform retractions if they become false.
+    (add-tokens! memory node join-bindings tokens)
+
+    ;; The production matched, so add the tokens to the activation list.
+    (add-activations! memory node tokens)) 
 
   (left-retract [node join-bindings tokens memory transport] 
     ;; Remove any tokens to avoid future rule execution on retracted items.
     (remove-tokens! memory node join-bindings tokens)
-
-    ;; Unmark the node as fired for the given token, so future insertions will work.
-    (doseq [token tokens]
-      (unmark-as-fired! memory node token))
 
     ;; Retract any insertions that occurred due to the retracted token.
     (let [insertions (remove-insertions! memory node tokens)]
@@ -974,22 +975,20 @@
                                 :transport transport
                                 :insertions (atom 0)
                                 :get-alphas-fn get-alphas-fn}]
+          
+     (loop [activations (get-activations transient-memory)]
 
-     (loop [insertion-count 0]
-       (doseq [node nodes
-               token (get-tokens transient-memory node {})]
+       ;; Clear the activations we're processing; new ones may
+       ;; be added during insertions.         
+       (clear-activations! transient-memory)
 
-         ;; Fire the node if it has not already been done for the token.
-         (when (not (is-fired-token transient-memory node token))
-           (binding [*rule-context* {:token token :node node}]
-             ((:rhs node) token)
-             
-             ;; The rule fired for the given token, so mark it as such.
-             (mark-as-fired! transient-memory node token))))
+       (doseq [{:keys [node token]} activations]
+         (binding [*rule-context* {:token token :node node}]
+           ((:rhs node) token)))
          
-       ;; If the rules inserted new facts, re-fire to ensure they are accounted for.
-       (when (> (deref (:insertions *current-session*)) insertion-count)
-         (recur (deref (:insertions *current-session*)))))))
+       ;; If new activations were created, loop to fire those as well.
+       (when (seq (get-activations transient-memory))
+         (recur (get-activations transient-memory))))))
 
 (deftype LocalSession [rulebase memory transport get-alphas-fn]
   ISession
