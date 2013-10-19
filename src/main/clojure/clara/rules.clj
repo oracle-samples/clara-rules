@@ -55,14 +55,14 @@
    retract their conclusions. This way we can ensure that information inferred by rules is always
    in a consistent state."
   [& facts]
-  (let [{:keys [rulebase transient-memory transport insertions]} eng/*current-session*
+  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn]} eng/*current-session*
         {:keys [node token]} eng/*rule-context*]
 
     ;; Update the insertion count.
     (swap! insertions + (count facts))
 
-    (doseq [[cls fact-group] (group-by class facts) 
-            root (get-in rulebase [:alpha-roots cls])]
+    (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
+            root alpha-roots]
 
       ;; Track this insertion in our transient memory so logical retractions will remove it.
       (mem/add-insertions! transient-memory node token facts)
@@ -82,13 +82,13 @@
    have a specific need, it is better to simply do inserts on the rule's right-hand side, and let
    Clara's underlying truth maintenance retract inserted items if their support becomes false."
   [& facts]
-  (let [{:keys [rulebase transient-memory transport insertions]} eng/*current-session*]
+  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn]} eng/*current-session*]
 
     ;; Update the count so the rule engine will know when we have normalized.
     (swap! insertions + (count facts))
 
-    (doseq [[cls fact-group] (group-by class facts) 
-            root (get-in rulebase [:alpha-roots cls])]
+    (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
+            root alpha-roots]
 
       (eng/alpha-retract root fact-group transient-memory transport))))
 
@@ -137,6 +137,39 @@
       (eng/shred-rules)
       (eng/compile-shredded-rules)))
 
+(defn- create-get-alphas-fn
+  "Returns a function that given a sequence of facts,
+   returns a map associating alpha nodes with the facts they 
+   accept."
+  [fact-type-fn merged-rules]
+
+  ;; We preserve a map of fact types to alpha nodes for efficiency,
+  ;; effectively memoizing this operation.
+  (let [alpha-map (atom {})]    
+    (fn [facts]
+      (for [[fact-type facts] (group-by fact-type-fn facts)]
+        
+        (if-let [alpha-nodes (get @alpha-map fact-type)]
+          
+          ;; If the matching alpha nodes are cached, simply return them.
+          [alpha-nodes facts]
+          
+          ;; The alpha nodes weren't cached for the type, so get them now.
+          (let [ancestors (conj (ancestors fact-type) fact-type)
+                
+                ;; Get all alpha nodes for all ancestors.
+                new-nodes (distinct 
+                           (reduce 
+                            (fn [coll ancestor] 
+                              (concat 
+                               coll 
+                               (get-in merged-rules [:alpha-roots ancestor])))
+                            []
+                            ancestors))]
+            
+            (swap! alpha-map assoc fact-type new-nodes)
+            [new-nodes facts]))))))
+
 (defn mk-session* 
   "Creates a new session using the given rule source. Thew resulting session
    is immutable, and can be used with insert, retract, fire-rules, and query functions."
@@ -147,18 +180,23 @@
            other-sources (take-while (complement keyword?) more)
            options (apply hash-map (drop-while (complement keyword?) more))
 
+           ;; Merge other rule sessions into one.
+           merged-rules (reduce           
+                         (fn [rulebase other-source]
+                           (eng/conj-rulebases rulebase (eng/load-rules other-source)))
+                         (eng/load-rules source)
+                         other-sources)
+
            ;; The fact-type uses Clojure's type function unless overridden.
            fact-type-fn (get options :fact-type-fn type)
-           
-           ;; Merge other rule sessions into one.
-           merged-rules 
-           (reduce           
-            (fn [rulebase other-source]
-              (eng/conj-rulebases rulebase (eng/load-rules other-source)))
-            (eng/load-rules source)
-            other-sources)]
 
-       (LocalSession. merged-rules (eng/local-memory merged-rules transport) transport fact-type-fn))))
+           ;; Create a function that groups a sequence of facts by the collection
+           ;; of alpha nodes they target.
+           ;; We cache an alpha-map for facts of a given type to avoid computing
+           ;; them for every fact entered.
+           get-alphas-fn (create-get-alphas-fn fact-type-fn merged-rules)]
+
+       (LocalSession. merged-rules (eng/local-memory merged-rules transport) transport get-alphas-fn))))
 
 (defmacro mk-session
    "Creates a new session using the given rule sources. Thew resulting session

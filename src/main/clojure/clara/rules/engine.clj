@@ -968,11 +968,12 @@
 
 (defn fire-rules* 
    "Fire rules for the given nodes."
-   [rulebase nodes transient-memory transport]
+   [rulebase nodes transient-memory transport get-alphas-fn]
    (binding [*current-session* {:rulebase rulebase 
                                 :transient-memory transient-memory 
                                 :transport transport
-                                :insertions (atom 0)}]
+                                :insertions (atom 0)
+                                :get-alphas-fn get-alphas-fn}]
 
      (loop [insertion-count 0]
        (doseq [node nodes
@@ -990,24 +991,23 @@
        (when (> (deref (:insertions *current-session*)) insertion-count)
          (recur (deref (:insertions *current-session*)))))))
 
-(deftype LocalSession [rulebase memory transport fact-type-fn]
+(deftype LocalSession [rulebase memory transport get-alphas-fn]
   ISession
   (insert [session facts]
     (let [transient-memory (to-transient memory)]
-      (doseq [[cls fact-group] (group-by fact-type-fn facts)
-              ancestor (conj (ancestors cls) cls) ; Find alpha nodes that match the class or any ancestor
-              root (get-in rulebase [:alpha-roots ancestor])]
+      (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
+              root alpha-roots]
         (alpha-activate root fact-group transient-memory transport))
-      (LocalSession. rulebase (to-persistent! transient-memory) transport fact-type-fn)))
+      (LocalSession. rulebase (to-persistent! transient-memory) transport get-alphas-fn)))
 
   (retract [session facts]
 
     (let [transient-memory (to-transient memory)]
-      (doseq [[cls fact-group] (group-by type facts) 
-              root (get-in rulebase [:alpha-roots cls])]
+      (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
+              root alpha-roots]
         (alpha-retract root fact-group transient-memory transport))
 
-      (LocalSession. rulebase (to-persistent! transient-memory) transport fact-type-fn)))
+      (LocalSession. rulebase (to-persistent! transient-memory) transport get-alphas-fn)))
 
   (fire-rules [session]
 
@@ -1015,9 +1015,10 @@
       (fire-rules* rulebase 
                    (:production-nodes rulebase)
                    transient-memory
-                   transport)
+                   transport
+                   get-alphas-fn)
 
-      (LocalSession. rulebase (to-persistent! transient-memory) transport fact-type-fn)))
+      (LocalSession. rulebase (to-persistent! transient-memory) transport get-alphas-fn)))
 
   ;; TODO: queries shouldn't require the use of transient memory.
   (query [session query params]
