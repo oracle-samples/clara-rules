@@ -990,6 +990,38 @@
        (when (seq (get-activations transient-memory))
          (recur (get-activations transient-memory))))))
 
+(defn create-get-alphas-fn
+  "Returns a function that given a sequence of facts,
+  returns a map associating alpha nodes with the facts they accept."
+  [fact-type-fn merged-rules]
+  
+  ;; We preserve a map of fact types to alpha nodes for efficiency,
+  ;; effectively memoizing this operation.
+  (let [alpha-map (atom {})]    
+    (fn [facts]
+      (for [[fact-type facts] (group-by fact-type-fn facts)]
+        
+        (if-let [alpha-nodes (get @alpha-map fact-type)]
+          
+          ;; If the matching alpha nodes are cached, simply return them.
+          [alpha-nodes facts]
+                          
+          ;; The alpha nodes weren't cached for the type, so get them now.
+          (let [ancestors (conj (ancestors fact-type) fact-type)
+                
+                ;; Get all alpha nodes for all ancestors.
+                new-nodes (distinct 
+                           (reduce 
+                            (fn [coll ancestor] 
+                              (concat 
+                               coll 
+                               (get-in merged-rules [:alpha-roots ancestor])))
+                            []
+                            ancestors))]
+            
+            (swap! alpha-map assoc fact-type new-nodes)
+            [new-nodes facts]))))))
+
 (deftype LocalSession [rulebase memory transport get-alphas-fn]
   ISession
   (insert [session facts]
