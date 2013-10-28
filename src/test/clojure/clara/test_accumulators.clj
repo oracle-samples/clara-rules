@@ -100,3 +100,52 @@
                             (->Temperature 80 "MCI")))]
 
     (is (= {:?max 80 :?min 10 :?avg 40} (first (query session max-min-avg))))))
+
+
+(deftest test-count-none
+  (let [count (mk-query [] [[?c <- (acc/count) from [Temperature]]])
+
+        session (-> (mk-rulebase count) 
+                    (mk-session))]
+
+    (is (= {:?c 0} (first (query session count))))))
+
+(deftest test-count-none-joined
+  (let [count (mk-query [] [[WindSpeed (> windspeed 10) (= ?loc location)]
+                            [?c <- (acc/count) from [Temperature (= ?loc location)]]])
+
+        session (-> (mk-rulebase count)
+                    (mk-session)
+                    (insert (->WindSpeed 20 "MCI")))]
+
+    (is (= {:?c 0 :?loc "MCI"} (first (query session count))))))
+
+;; Same as the above test, but the binding occurs in a rule after
+;; the accumulator, to test reordering.
+(deftest test-count-none-with-later-bind
+  (let [count (mk-query [] [[?c <- (acc/count) from [Temperature (= ?loc location)]]
+                            [WindSpeed (> windspeed 10) (= ?loc location)]])
+
+        session (-> (mk-rulebase count)
+                    (mk-session)
+                    (insert (->WindSpeed 20 "MCI")))]
+
+    (is (= {:?c 0 :?loc "MCI"} (first (query session count))))))
+
+
+(deftest test-count-some-empty
+  (let [count (mk-query [:?loc] [[?c <- (acc/count) from [Temperature (= ?loc location)]]
+                                [WindSpeed (> windspeed 10) (= ?loc location)]])
+
+        session (-> (mk-rulebase count)
+                    (mk-session)
+                    (insert (->WindSpeed 20 "MCI")
+                            (->WindSpeed 20 "SFO")
+                            (->Temperature 40 "SFO")
+                            (->Temperature 50 "SFO")))]
+    
+    ;; Zero count at MCI, since no temperatures were inserted.
+    (is (= {:?c 0 :?loc "MCI"} (first (query session count :?loc "MCI"))))
+
+    ;; Ensure the two temperature readings at SFO are found as expected.
+    (is (= {:?c 2 :?loc "SFO"} (first (query session count :?loc "SFO"))))))

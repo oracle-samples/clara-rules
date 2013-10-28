@@ -383,6 +383,11 @@
     (send-tokens transport memory (:children node)
                  [(->Token (conj (:facts token) converted-result) new-bindings)])))
 
+(defn- has-keys? 
+  "Returns true if the given map has all of the given keys."
+  [m keys]
+  (every? (partial contains? m) keys))
+
 ;; The AccumulateNode hosts Accumulators, a Rete extension described above, in the Rete network
 ;; It behavios similarly to a JoinNode, but performs an accumulation function on the incoming
 ;; working-memory elements before sending a new token to its descendents.
@@ -391,9 +396,35 @@
   (left-activate [node join-bindings tokens memory transport] 
     (let [previous-results (get-accum-reduced-all memory node join-bindings)]
       (add-tokens! memory node join-bindings tokens)
-      (doseq [token tokens
-              [fact-bindings previous] previous-results]
-        (send-accumulated node accumulator token previous fact-bindings transport memory))))
+
+      (doseq [token tokens]
+
+        (cond
+
+         ;; If there are previously accumulated results to propagate, simply use them.
+         (seq previous-results)
+         (doseq [[fact-bindings previous] previous-results]
+           (send-accumulated node accumulator token previous fact-bindings transport memory))
+
+         ;; There are no previously accumulated results, but we still may need to propagate things
+         ;; such as a sum of zero items.
+         ;; If all variables in the accumulated item are bound and an initial
+         ;; value is provided, we can propagate the initial value as the accumulated item.
+
+         (and (has-keys? (:bindings token) 
+                         (:binding-keys (:input-condition accumulator))) ; All bindings are in place.
+              (:initial-value (:definition accumulator))) ; An initial value exists that we can propagate.
+         (let [fact-bindings (select-keys (:bindings token) (:binding-keys (:input-condition accumulator)))
+               previous (:initial-value (:definition accumulator))]
+
+           ;; Send the created accumulated item to the children.
+           (send-accumulated node accumulator token previous fact-bindings transport memory)
+
+           ;; Add it to the working memory.
+           (add-accum-reduced! memory node join-bindings previous fact-bindings))
+         
+         ;; Propagate nothing if the above conditions don't apply.
+         :default nil))))
 
   (left-retract [node join-bindings tokens memory transport] 
     (let [previous-results (get-accum-reduced-all memory node join-bindings)]
@@ -761,10 +792,33 @@
                       [:query])) 
             production))
 
+(defn- condition-comparator 
+  "Helper function to sort conditions to ensure bindings
+   are created in the needed order. The current implementation
+   simply pushes tests to the end (since they don't create new bindings)
+   with accumulators before them, as they may rely on previously bound items
+   to complete successfully."
+  [cond1 cond2]
+
+  (condp = (type cond1)
+    ;; Conditions are always sorted first.
+    clara.rules.engine.Condition true
+
+    ;; Negated conditions occur before tests and accumulators.
+    clara.rules.engine.NegatedCondition (boolean (#{clara.rules.engine.Test
+                                                    clara.rules.engine.Accumulator} (type cond2)))
+
+    ;; Accumulators are sorted before tests.
+    clara.rules.engine.Accumulator (= clara.rules.engine.Test (type cond2))
+
+    ;; Tests are last.
+    clara.rules.engine.Test false))
+
 (defn- add-to-shredded
   "Adds a production to the shredded rules."
   [shredded-rules production]
-  (let [cond-seqs (expression-to-cond-seqs (:lhs production))
+  (let [unsorted-cond-seqs (expression-to-cond-seqs (:lhs production))
+        cond-seqs (map #(sort condition-comparator %) unsorted-cond-seqs)
         all-conds (apply concat cond-seqs)]
 
     ;; Merge the beta portion of the network to the tree.
