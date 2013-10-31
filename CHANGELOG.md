@@ -1,5 +1,8 @@
 This is a history of changes to clara-rules.
 
+### 0.2.2
+* [Allow should always fire if all variables can be bound](https://github.com/rbrush/clara-rules/issues/22)	
+	
 ### 0.2.1
 A fix release with some internal optimizations, including the following:
 	
