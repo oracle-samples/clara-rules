@@ -573,6 +573,30 @@
             cold-query)))))
 
 
+(deftest test-unconditional-insert
+    (let [rule-output (atom nil)
+        ;; Insert a new fact and ensure it exists.
+        cold-rule (mk-rule [(Temperature (< temperature 20) (== ?t temperature))] 
+                            (insert-unconditional! (->Cold ?t)) )
+
+        cold-query (mk-query [] [(Cold (== ?c temperature))])
+
+        session (-> (mk-rulebase cold-rule cold-query) 
+                    (mk-session)
+                    (insert (->Temperature 10 "MCI"))
+                    (fire-rules))]
+
+      (is (= #{{:?c 10}}
+             (set (query session cold-query))))
+
+      ;; The derived fact should continue to exist after a retraction
+      ;; since we used an unconditional insert.
+      (is (= #{{:?c 10}}
+             (set (query 
+                   (retract session (->Temperature 10 "MCI"))
+                   cold-query))))))
+
+
 (deftest test-insert-and-retract-multi-input 
     (let [rule-output (atom nil)
         ;; Insert a new fact and ensure it exists.

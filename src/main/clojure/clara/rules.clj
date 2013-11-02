@@ -41,20 +41,9 @@
   [session query & params]
   (eng/query session query (apply hash-map params)))
 
-(defn insert! 
-  "To be executed within a rule's right-hand side, this inserts a new fact or facts into working memory.
-
-   Inserted facts are always logical, in that if the support for the insertion is removed, the fact
-   will automatically be retracted. For instance, if there is a rule that inserts a \"Cold\" fact
-   if a \"Temperature\" fact is below a threshold, and the \"Temperature\" fact that triggered
-   the rule is retracted, the \"Cold\" fact the rule inserted is also retracted. This is the underlying
-   truth maintenance facillity.
-
-   This truth maintenance is also transitive: if a rule depends on some criteria to fire, and a 
-   criterion becomes invalid, it may retract facts that invalidate other rules, which in turn
-   retract their conclusions. This way we can ensure that information inferred by rules is always
-   in a consistent state."
-  [& facts]
+(defn- insert-facts! 
+  "Perform the actual fact insertion, optionally making them unconditional."
+  [facts unconditional] 
   (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn]} eng/*current-session*
         {:keys [node token]} eng/*rule-context*]
 
@@ -65,8 +54,36 @@
             root alpha-roots]
 
       ;; Track this insertion in our transient memory so logical retractions will remove it.
-      (mem/add-insertions! transient-memory node token facts)
+      (when (not unconditional)
+        (mem/add-insertions! transient-memory node token facts))
+
       (eng/alpha-activate root fact-group transient-memory transport))))
+
+(defn insert! 
+  "To be executed within a rule's right-hand side, this inserts a new fact or facts into working memory.
+
+   Inserted facts are logical, in that if the support for the insertion is removed, the fact
+   will automatically be retracted. For instance, if there is a rule that inserts a \"Cold\" fact
+   if a \"Temperature\" fact is below a threshold, and the \"Temperature\" fact that triggered
+   the rule is retracted, the \"Cold\" fact the rule inserted is also retracted. This is the underlying
+   truth maintenance facillity.
+
+   This truth maintenance is also transitive: if a rule depends on some criteria to fire, and a 
+   criterion becomes invalid, it may retract facts that invalidate other rules, which in turn
+   retract their conclusions. This way we can ensure that information inferred by rules is always
+   in a consistent state."
+  [& facts]
+  (insert-facts! facts false))
+
+(defn insert-unconditional! 
+  "To be executed within a rule's right-hand side, this inserts a new fact or facts into working memory.
+
+   This differs from insert! in that it is unconditional. The facts inserted will not be retracted
+   even if the rule activation doing the insert becomes false.  Most users should prefer the simple insert!
+   function as described above, but this function is available for use cases that don't wish to use
+   Clara's truth maintenance."
+  [& facts]
+  (insert-facts! facts true))
 
 (defn retract!
   "To be executed within a rule's right-hand side, this retracts a fact or facts from the working memory.
