@@ -31,7 +31,7 @@
   ;; Returns insertions that occurred at the given node.
   (get-insertions [memory node token])
 
-  ;; Returns all pending activations.
+  ;; Returns a map of nodes with pending activations to the activations themselves.
   (get-activations [memory]))
 
 (defprotocol ITransientMemory
@@ -61,6 +61,9 @@
 
   ;; Add activations.
   (add-activations! [memory node tokens])
+
+  ;; Remove the given activations from the working memory.
+  (remove-activations! [memory node tokens])
 
   ;; Clear all activations from the working memory
   (clear-activations! [memory])
@@ -177,12 +180,20 @@
 
   (add-activations! [memory node tokens]
     (assoc-mem! :activations 
-                (concat (:activations content)  
-                        (for [token tokens]
-                          (->Activation node token)))))
+                (assoc 
+                 (:activations content) 
+                  node 
+                  (concat tokens (get-in content [:activations node] [])))))
+
+  (remove-activations! [memory node tokens]
+    (assoc-mem! :activations 
+                (assoc 
+                 (:activations content) 
+                  node 
+                  (remove-first-of-each (set tokens) (get-in content [:activations node] [])))))
 
   (clear-activations! [memory]
-    (assoc-mem! :activations []))
+    (assoc-mem! :activations {}))
 
   (to-persistent! [memory]
 

@@ -90,6 +90,19 @@
          (->Token [(->Temperature -10 "MCI")] {})
          @subzero-rule-output))))
 
+(deftest test-cancelled-activation
+  (let [rule-output (atom nil)
+        cold-rule (mk-rule [[Temperature (< temperature 20)]] 
+                            (reset! rule-output ?__token__) )
+
+        session (-> (mk-rulebase cold-rule)
+                    (mk-session)
+                    (insert (->Temperature 10 "MCI"))
+                    (retract (->Temperature 10 "MCI"))
+                    (fire-rules))]
+
+    (is (= nil @rule-output))))
+
 (deftest test-simple-binding
   (let [rule-output (atom nil)
         cold-rule (mk-rule [(Temperature (< temperature 20) (== ?t temperature))] 

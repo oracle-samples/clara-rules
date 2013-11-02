@@ -213,6 +213,9 @@
     ;; Remove any tokens to avoid future rule execution on retracted items.
     (remove-tokens! memory node join-bindings tokens)
 
+    ;; Remove pending activations triggered by the retracted tokens.
+    (remove-activations! memory node tokens)
+
     ;; Retract any insertions that occurred due to the retracted token.
     (let [insertions (remove-insertions! memory node tokens)]
       (doseq [[cls fact-group] (group-by class insertions) 
@@ -1036,7 +1039,8 @@
        ;; be added during insertions.         
        (clear-activations! transient-memory)
 
-       (doseq [{:keys [node token]} activations]
+       (doseq [[node tokens] activations
+               token tokens]
          (binding [*rule-context* {:token token :node node}]
            ((:rhs node) token)))
          
