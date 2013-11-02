@@ -546,16 +546,23 @@
            containEq? (and (symbol? cmp) (let [cmp-str (name cmp)] (or (= cmp-str "=") (= cmp-str "==")))) 
            a-in-assigment (and containEq? (and (symbol? a) (assigment-set (keyword a))))
            b-in-assigment (and containEq? (and (symbol? b) (assigment-set (keyword b))))]
-       (cond
-        a-in-assigment
-        (if b-in-assigment
-          (cons `(swap! ~'?__bindings__ assoc ~(keyword a) (~'?__bindings__ ~(keyword b))) compiled-rest)
-          (cons `(swap! ~'?__bindings__ assoc ~(keyword a) ~b) compiled-rest))
-        b-in-assigment
-        (cons `(swap! ~'?__bindings__ assoc ~(keyword b) ~a) compiled-rest)
-        ;; not a unification
-        :else
-        (list (list 'if exp (cons 'do compiled-rest) nil))))))  
+      (cond
+       a-in-assigment
+       (if b-in-assigment
+         `((let [a-exist# (contains? (deref ~'?__bindings__) ~(keyword a))
+                 b-exist# (contains? (deref ~'?__bindings__) ~(keyword b))]
+             (when (and (not a-exist#) (not b-exist#)) (throw (Throwable. "Binding undefine variables")))
+             (when (not a-exist#) (swap! ~'?__bindings__ assoc ~(keyword a) ((deref ~'?__bindings__) ~(keyword b))))
+             (when (not b-exist#) (swap! ~'?__bindings__ assoc ~(keyword b) ((deref ~'?__bindings__) ~(keyword a))))
+             (if (or (not a-exist#) (not b-exist#) (= ((deref ~'?__bindings__) ~(keyword a)) ((deref ~'?__bindings__) ~(keyword b))))
+               (do ~@compiled-rest)
+               nil))) 
+         (cons `(swap! ~'?__bindings__ assoc ~(keyword a) ~b) compiled-rest))
+       b-in-assigment
+       (cons `(swap! ~'?__bindings__ assoc ~(keyword b) ~a) compiled-rest)
+         ;; not a unification
+       :else
+       (list (list 'if exp (cons 'do compiled-rest) nil))))))  
 
 (defn- compile-condition 
   "Returns a function definition that can be used in alpha nodes to test the condition."
