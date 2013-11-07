@@ -13,4 +13,11 @@
   :javadoc-opts {:package-names ["clara.rules"]}
   :source-paths ["src/main/clojure"]
   :test-paths ["src/test/clojure"]
-  :java-source-paths ["src/main/java"])
+  :java-source-paths ["src/main/java"]
+  :scm {:name "git"
+        :url "https://github.com/rbrush/clara-rules.git"}
+  :pom-addition [:developers [:developer {:id "rbrush"}
+                              [:name "Ryan Brush"]
+                              [:url "http://www.toomuchcode.org"]]]
+  :deploy-repositories [["snapshots" {:url "https://oss.sonatype.org/content/repositories/snapshots/"
+                                      :creds :gpg}]])
