@@ -889,20 +889,19 @@
            :queries []} 
           productions))
 
+(def ^:dynamic *id-index* nil)
+(def ^:dynamic *children&context->id* nil)
 
 (defn- node-id 
   "Generates a unique id for a node's children and some content identifying the node itself."
   [children content]
-  (->> children
-       (tree-seq 
-        #(or (sequential? %) (map? %) (set? %))
-        (fn [item]
-          (if (map? item)
-            (concat (keys item) (vals item))
-            item)))
-       (filter #(or (string? %) (keyword? %) (symbol? %) (number? %)))
-       (hash)
-       (* (hash content))))
+  (let [children&content [children content]
+        old-id (@*children&context->id* children&content)]
+    (if old-id
+      old-id
+      (let [new-id (swap! *id-index* inc)]
+        (swap! *children&context->id* assoc children&content new-id)
+        new-id))))
 
 (defn- compile-beta-node
   "Compile a given beta node with a condition key and children,
@@ -991,31 +990,33 @@
 
 (defn compile-shredded-rules 
   "Compile shredded rules into a digraph representing the rule base, sharing nodes when possible"
-  [shredded-rules] (let [compiled-betas (for [[condition-key children] (:beta-tree shredded-rules)]
-                                          (compile-beta-node condition-key children [] (:conditions shredded-rules)))
+  [shredded-rules] 
+  (binding [*id-index* (atom -1)
+            *children&context->id* (atom {})]
+    (let [compiled-betas (for [[condition-key children] (:beta-tree shredded-rules)]
+                           (compile-beta-node condition-key children [] (:conditions shredded-rules)))
+          beta-roots (map first compiled-betas)
+          child-maps (map second compiled-betas)
+          beta-node-map (apply merge-with concat child-maps)
+          alpha-nodes (compile-alpha-nodes beta-node-map (:conditions shredded-rules)) 
 
-        beta-roots (map first compiled-betas)
-        child-maps (map second compiled-betas)
-        beta-node-map (apply merge-with concat child-maps)
-        alpha-nodes (compile-alpha-nodes beta-node-map (:conditions shredded-rules)) 
+          ;; Group alpha nodes by their type for use in the rulebase.
+          alpha-map (group-by #(get-in % [:condition :type]) alpha-nodes)
 
-        ;; Group alpha nodes by their type for use in the rulebase.
-        alpha-map (group-by #(get-in % [:condition :type]) alpha-nodes)
+          ;; Get a map of queries to the corresponding nodes.
+          query-map (into {} (for [query-node (:query beta-node-map)]
+                               [(:query query-node) query-node]))
 
-        ;; Get a map of queries to the corresponding nodes.
-        query-map (into {} (for [query-node (:query beta-node-map)]
-                             [(:query query-node) query-node]))
-
-        id-to-node (node-id-map beta-roots)]
-   
-    (map->Rulebase 
+          id-to-node (node-id-map beta-roots)]
+      
+      (map->Rulebase 
        {:alpha-roots alpha-map
         :beta-roots beta-roots
         :productions (:rules shredded-rules)
         :queries (:queries shredded-rules)
         :production-nodes (:production beta-node-map)
         :query-nodes query-map
-        :id-to-node id-to-node})))
+        :id-to-node id-to-node}))))
 
 (defn conj-rulebases 
   "Conjoin two rulebases, returning a new one with the same rules."
