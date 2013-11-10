@@ -1068,4 +1068,45 @@
            (set (query session test-query))))))
 
 
+(deftest test-no-loop 
+  (let [reduce-temp (mk-rule [[?t <- Temperature (> temperature 0) (== ?v temperature)]] 
+                             (do
+                               (retract! ?t)
+                               (insert! (->Temperature (- ?v 1) "MCI")))
+                             {:no-loop true})
+        
+        temp-query (mk-query [] [[Temperature (== ?t temperature)]])
 
+
+        session (-> (mk-rulebase reduce-temp temp-query) 
+                    (mk-session)
+                    (insert (->Temperature 10 "MCI"))
+                    (fire-rules))]
+
+    ;; Only one reduced temperature should be present.
+    (is (= [{:?t 9}] (query session temp-query)))))
+
+
+(defrule reduce-temp-no-loop
+  "Example rule to reduce temperature."
+  {:no-loop true}
+  [?t <- Temperature (== ?v temperature)]
+  =>
+  (do
+    (retract! ?t)
+    (insert-unconditional! (->Temperature (- ?v 1) "MCI"))))
+
+(deftest test-no-temp 
+
+  (let [rule-output (atom nil)
+        ;; Insert a new fact and ensure it exists.
+        
+        temp-query (mk-query [] [[Temperature (== ?t temperature)]])
+
+        session (-> (mk-rulebase reduce-temp-no-loop temp-query) 
+                    (mk-session)
+                    (insert (->Temperature 10 "MCI"))
+                    (fire-rules))]
+
+    ;; Only one reduced temperature should be present.
+    (is (= [{:?t 9}] (query session temp-query)))))

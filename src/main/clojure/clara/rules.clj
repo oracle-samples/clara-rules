@@ -122,10 +122,13 @@
 (defmacro mk-rule
   "Creates a new rule based on a sequence of a conditions and a righthand side. 
    This is only used when creating new rules directly; most users should use defrule instead."
-  [lhs rhs]
-  `(eng/->Production 
-    ~(eng/parse-lhs lhs)
-    ~(eng/compile-action (eng/variables-as-keywords lhs) rhs)))
+  ([lhs rhs]
+   `(mk-rule ~lhs ~rhs {}))
+  ([lhs rhs properties]
+     `(eng/->Production 
+       ~(eng/parse-lhs lhs)
+       ~(eng/compile-action (eng/variables-as-keywords lhs) rhs)
+       ~properties)))
 
 (defn accumulate 
   "Creates a new accumulator based on the given properties:
@@ -251,10 +254,12 @@
 
   [name & body]
   (let [doc (if (string? (first body)) (first body) nil)
-        definition (if doc (rest body) body)
+        body (if doc (rest body) body)
+        properties (if (map? (first body)) (first body) nil)
+        definition (if properties (rest body) body)
         {:keys [lhs rhs]} (parse-rule-body definition)]
     `(def ~(vary-meta name assoc :rule true :doc doc)
-       (mk-rule ~lhs ~rhs))))
+       (mk-rule ~lhs ~rhs ~properties))))
 
 (defmacro defquery 
   "Defines a query and stored it in the given var. For instance, a simple query that accepts no

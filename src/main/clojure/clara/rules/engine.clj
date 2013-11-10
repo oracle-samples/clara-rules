@@ -74,7 +74,7 @@
   (alpha-condition [condition] nil))
 
 ;; Record defining a production, where lhs is the left-hand side containing constraints, and rhs is right-hand side.
-(defrecord Production [lhs rhs])
+(defrecord Production [lhs rhs properties])
 
 ;; Record defining a query given the parameters and expected bindings used in the query.
 (defrecord Query [params lhs binding-keys])
@@ -197,17 +197,29 @@
   (alpha-activate [node facts memory transport])
   (alpha-retract [node facts memory transport]))
 
+
+;; Active session during rule execution.
+(def ^:dynamic *current-session* nil)
+
+;; The token that triggered a rule to fire.
+(def ^:dynamic *rule-context* nil)
+
 ;; Record for the production node in the Rete network.
 (defrecord ProductionNode [id production rhs]
   ILeftActivate  
   (left-activate [node join-bindings tokens memory transport]
+    
+    ;; Fire the rule if it's not a no-loop rule, or if the rule is not
+    ;; active in the current context.
+    (when (or (not (get-in production [:properties :no-loop]))
+              (not (= production (get-in *rule-context* [:node :production]))))
 
-    ;; Preserve tokens that fired for the rule so we
-    ;; can perform retractions if they become false.
-    (add-tokens! memory node join-bindings tokens)
+      ;; Preserve tokens that fired for the rule so we
+      ;; can perform retractions if they become false.
+      (add-tokens! memory node join-bindings tokens)
 
-    ;; The production matched, so add the tokens to the activation list.
-    (add-activations! memory node tokens)) 
+      ;; The production matched, so add the tokens to the activation list.
+      (add-activations! memory node tokens))) 
 
   (left-retract [node join-bindings tokens memory transport] 
     ;; Remove any tokens to avoid future rule execution on retracted items.
@@ -1024,12 +1036,6 @@
               (:productions base1) (:productions base2))
       (shred-rules)
       (compile-shredded-rules)))
-
-;; Active session during rule execution.
-(def ^:dynamic *current-session* nil)
-
-;; The token that triggered a rule to fire.
-(def ^:dynamic *rule-context* nil)
 
 (defn fire-rules* 
    "Fire rules for the given nodes."
