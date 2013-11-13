@@ -91,11 +91,6 @@
 
 ;;; Transient local memory implementation. Typically only persistent memory will be visible externally.
 
-;;; Internal helper macro to manage our transient memory.
-;;; We must update the content on each call to correctly use the underlying transient map.
-(defmacro assoc-mem! [k v]
-  `(set! ~'content (assoc! ~'content ~k ~v)))
-
 (deftype TransientLocalMemory [rulebase ^:unsynchronized-mutable content]
   IMemoryReader
   (get-rulebase [memory] rulebase)
@@ -122,7 +117,7 @@
   (add-elements! [memory node join-bindings elements]
     (let [key [:alpha-memory (:id node) join-bindings]
           current-facts (get content key [])]
-      (assoc-mem! key (concat current-facts elements)) ))
+      (set! content (assoc! content key (concat current-facts elements)))))
 
   (remove-elements! [memory node join-bindings elements]
     (let [key [:alpha-memory (:id node) join-bindings]
@@ -131,7 +126,7 @@
           filtered-facts (remove-first-of-each element-set current-facts)]
 
       ;; Update the memory with the changed facts.
-      (assoc-mem! key filtered-facts)
+      (set! content (assoc! content key filtered-facts))
 
       ;; return the removed elements.
       (s/intersection element-set (set current-facts))))
@@ -139,7 +134,7 @@
   (add-tokens! [memory node join-bindings tokens]
     (let [key [:beta-memory (:id node) join-bindings]
           current-tokens (get content key [])]
-      (assoc-mem! key (concat current-tokens tokens))))
+		(set! content (assoc! content key (concat current-tokens tokens)))))
 
   (remove-tokens! [memory node join-bindings tokens]
     (let [key [:beta-memory (:id node) join-bindings]
@@ -147,7 +142,7 @@
           token-set (set tokens)
           filtered-tokens (remove-first-of-each token-set current-tokens)]
 
-      (assoc-mem! key filtered-tokens)
+      (set! content (assoc! content key filtered-tokens))
       (s/intersection token-set (set current-tokens))))
 
   (add-accum-reduced! [memory node join-bindings accum-result fact-bindings]
@@ -155,12 +150,12 @@
           updated-bindings (assoc (get content key {})
                              fact-bindings
                              accum-result)]
-      (assoc-mem! key updated-bindings)))
+      (set! content (assoc! content key updated-bindings))))
   
   (add-insertions! [memory node token facts]
     (let [key [:production-memory (:id node) token]
           current-facts (get content key [])]
-      (assoc-mem! key (concat current-facts facts))))
+      (set! content (assoc! content key (concat current-facts facts)))))
 
   (remove-insertions! [memory node tokens]
 
@@ -174,26 +169,26 @@
       ;; Clear the keys.
       (doseq [token tokens
               :let [key [:production-memory (:id node) token]]]
-        (assoc-mem! key []))
+        (set! content (assoc! content  key [])))
 
       results))
 
   (add-activations! [memory node tokens]
-    (assoc-mem! :activations 
+    (set! content (assoc! content :activations 
                 (assoc 
                  (:activations content) 
                   node 
-                  (concat tokens (get-in content [:activations node] [])))))
+                  (concat tokens (get-in content [:activations node] []))))))
 
   (remove-activations! [memory node tokens]
-    (assoc-mem! :activations 
+    (set! content (assoc! content :activations 
                 (assoc 
                  (:activations content) 
                   node 
-                  (remove-first-of-each (set tokens) (get-in content [:activations node] [])))))
+                  (remove-first-of-each (set tokens) (get-in content [:activations node] []))))))
 
   (clear-activations! [memory]
-    (assoc-mem! :activations {}))
+    (set! content (assoc! content  :activations {})))
 
   (to-persistent! [memory]
 
