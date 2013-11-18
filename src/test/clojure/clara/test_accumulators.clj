@@ -3,7 +3,7 @@
         clara.rules
         clojure.pprint
         [clara.rules.engine :only [->Token ast-to-dnf load-rules *trace-transport* 
-                                   description print-memory]]
+                                   description]]
         clara.rules.testfacts)
   (:require [clara.sample-ruleset :as sample]
             [clojure.set :as s]

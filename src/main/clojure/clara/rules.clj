@@ -1,7 +1,8 @@
 (ns clara.rules
   "Forward-chaining rules for Clojure. The primary API is in this namespace"
   (:require [clara.rules.engine :as eng]
-            [clara.rules.memory :as mem])
+            [clara.rules.memory :as mem]
+            [clara.rules.compiler :as com])
   (import [clara.rules.engine LocalTransport LocalSession]))
 
 (defn mk-rulebase 
@@ -116,8 +117,8 @@
   ;; TODO: validate params exist as keyworks in the query.
   `(eng/->Query
     ~params
-    ~(eng/parse-lhs lhs)
-    ~(eng/variables-as-keywords lhs)))
+    ~(com/parse-lhs lhs)
+    ~(com/variables-as-keywords lhs)))
 
 (defmacro mk-rule
   "Creates a new rule based on a sequence of a conditions and a righthand side. 
@@ -126,8 +127,8 @@
    `(mk-rule ~lhs ~rhs {}))
   ([lhs rhs properties]
      `(eng/->Production 
-       ~(eng/parse-lhs lhs)
-       ~(eng/compile-action (eng/variables-as-keywords lhs) rhs)
+       ~(com/parse-lhs lhs)
+       ~(com/compile-action (com/variables-as-keywords lhs) rhs)
        ~properties)))
 
 (defn accumulate 

@@ -2,7 +2,7 @@
   (:use clojure.test
         clara.rules
         [clara.rules.engine :only [->Token ast-to-dnf load-rules *trace-transport* 
-                                   description print-memory]]
+                                   description]]
         clara.rules.testfacts)
   (:require [clara.sample-ruleset :as sample]
             [clara.other-ruleset :as other]
