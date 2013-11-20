@@ -186,3 +186,32 @@
    (if (operators (first lhs))
      lhs
      (cons 'and lhs)))) ; "and" is implied if a list of constraints are given without an operator.
+
+(defn separator?
+  "True iff `x` is a rule body separator symbol."
+  [x] (and (symbol? x) (= "=>" (name x))))
+
+(defn parse-rule-body [[head & more]]
+  (cond
+   ;; Detect the separator for the right-hand side.
+   (separator? head) {:lhs (list) :rhs (first more)}
+
+   ;; Handle a normal left-hand side element.
+   (sequential? head) (update-in 
+                       (parse-rule-body more)
+                       [:lhs] conj head)
+
+   ;; Handle the <- style assignment
+   (symbol? head) (update-in 
+                   (parse-rule-body (drop 2 more))
+                   [:lhs] conj (conj head (take 2 more)))))
+
+(defn parse-query-body [[head & more]]
+  (cond
+   (nil? head) (list)
+
+   ;; Handle a normal left-hand side element.
+   (sequential? head) (conj (parse-query-body more) head)
+
+   ;; Handle the <- style assignment
+   (symbol? head) (conj (parse-query-body (drop 2 more)) (conj head (take 2 more)))))

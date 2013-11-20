@@ -8,7 +8,8 @@
                  [org.clojure/clojurescript "0.0-2030"]]
   :plugins [[codox "0.6.4"]
             [lein-javadoc "0.1.1"]
-            [lein-cljsbuild "1.0.0-alpha2"]]  
+            [lein-cljsbuild "1.0.0-alpha2"]
+            [com.cemerick/clojurescript.test "0.2.1"]]  
   :codox {:exclude [clara.other-ruleset clara.sample-ruleset clara.test-java
                     clara.test-rules clara.rules.memory clara.test-accumulators
                     clara.rules.testfacts clara.rules.java clara.rules.engine]}
@@ -19,8 +20,17 @@
   :cljsbuild {:builds [{:source-paths ["src/main/clojurescript"]
                         :compiler {:pretty-print true
                                    :output-to "target/js/clara.js"
-                                   :optimizations :whitespace}}]
-              :crossovers [clara.rules.memory clara.rules.engine clara.rules.accumulators]
+                                   :optimizations :whitespace}}
+
+                       ;; Build for unit tests.
+                       {:source-paths ["src/main/clojurescript" "src/test/clojurescript"]
+                        :compiler {:output-to "target/cljs/testable.js"
+                                   :optimizations :whitespace
+                                   :pretty-print true}}]
+              :test-commands {"unit-tests" ["phantomjs" :runner
+                                            "window.literal_js_was_evaluated=true"
+                                            "target/cljs/testable.js"]}
+              :crossovers [clara.rules.memory clara.rules.engine clara.rules.accumulators clara.rules.testfacts]
               :crossover-path "src/main/clojurescript"
               :crassover-jar true}
   :scm {:name "git"
