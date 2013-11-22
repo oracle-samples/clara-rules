@@ -117,7 +117,11 @@
 (defrecord AccumulatorDef [initial-value reduce-fn combine-fn convert-return-fn])
 
 (defn- construct-condition [condition result-binding]
-  (let [type (if (symbol? (first condition)) (resolve (first condition)) (first condition))
+  (let [type (if (symbol? (first condition)) 
+               (if-let [resolved (resolve (first condition))] 
+                 resolved
+                 (first condition)) ; For ClojureScript compatibility, we keep the symbol if we can't resolve it.
+               (first condition))
         ;; Args is an optional vector of arguments following the type.
         args (if (vector? (second condition)) (second condition) nil)
         constraints (vec (if args (drop 2 condition) (rest condition)))

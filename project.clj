@@ -33,6 +33,10 @@
               :crossovers [clara.rules.memory clara.rules.engine clara.rules.accumulators clara.rules.testfacts]
               :crossover-path "src/main/clojurescript"
               :crassover-jar true}
+
+  ;; Austin for the ClojureScript REPL.
+  :profiles {:dev {:plugins [[com.cemerick/austin "0.1.3"]]}}
+
   :scm {:name "git"
         :url "https://github.com/rbrush/clara-rules.git"}
   :pom-addition [:developers [:developer {:id "rbrush"}
