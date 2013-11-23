@@ -31,7 +31,7 @@
                                             "window.literal_js_was_evaluated=true"
                                             "target/cljs/testable.js"]}
               :crossovers [clara.rules.memory clara.rules.engine clara.rules.accumulators clara.rules.testfacts]
-              :crossover-path "src/main/clojurescript"
+              :crossover-path "target/crossovers/clojurescript"
               :crassover-jar true}
 
   ;; Austin for the ClojureScript REPL.
