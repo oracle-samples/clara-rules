@@ -46,23 +46,18 @@
            @rule-output)))))
 
 
-(comment
-  ;; TODO: Automatic field support not yet available in ClojurScript Clara  
+(deftest test-temperature
+  
+  (binding [*trace-transport* true]
+    (let [rule-output (atom nil)
+          cold-rule (mk-rule [[Temperature (< temperature 20)]]
+                             (reset! rule-output ?__token__) )
 
-  (deftest test-temperature
-    
-    (binding [*trace-transport* true]
-      (let [rule-output (atom nil)
-            cold-rule (mk-rule [[Temperature (< temperature 20)]]
-                               (reset! rule-output ?__token__) )
+          session (-> (mk-rulebase cold-rule)
+                      (mk-session)
+                      (insert (->Temperature 10 "MCI"))
+                      (fire-rules))]
 
-            session (-> (mk-rulebase cold-rule)
-                        (mk-session)
-                        (insert (->Temperature 10 "MCI"))
-                        (fire-rules))]
-
-        (println cold-rule)
-
-        (is (= 
-             (->Token [(->Temperature 10 "MCI")] {})
-             @rule-output))))))
+      (is (= 
+           (->Token [(->Temperature 10 "MCI")] {})
+           @rule-output)))))

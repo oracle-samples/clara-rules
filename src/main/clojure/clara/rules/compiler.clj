@@ -2,7 +2,8 @@
   "The Clara rules compiler, translating raw data structures into compiled versions and functions. 
    Most users should use only the clara.rules namespace."
   (:use clara.rules.memory
-        clojure.pprint)
+        clojure.pprint
+        clojure.java.io)
   (:require [clojure.reflect :as reflect]
             [clojure.core.reducers :as r]
             [clojure.set :as s]
@@ -14,6 +15,64 @@
   Clojure dynamic class loader, which prevents reflecting on
   `defrecords`.  Work around by supplying our own which does."
   (clojure.reflect.JavaReflector. (clojure.lang.RT/baseLoader)))
+
+;; This technique borrowed from Prismatic's schema library.
+(defn compiling-cljs?
+  "Return true if we are currently generating cljs code.  Useful because cljx does not
+         provide a hook for conditional macro expansion."
+  []
+  (boolean
+   (when-let [n (find-ns 'cljs.analyzer)]
+     (when-let [v (ns-resolve n '*cljs-file*)]
+       @v))))
+
+(defn get-namespace-info 
+  "Get metadata about the given namespace."
+  [namespace]
+  (when-let [n (and (compiling-cljs?) (find-ns 'cljs.env))]
+    (when-let [v (ns-resolve n '*compiler*)]
+      (get-in @@v [ :cljs.analyzer/namespaces namespace]))))
+
+(defn cljs-ns
+  "Returns the ClojureScript namespace being compiled during Clojurescript compilation."
+  []
+  (if (compiling-cljs?)
+    (-> 'cljs.analyzer (find-ns) (ns-resolve '*cljs-ns*) deref)
+    nil))
+
+(defn resolve-cljs-sym 
+  "Resolves a ClojureScript symbol in the given namespace."
+  [ns-sym sym]
+  (let [ns-info (get-namespace-info ns-sym)]
+    (if (namespace sym)
+
+      ;; Symbol qualified by a namespace, so look it up in the requires info.
+      (if-let [source-ns (get-in ns-info [:requires (namespace sym)])]
+        (symbol (name source-ns) (name sym))
+        (throw (RuntimeException. (str "Unable to resolve symbol: " sym " in namespace " ns-sym))))
+      
+      ;; Symbol is unqualified, so check in the uses block.
+      (if-let [source-ns (get-in ns-info [:uses sym])]
+        (symbol (name source-ns) (name sym))
+
+        ;; Symbol not found in eiher block, so assume it is local.
+        (symbol (name ns-sym) (name sym))))))
+
+(defn- get-cljs-accessors 
+  "Returns accessors for ClojureScript. WARNING: this touches 
+  ClojureScript implementation details that may change."
+  [sym]
+  (let [resolved (resolve-cljs-sym (cljs-ns) sym)
+        constructor (symbol (str "->" (name resolved)))
+        namespace-info (get-namespace-info (symbol (namespace resolved)))
+        constructor-info (get-in namespace-info [:defs constructor])]
+    
+    (if constructor-info
+      (into {}
+            (for [{field :name} (first (:method-params constructor-info))]
+              [field (keyword (name field))]))
+      [])))
+
 
 (defn- get-field-accessors
   "Returns a map of field name to a symbol representing the function used to access it."
@@ -38,6 +97,16 @@
 
           [(symbol (string/replace (.. property (getName)) #"_" "-")) ; Replace underscore with idiomatic dash.
            (symbol (str "." (.. property (getReadMethod) (getName))))])))
+
+(defn get-fields
+  "Returns a map of field name to a symbol representing the function used to access it."
+  [type]
+  (cond
+   (and (compiling-cljs?) (symbol? type)) (get-cljs-accessors type)
+   (isa? type clojure.lang.IRecord) (get-field-accessors type)
+   (class? type) (get-bean-accessors type) ; Treat unrecognized classes as beans.
+   :default []))  ; Other types have no accessors.
+
 
 (defn- compile-constraints [exp-seq assigment-set]
   (if (empty? exp-seq)
@@ -69,10 +138,7 @@
   "Returns a function definition that can be used in alpha nodes to test the condition."
   [type destructured-fact constraints binding-keys result-binding]
   (let [;; Get a map of fieldnames to access function symbols.
-        accessors (cond 
-                   (isa? type clojure.lang.IRecord) (get-field-accessors type)
-                   (class? type) (get-bean-accessors type) ; Treat unrecognized classes as beans.
-                   :default []) ; Other types have no accessors.
+        accessors (get-fields type)
 
         ;; The assignments should use the argument destructuring if provided, or default to accessors otherwise.
         assignments (if destructured-fact
