@@ -4,6 +4,13 @@
             [clara.rules.memory :as mem])
   (:require-macros [clara.rules.compiler :as com]))
 
+;; Collection of all rules and queries, used in place
+;; of reified vars and namespaces in ClojureScript.
+(def registered-rules (atom {}))
+
+(defn register-rule! [rule-ns rule]
+  (swap! registered-rules update-in [rule-ns] (fnil conj #{}) rule))
+
 (defn mk-rulebase 
   "Creates a rulebase with the given productions. This is only used when generating rulebases dynamically."
   [& productions]
@@ -128,10 +135,22 @@
      }
     args)))
 
+;; A symbol is a rulesource that simply looks up the rules under that symbol's namespace
+;; in the registry.
+(extend-type cljs.core.Symbol
+  eng/IRuleSource
+  (load-rules [sym]
+    ;; Find the rules and queries in the namespace, shred them,
+    ;; and compile them into a rule base.
+    (-> (get @registered-rules sym)
+        (eng/shred-rules)
+        (eng/compile-shredded-rules))))
+
+
 ;; Cache of sessions for fast reloading.
 (def ^:private session-cache (atom {}))
 
-(defn mk-session
+(defn mk-session*
    "Creates a new session using the given rule sources. Thew resulting session
    is immutable, and can be used with insert, retract, fire-rules, and query functions.
 

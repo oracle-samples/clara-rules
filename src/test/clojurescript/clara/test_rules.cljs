@@ -1,8 +1,8 @@
 (ns clara.test-rules
   (:require-macros [cemerick.cljs.test :refer (is deftest with-test run-tests testing test-var)]
-                   [clara.rules :refer [mk-rule]])
+                   [clara.macros :refer [mk-rule defrule mk-session]])
   (:require [cemerick.cljs.test :as t]
-            [clara.rules :refer [mk-rulebase mk-session insert fire-rules]]
+            [clara.rules :refer [mk-rulebase insert fire-rules registered-rules]]
             [clara.rules.engine :refer [->Token ast-to-dnf load-rules *trace-transport*  description]]
 
             ;; TODO: need to fix typing issues in ClojureScript port before using records.
@@ -31,7 +31,7 @@
 
 (deftest test-temperature-destructured
   
-  (binding [*trace-transport* true]
+  (binding [*trace-transport* false]
     (let [rule-output (atom nil)
           cold-rule (mk-rule [[Temperature [{temperature :temperature}] (< temperature 20)]]
                              (reset! rule-output ?__token__) )
@@ -48,13 +48,32 @@
 
 (deftest test-temperature
   
-  (binding [*trace-transport* true]
+  (binding [*trace-transport* false]
     (let [rule-output (atom nil)
           cold-rule (mk-rule [[Temperature (< temperature 20)]]
                              (reset! rule-output ?__token__) )
 
           session (-> (mk-rulebase cold-rule)
                       (mk-session)
+                      (insert (->Temperature 10 "MCI"))
+                      (fire-rules))]
+
+      (is (= 
+           (->Token [(->Temperature 10 "MCI")] {})
+           @rule-output)))))
+
+(def rule-output (atom nil))
+
+(defrule cold-rule
+  "Test rule."
+  [Temperature (< temperature 20)]
+  =>
+  (reset! rule-output ?__token__))
+
+(deftest test-temperature-def
+  
+  (binding [*trace-transport* true]
+    (let [session (-> (mk-session)
                       (insert (->Temperature 10 "MCI"))
                       (fire-rules))]
 

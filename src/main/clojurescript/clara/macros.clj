@@ -1,8 +1,9 @@
-(ns clara.rules
+(ns clara.macros
   "Forward-chaining rules for Clojure. The primary API is in this namespace"
   (:require [clara.rules.engine :as eng]
             [clara.rules.memory :as mem]
-            [clara.rules.compiler :as com])
+            [clara.rules.compiler :as com]
+            [cljs.analyzer :as ana])
   (import [clara.rules.engine LocalTransport LocalSession]))
 
 (defmacro mk-query
@@ -26,6 +27,24 @@
        ~(com/compile-action (com/variables-as-keywords lhs) rhs)
        ~properties)))
 
+(defmacro mk-session
+   "Creates a new session using the given rule sources. Thew resulting session
+   is immutable, and can be used with insert, retract, fire-rules, and query functions.
+
+   If no sources are provided, it will attempt to load rules from the caller's namespace.
+
+   The caller may also specify keyword-style options at the end of the parameters. Currently two
+   options are supported:
+
+   * :fact-type-fn, which must have a value of a function used to determine the logical type of a given 
+     cache. Defaults to Clojures type function.
+   * :cache, indicating whether the session creation can be cached, effectively memoizing mk-session. 
+     Defaults to true. Callers may wish to set this to false when needing to dynamically reload rules."
+  [& args]
+  (if (and (seq args) (not (keyword? (first args))))
+    `(apply clara.rules/mk-session* ~(vec args)) ; At least one namespace given, so use it.
+    `(apply clara.rules/mk-session* (concat ['~ana/*cljs-ns*] ~(vec args)))))
+
 (defn add-productions
   "Returns a new rulebase identical to the given one, but with the additional
    rules or queries. This is only used when dynamically adding rules to a rulebase."
@@ -34,22 +53,7 @@
       (eng/shred-rules)
       (eng/compile-shredded-rules)))
 
-;; Treate a symbol as a rule source, loading all items in its namespace.
-(comment ;; FIXME -- use global registry!
-  (extend-type clojure.lang.Symbol
-    eng/IRuleSource
-    (load-rules [sym]
-
-      ;; Find the rules and queries in the namespace, shred them,
-      ;; and compile them into a rule base.
-      (->> (ns-interns sym)
-           (vals) ; Get the references in the namespace.
-           (filter #(or (:rule (meta %)) (:query (meta %)))) ; Filter down to rules and queries.
-           (map deref) ; Get the rules from the symbols.
-           (eng/shred-rules) ; Shred the rules.
-           (eng/compile-shredded-rules))))) ; Compile into a knowledge base.
-
-(defmacro defrule 
+(defmacro defrule
   "Defines a rule and stores it in the given var. For instance, a simple rule would look like this:
 
 (defrule hvac-approval
@@ -69,8 +73,9 @@
         properties (if (map? (first body)) (first body) nil)
         definition (if properties (rest body) body)
         {:keys [lhs rhs]} (com/parse-rule-body definition)]
-    `(def ~(vary-meta name assoc :rule true :doc doc)
-       (mk-rule ~lhs ~rhs ~properties))))
+    `(let [rule# (mk-rule ~lhs ~rhs ~properties)]
+       (clara.rules/register-rule! '~ana/*cljs-ns* rule#)
+       (def ~(vary-meta name assoc :rule true :doc doc) rule#))))
 
 (defmacro defquery 
   "Defines a query and stored it in the given var. For instance, a simple query that accepts no
@@ -87,6 +92,7 @@
   (let [doc (if (string? (first body)) (first body) nil)
         binding (if doc (second body) (first body))
         definition (if doc (drop 2 body) (rest body) )]
-    `(def ~(vary-meta name assoc :query true :doc doc) 
-       (mk-query ~binding ~(com/parse-query-body definition)))))
+    `(let [query# (mk-query ~binding ~(com/parse-query-body definition))]
+       (clara.rules/register-rule! '~ana/*cljs-ns* query#)  
+       (def ~(vary-meta name assoc :query true :doc doc) query#))))
 
