@@ -34,7 +34,7 @@
                                             "target/cljs/testable.js"]}
               :crossovers [clara.rules.memory clara.rules.engine clara.rules.accumulators clara.rules.testfacts]
               :crossover-path "target/crossovers/clojurescript"
-              :crassover-jar true}
+              :crossover-jar true}
 
   ;; Austin for the ClojureScript REPL.
   :profiles {:dev {:plugins [[com.cemerick/austin "0.1.3"]]}}
