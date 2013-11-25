@@ -37,9 +37,8 @@
 
     (fire-rules session)
 
-    (is (= 
-         (->Token [(->Temperature 10 "MCI") (->WindSpeed 30 "MCI")] {})
-         @rule-output))))
+    (is (= #{(->Temperature 10 "MCI") (->WindSpeed 30 "MCI")}        
+         (set (:facts @rule-output))))))
 
 (deftest test-multiple-simple-rules
 
@@ -196,8 +195,8 @@
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI")))]
 
-    (is (= #{{:?t #clara.rules.testfacts.Temperature{:temperature 15 :location "MCI"}} 
-             {:?t #clara.rules.testfacts.Temperature{:temperature 10 :location "MCI"}}}
+    (is (= #{{:?t (->Temperature 15 "MCI")} 
+             {:?t (->Temperature 10 "MCI")}}
            (set (query session cold-query))))))
 
 (deftest test-condition-and-value-binding
@@ -209,8 +208,8 @@
                     (insert (->Temperature 10 "MCI")))]
 
     ;; Ensure the condition's fact and values are all bound.
-    (is (= #{{:?v 10, :?t #clara.rules.testfacts.Temperature{:temperature 10 :location "MCI"}} 
-             {:?v 15, :?t #clara.rules.testfacts.Temperature{:temperature 15 :location "MCI"}}}
+    (is (= #{{:?v 10, :?t (->Temperature 10 "MCI")} 
+             {:?v 15, :?t (->Temperature 15 "MCI")}}
            (set (query session cold-query))))))
 
 (deftest test-simple-accumulator

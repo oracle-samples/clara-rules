@@ -45,14 +45,6 @@
     `(apply clara.rules/mk-session* ~(vec args)) ; At least one namespace given, so use it.
     `(apply clara.rules/mk-session* (concat ['~ana/*cljs-ns*] ~(vec args)))))
 
-(defn add-productions
-  "Returns a new rulebase identical to the given one, but with the additional
-   rules or queries. This is only used when dynamically adding rules to a rulebase."
-  [rulebase & productions]
-  (-> (concat (:productions rulebase) (:queries rulebase) productions)
-      (eng/shred-rules)
-      (eng/compile-shredded-rules)))
-
 (defmacro defrule
   "Defines a rule and stores it in the given var. For instance, a simple rule would look like this:
 

@@ -135,6 +135,15 @@
      }
     args)))
 
+
+(defn add-productions
+	"Returns a new rulebase identical to the given one, but with the additional
+	  rules or queries. This is only used when dynamically adding rules to a rulebase."
+  [rulebase & productions]
+   (-> (concat (:productions rulebase) (:queries rulebase) productions)
+	   (eng/shred-rules)
+	   (eng/compile-shredded-rules)))
+
 ;; A symbol is a rulesource that simply looks up the rules under that symbol's namespace
 ;; in the registry.
 (extend-type cljs.core.Symbol
