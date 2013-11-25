@@ -17,7 +17,9 @@
   :source-paths ["src/main/clojure"]
   :test-paths ["src/test/clojure"]
   :java-source-paths ["src/main/java"]
+  :hooks [leiningen.cljsbuild]
   :cljsbuild {:builds [{:source-paths ["src/main/clojurescript"]
+                        :jar true
                         :compiler {:pretty-print true
                                    :output-to "target/js/clara.js"
                                    :optimizations :whitespace}}
