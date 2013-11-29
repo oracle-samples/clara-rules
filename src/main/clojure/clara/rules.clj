@@ -161,47 +161,6 @@
 ;; Cache of sessions for fast reloading.
 (def ^:private session-cache (atom {}))
 
-(defn mk-session* 
-  "Creates a new session using the given rule source. Thew resulting session
-   is immutable, and can be used with insert, retract, fire-rules, and query functions."
-  ([source & more]
-
-     ;; If an equivalent session has been created, simply reuse it.
-     ;; This essentially memoizes this function unless the caller disables caching.
-     (if-let [session (get @session-cache [source more])]
-       session
-
-       ;; Merge all of the sources together and create a session.
-       (let [rulebase (eng/load-rules source)
-             transport (LocalTransport.)
-             other-sources (take-while (complement keyword?) more)
-             options (apply hash-map (drop-while (complement keyword?) more))
-
-             ;; Merge other rule sessions into one.
-             merged-rules (reduce           
-                           (fn [rulebase other-source]
-                             (eng/conj-rulebases rulebase (eng/load-rules other-source)))
-                           (eng/load-rules source)
-                           other-sources)
-
-             ;; The fact-type uses Clojure's type function unless overridden.
-             fact-type-fn (get options :fact-type-fn type)
-
-             ;; Create a function that groups a sequence of facts by the collection
-             ;; of alpha nodes they target.
-             ;; We cache an alpha-map for facts of a given type to avoid computing
-             ;; them for every fact entered.
-             get-alphas-fn (eng/create-get-alphas-fn fact-type-fn merged-rules)
-
-             session (LocalSession. merged-rules (eng/local-memory merged-rules transport) transport get-alphas-fn)]
-
-         ;; Cache the session unless instructed not to.
-         (when (get options :cache true)
-           (swap! session-cache assoc [source more] session))
-
-         ;; Return the session.
-         session))))
-
 (defmacro mk-session
    "Creates a new session using the given rule sources. Thew resulting session
    is immutable, and can be used with insert, retract, fire-rules, and query functions.
@@ -217,8 +176,8 @@
      Defaults to true. Callers may wish to set this to false when needing to dynamically reload rules."
   [& args]
   (if (and (seq args) (not (keyword? (first args))))
-    `(apply mk-session* ~(vec args)) ; At least one namespace given, so use it.
-    `(apply mk-session* (concat [(ns-name *ns*)] ~(vec args))))) ; No namespace given, so use the current one.
+    `(apply eng/mk-session ~(vec args)) ; At least one namespace given, so use it.
+    `(apply eng/mk-session (concat [(ns-name *ns*)] ~(vec args))))) ; No namespace given, so use the current one.
 
 ;; Treate a symbol as a rule source, loading all items in its namespace.
 (extend-type clojure.lang.Symbol

@@ -42,8 +42,8 @@
      Defaults to true. Callers may wish to set this to false when needing to dynamically reload rules."
   [& args]
   (if (and (seq args) (not (keyword? (first args))))
-    `(apply clara.rules/mk-session* ~(vec args)) ; At least one namespace given, so use it.
-    `(apply clara.rules/mk-session* (concat ['~ana/*cljs-ns*] ~(vec args)))))
+    `(apply clara.rules.engine/mk-session ~(vec args)) ; At least one namespace given, so use it.
+    `(apply clara.rules.engine/mk-session (concat ['~ana/*cljs-ns*] ~(vec args)))))
 
 (defmacro defrule
   "Defines a rule and stores it in the given var. For instance, a simple rule would look like this:

@@ -47,5 +47,5 @@
 
 (defn mk-java-session [rulesets]
   (JavaWorkingMemory. 
-   (apply clara/mk-session* (map symbol rulesets))))
+   (apply eng/mk-session (map symbol rulesets))))
 

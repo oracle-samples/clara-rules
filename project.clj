@@ -12,7 +12,8 @@
             [com.cemerick/clojurescript.test "0.2.1"]]  
   :codox {:exclude [clara.other-ruleset clara.sample-ruleset clara.test-java
                     clara.test-rules clara.rules.memory clara.test-accumulators
-                    clara.rules.testfacts clara.rules.java clara.rules.engine]}
+                    clara.rules.testfacts clara.rules.java clara.rules.engine
+                    clara.rules.compiler clara.rules.platform]}
   :javadoc-opts {:package-names ["clara.rules"]}
   :source-paths ["src/main/clojure"]
   :test-paths ["src/test/clojure"]

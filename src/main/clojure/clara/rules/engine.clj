@@ -959,3 +959,47 @@
     (doseq [beta-node (:beta-roots rulebase)]
       (left-activate beta-node {} [empty-token] memory transport))
     (mem/to-persistent! memory)))
+
+;; Cache of sessions for fast reloading.
+(def ^:private session-cache (atom {}))
+
+(defn mk-session
+  "Creates a new session using the given rule source. Thew resulting session
+   is immutable, and can be used with insert, retract, fire-rules, and query functions."
+  ([source & more]
+
+     ;; If an equivalent session has been created, simply reuse it.
+     ;; This essentially memoizes this function unless the caller disables caching.
+     (if-let [session (get @session-cache [source more])]
+       session
+
+       ;; Merge all of the sources together and create a session.
+       (let [rulebase (load-rules source)
+             transport (LocalTransport.)
+             other-sources (take-while (complement keyword?) more)
+             options (apply hash-map (drop-while (complement keyword?) more))
+
+             ;; Merge other rule sessions into one.
+             merged-rules (reduce           
+                           (fn [rulebase other-source]
+                             (conj-rulebases rulebase (load-rules other-source)))
+                           (load-rules source)
+                           other-sources)
+
+             ;; The fact-type uses Clojure's type function unless overridden.
+             fact-type-fn (get options :fact-type-fn type)
+
+             ;; Create a function that groups a sequence of facts by the collection
+             ;; of alpha nodes they target.
+             ;; We cache an alpha-map for facts of a given type to avoid computing
+             ;; them for every fact entered.
+             get-alphas-fn (create-get-alphas-fn fact-type-fn merged-rules)
+
+             session (LocalSession. merged-rules (local-memory merged-rules transport) transport get-alphas-fn)]
+
+         ;; Cache the session unless instructed not to.
+         (when (get options :cache true)
+           (swap! session-cache assoc [source more] session))
+
+         ;; Return the session.
+         session))))
