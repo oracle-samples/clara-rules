@@ -1,5 +1,10 @@
 This is a history of changes to clara-rules.
 
+### 0.3.0
+* [ClojureScript support](https://github.com/rbrush/clara-rules/issues/4)
+* [No-loop option for rules](https://github.com/rbrush/clara-rules/issues/23)
+* [Improved variable binding](https://github.com/rbrush/clara-rules/pull/26)	
+	
 ### 0.2.2
 * [Accumulators should always fire if all variables can be bound](https://github.com/rbrush/clara-rules/issues/22)	
 	
