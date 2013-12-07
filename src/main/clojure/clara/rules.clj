@@ -2,15 +2,11 @@
   "Forward-chaining rules for Clojure. The primary API is in this namespace"
   (:require [clara.rules.engine :as eng]
             [clara.rules.memory :as mem]
-            [clara.rules.compiler :as com])
+            [clara.rules.compiler :as com]
+            [clara.rules.schema :as schema]
+            [clara.rules.dsl :as dsl]
+            [schema.core :as sc])
   (import [clara.rules.engine LocalTransport LocalSession]))
-
-(defn mk-rulebase 
-  "Creates a rulebase with the given productions. This is only used when generating rulebases dynamically."
-  [& productions]
-  (if (seq productions)
-    (eng/compile-shredded-rules (eng/shred-rules productions))
-    (eng/->Rulebase {} [] [] [] [] {} {})))
 
 (defn insert
   "Inserts one or more facts into a working session. It does not modify the given
@@ -110,26 +106,31 @@
 
       (eng/alpha-retract root fact-group transient-memory transport))))
 
+(comment ; TODO: remove
+  (defmacro mk-query
+    "Creates a new query based on a sequence of a conditions. 
+   This is only used when creating queries dynamically; most users should use defquery instead."
+    [params lhs]
+    ;; TODO: validate params exist as keyworks in the query.
+    `(eng/->Query
+      ~params
+      ~(com/parse-lhs lhs)
+      ~(com/variables-as-keywords lhs))))
+
 (defmacro mk-query
   "Creates a new query based on a sequence of a conditions. 
    This is only used when creating queries dynamically; most users should use defquery instead."
   [params lhs]
   ;; TODO: validate params exist as keyworks in the query.
-  `(eng/->Query
-    ~params
-    ~(com/parse-lhs lhs)
-    ~(com/variables-as-keywords lhs)))
+  (dsl/parse-query params lhs &env))
 
 (defmacro mk-rule
   "Creates a new rule based on a sequence of a conditions and a righthand side. 
    This is only used when creating new rules directly; most users should use defrule instead."
   ([lhs rhs]
-   `(mk-rule ~lhs ~rhs {}))
+     (dsl/parse-rule lhs rhs nil &env))
   ([lhs rhs properties]
-     `(eng/->Production 
-       ~(com/parse-lhs lhs)
-       ~(com/compile-action (com/variables-as-keywords lhs) rhs)
-       ~properties)))
+     (dsl/parse-rule lhs rhs properties &env)))
 
 (defn accumulate 
   "Creates a new accumulator based on the given properties:
@@ -151,15 +152,43 @@
     args)))
 
 (defn add-productions
-  "Returns a new rulebase identical to the given one, but with the additional
+  "DEPRECATED as of 0.4. Simply conjoin productions and create a new session.
+
+   Returns a new rulebase identical to the given one, but with the additional
    rules or queries. This is only used when dynamically adding rules to a rulebase."
+
   [rulebase & productions]
-  (-> (concat (:productions rulebase) (:queries rulebase) productions)
-      (eng/shred-rules)
-      (eng/compile-shredded-rules)))
+  (concat rulebase productions))
 
 ;; Cache of sessions for fast reloading.
 (def ^:private session-cache (atom {}))
+
+(defn mk-rulebase 
+  "DEPRECATED as of 0.4. Just use mk-session directly against a sequence of productions. The rulebase
+   construct is no longer necessary in this API.
+
+   Creates a rulebase with the given productions. This is only used when generating rulebases dynamically."
+  [& productions]
+  productions)
+
+;; Environmental settings specific to Clojure.
+;; TODO: should this be private?
+(def system-env 
+  {:alpha-compile-fn
+   (fn [type arg constraints fact-binding env]
+     (eval (com/compile-condition type arg constraints fact-binding env)))
+
+   :rhs-compile-fn
+   (fn [all-bindings production]
+     (eval (com/compile-action all-bindings (:rhs production) (:env production))))
+   
+   :test-compile-fn
+   (fn [tests]
+     (eval (com/compile-test tests)))
+
+   :accum-compile-fn
+   (fn [accum env]
+     (eval (com/compile-accum accum env)))})
 
 (defmacro mk-session
    "Creates a new session using the given rule sources. Thew resulting session
@@ -176,8 +205,8 @@
      Defaults to true. Callers may wish to set this to false when needing to dynamically reload rules."
   [& args]
   (if (and (seq args) (not (keyword? (first args))))
-    `(apply eng/mk-session ~(vec args)) ; At least one namespace given, so use it.
-    `(apply eng/mk-session (concat [(ns-name *ns*)] ~(vec args))))) ; No namespace given, so use the current one.
+    `(eng/mk-session ~(vec args) system-env) ; At least one namespace given, so use it.
+    `(eng/mk-session (concat [(ns-name *ns*)] ~(vec args)) system-env))) ; No namespace given, so use the current one.
 
 ;; Treate a symbol as a rule source, loading all items in its namespace.
 (extend-type clojure.lang.Symbol
@@ -189,9 +218,7 @@
     (->> (ns-interns sym)
          (vals) ; Get the references in the namespace.
          (filter #(or (:rule (meta %)) (:query (meta %)))) ; Filter down to rules and queries.
-         (map deref) ; Get the rules from the symbols.
-         (eng/shred-rules) ; Shred the rules.
-         (eng/compile-shredded-rules)))) ; Compile into a knowledge base.
+         (map deref))))  ; Get the rules from the symbols.
 
 (defmacro defrule 
   "Defines a rule and stores it in the given var. For instance, a simple rule would look like this:
@@ -212,7 +239,7 @@
         body (if doc (rest body) body)
         properties (if (map? (first body)) (first body) nil)
         definition (if properties (rest body) body)
-        {:keys [lhs rhs]} (com/parse-rule-body definition)]
+        {:keys [lhs rhs]} (dsl/parse-rule-body definition)]
     `(def ~(vary-meta name assoc :rule true :doc doc)
        (mk-rule ~lhs ~rhs ~properties))))
 
@@ -232,5 +259,5 @@
         binding (if doc (second body) (first body))
         definition (if doc (drop 2 body) (rest body) )]
     `(def ~(vary-meta name assoc :query true :doc doc) 
-       (mk-query ~binding ~(com/parse-query-body definition)))))
+       (mk-query ~binding ~(dsl/parse-query-body definition)))))
 

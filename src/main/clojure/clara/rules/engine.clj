@@ -5,78 +5,18 @@
             [clojure.set :as s]
             [clojure.string :as string]
             [clara.rules.memory :as mem]
-            [clara.rules.platform :as platform]))
+            [clara.rules.platform :as platform]
+            [clara.rules.schema :as schema]
+            [schema.core :as sc]))
 
 ;; Protocol for loading rules from some arbitrary source.
 (defprotocol IRuleSource
   (load-rules [source]))
 
-;; Protocol representing a single condition in
-;; a rule or a query.
-(defprotocol ICondition
-  ;; Returns a key uniquely identifying the condition.
-  (condition-key [condition])
-  ;; Returns the type of the matching object.
-  (match-type [condition])
-  ;; Returns the keys that may be bound by the condition.
-  (binding-keys [condition])
-  ;; Returns the mode of the condition, one of :normal, :accumulator, :test, or :negation
-  (mode [condition])
-  ;; Returns a function that activates the condition.
-  (activate-fn [condition])  
-  ;; Returns the base condition for use on the alpha side of the network,
-  ;; e.g. without negation or accumulation.
-  (alpha-condition [condition]))
-
-;; Record defining a single condition in a rule production.
-(defrecord Condition [type constraints binding-keys activate-fn text]
-
-  ICondition
-  (condition-key [condition] {:type type :constraints constraints})
-  (match-type [condition] type)
-  (binding-keys [condition] binding-keys)
-  (mode [condition] :normal)
-  (activate-fn [condition] activate-fn)
-  (alpha-condition [condition] condition))
-
 ;; The accumulator is a Rete extension to run an accumulation (such as sum, average, or similar operation)
 ;; over a collection of values passing through the Rete network. This object defines the behavior
 ;; of an accumulator. See the AccumulatorNode for the actual node implementation in the network.
-(defrecord Accumulator [result-binding input-condition initial-value reduce-fn combine-fn convert-return-fn]
-  ICondition
-  ;; Key uses the accumulator itself to ensure uniqueness. Is there a better way to handle this?
-  (condition-key [condition] (assoc (condition-key input-condition) :accum condition)) 
-  (match-type [condition] (:type input-condition))
-  (binding-keys [condition] (:binding-keys input-condition))
-  (mode [condition] :accumulator)
-  (activate-fn [condition] (activate-fn input-condition))
-  (alpha-condition [condition] input-condition))
-
-;; A negated condition.
-(defrecord NegatedCondition [input-condition]
-  ICondition
-  (condition-key [condition] (condition-key input-condition))
-  (match-type [condition] (:type input-condition))
-  (binding-keys [condition] (:binding-keys input-condition))
-  (mode [condition] :negation)
-  (activate-fn [condition] (activate-fn input-condition))
-  (alpha-condition [condition] input-condition))
-
-;; Record containing one or more test expressions to evaluate.
-(defrecord Test [test-fn constraints text]
-  ICondition
-  (condition-key [condition] {:type :none :constraints constraints})
-  (match-type [condition] :none)
-  (binding-keys [condition] #{})
-  (mode [condition] :test)
-  (activate-fn [condition] test-fn)
-  (alpha-condition [condition] nil))
-
-;; Record defining a production, where lhs is the left-hand side containing constraints, and rhs is right-hand side.
-(defrecord Production [lhs rhs properties])
-
-;; Record defining a query given the parameters and expected bindings used in the query.
-(defrecord Query [params lhs binding-keys])
+(defrecord Accumulator [input-condition initial-value reduce-fn combine-fn convert-return-fn])
 
 ;; A rulebase -- essentially an immutable Rete network with a collection of alpha and beta nodes and supporting structure.
 (defrecord Rulebase [alpha-roots beta-roots productions queries production-nodes query-nodes id-to-node]
@@ -210,7 +150,7 @@
     
     ;; Fire the rule if it's not a no-loop rule, or if the rule is not
     ;; active in the current context.
-    (when (or (not (get-in production [:properties :no-loop]))
+    (when (or (not (get-in production [:props :no-loop]))
               (not (= production (get-in *rule-context* [:node :production]))))
 
       ;; Preserve tokens that fired for the rule so we
@@ -249,18 +189,18 @@
 
   (get-join-keys [node] param-keys)
 
-  (description [node] (str "QueryNode -- " param-keys)))
+  (description [node] (str "QueryNode -- " query)))
 
 ;; Record representing alpha nodes in the Rete network,
 ;; each of which evaluates a single condition and
 ;; propagates matches to its children.
-(defrecord AlphaNode [condition children activation]
+(defrecord AlphaNode [env children activation]
   IAlphaActivate
   (alpha-activate [node facts memory transport]
     (send-elements
      transport memory children
      (for [fact facts
-           :let [bindings (activation fact)] :when bindings]
+           :let [bindings (activation fact env)] :when bindings] ; FIXME: add env.
        (->Element fact bindings))))
 
   (alpha-retract [node facts memory transport]
@@ -268,7 +208,7 @@
     (retract-elements
      transport memory children
      (for [fact facts
-           :let [bindings (activation fact)] :when bindings]
+           :let [bindings (activation fact env)] :when bindings] ; FIXME: add env.
        (->Element fact bindings)))))
 
 ;; Record for the join node, a type of beta node in the rete network. This node performs joins
@@ -361,7 +301,7 @@
      transport 
      memory
      children
-     (filter #((:test-fn test) %) tokens)))
+     (filter test tokens)))
 
   (left-retract [node join-bindings tokens memory transport] 
     (retract-tokens transport  memory children tokens))
@@ -372,13 +312,13 @@
 
 (defn- retract-accumulated 
   "Helper function to retract an accumulated value."
-  [node accumulator token result fact-bindings transport memory]
-  (let [converted-result ((get-in accumulator [:definition :convert-return-fn]) result)
+  [node accumulator result-binding token result fact-bindings transport memory]
+  (let [converted-result ((:convert-return-fn accumulator) result)
         new-facts (conj (:facts token) converted-result)
         new-bindings (merge (:bindings token) 
                             fact-bindings
-                            (when (:result-binding accumulator) 
-                              { (:result-binding accumulator) 
+                            (when result-binding
+                              { result-binding
                                 converted-result}))] 
 
     (retract-tokens transport memory (:children node) 
@@ -386,12 +326,12 @@
 
 (defn- send-accumulated 
   "Helper function to send the result of an accumulated value to the node's children."
-  [node accumulator token result fact-bindings transport memory]
-  (let [converted-result ((get-in accumulator [:definition :convert-return-fn]) result)
+  [node accumulator result-binding token result fact-bindings transport memory]
+  (let [converted-result ((:convert-return-fn accumulator) result)
         new-bindings (merge (:bindings token) 
                             fact-bindings
-                            (when (:result-binding accumulator) 
-                              { (:result-binding accumulator) 
+                            (when result-binding
+                              { result-binding
                                 converted-result}))]
 
     (send-tokens transport memory (:children node)
@@ -405,7 +345,7 @@
 ;; The AccumulateNode hosts Accumulators, a Rete extension described above, in the Rete network
 ;; It behavios similarly to a JoinNode, but performs an accumulation function on the incoming
 ;; working-memory elements before sending a new token to its descendents.
-(defrecord AccumulateNode [id accumulator definition children binding-keys]
+(sc/defrecord AccumulateNode [id accumulator result-binding children binding-keys]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport] 
     (let [previous-results (mem/get-accum-reduced-all memory node join-bindings)]
@@ -418,7 +358,7 @@
          ;; If there are previously accumulated results to propagate, simply use them.
          (seq previous-results)
          (doseq [[fact-bindings previous] previous-results]
-           (send-accumulated node accumulator token previous fact-bindings transport memory))
+           (send-accumulated node accumulator result-binding token previous fact-bindings transport memory))
 
          ;; There are no previously accumulated results, but we still may need to propagate things
          ;; such as a sum of zero items.
@@ -426,13 +366,13 @@
          ;; value is provided, we can propagate the initial value as the accumulated item.
 
          (and (has-keys? (:bindings token) 
-                         (:binding-keys (:input-condition accumulator))) ; All bindings are in place.
-              (:initial-value (:definition accumulator))) ; An initial value exists that we can propagate.
-         (let [fact-bindings (select-keys (:bindings token) (:binding-keys (:input-condition accumulator)))
-               previous (:initial-value (:definition accumulator))]
+                         binding-keys) ; All bindings are in place.
+              (:initial-value accumulator)) ; An initial value exists that we can propagate.
+         (let [fact-bindings (select-keys (:bindings token) binding-keys)
+               previous (:initial-value accumulator)]
 
            ;; Send the created accumulated item to the children.
-           (send-accumulated node accumulator token previous fact-bindings transport memory)
+           (send-accumulated node accumulator result-binding token previous fact-bindings transport memory)
 
            ;; Add it to the working memory.
            (mem/add-accum-reduced! memory node join-bindings previous fact-bindings))
@@ -444,21 +384,21 @@
     (let [previous-results (mem/get-accum-reduced-all memory node join-bindings)]
       (doseq [token (mem/remove-tokens! memory node join-bindings tokens)
               [fact-bindings previous] previous-results]
-        (retract-accumulated node accumulator token previous fact-bindings transport memory))))
+        (retract-accumulated node accumulator result-binding token previous fact-bindings transport memory))))
 
   (get-join-keys [node] binding-keys)
 
-  (description [node] (str "AccumulateNode -- " (:text accumulator)))
+  (description [node] (str "AccumulateNode -- " accumulator))
 
   IAccumRightActivate
   (pre-reduce [node elements]    
     ;; Return a map of bindings to the pre-reduced value.
     (for [[bindings element-group] (group-by :bindings elements)]      
       [bindings 
-       (r/reduce (:reduce-fn definition) 
-                 (:initial-value definition) 
+       (r/reduce (:reduce-fn accumulator) 
+                 (:initial-value accumulator) 
                  (r/map :fact element-group))])) 
- 
+  
   (right-activate-reduced [node join-bindings reduced-seq  memory transport]
     ;; Combine previously reduced items together, join to matching tokens,
     ;; and emit child tokens.
@@ -469,18 +409,18 @@
       ;; If the accumulation result was previously calculated, retract it
       ;; from the children.
       (when previous
-      
+        
         (doseq [token (mem/get-tokens memory node join-bindings)]
-          (retract-accumulated node accumulator token previous bindings transport memory)))
+          (retract-accumulated node accumulator result-binding token previous bindings transport memory)))
 
       ;; Combine the newly reduced values with any previous items.
       (let [combined (if previous
-                       ((:combine-fn definition) previous reduced)
+                       ((:combine-fn accumulator) previous reduced)
                        reduced)]        
 
         (mem/add-accum-reduced! memory node join-bindings combined bindings)
         (doseq [token matched-tokens]          
-          (send-accumulated node accumulator token combined bindings transport memory)))))
+          (send-accumulated node accumulator result-binding token combined bindings transport memory)))))
 
   IRightActivate
   (right-activate [node join-bindings elements memory transport]
@@ -507,379 +447,57 @@
             token matched-tokens
 
             ;; Compute the new version with the retracted information.
-            :let [retracted ((:retract-fn definition) previous fact)]]
+            :let [retracted ((:retract-fn accumulator) previous fact)]]
 
       ;; Add our newly retracted information to our node.
       (mem/add-accum-reduced! memory node join-bindings retracted bindings)
 
       ;; Retract the previous token.
-      (retract-accumulated node accumulator token previous bindings transport memory)
+      (retract-accumulated node accumulator result-binding token previous bindings transport memory)
 
       ;; Send a new accumulated token with our new, retracted information.
       (when retracted
-        (send-accumulated node accumulator token retracted bindings transport memory)))))
+        (send-accumulated node accumulator result-binding token retracted bindings transport memory)))))
 
-(defn- cartesian-join [lists lst]
-    (if (seq lists)
-      (let [[h & t] lists]
-        (mapcat 
-         (fn [l]
-           (map #(conj % l) (cartesian-join t lst)))
-         h))
-      [lst]))
 
-(defn ast-to-dnf 
-  "Convert an AST to disjunctive normal form."
-  [ast] 
-  (condp = (:type ast)
-    ;; Individual conditions can return unchanged.
-    :condition
-    ast
-
-    :test
-    ast
-
-    ;; Apply de Morgan's law to push negation nodes to the leaves. 
-    :not
-    (let [children (:content ast)
-          child (first children)
-          ;; Function to create negated grandchildren for de Morgan's law.
-          negate-grandchildren #(into [] (for [grandchild (:content child)] 
-                                           {:type :not
-                                            :content [grandchild]}))]
-
-      (when (not= 1 (count children))
-        (platform/throw-error "Negation must have only one child."))
-
-      (condp = (:type child)
-
-        ;; If the child is a single condition, simply return the ast.
-        :condition ast
-
-        :test ast
-
-        :and (ast-to-dnf {:type :or
-                          :content (negate-grandchildren)})
-        
-        :or (ast-to-dnf {:type :and 
-                         :content (negate-grandchildren)})))
-    
-    ;; For all others, recursively process the children.
-    (let [children (map ast-to-dnf (:content ast))
-           ;; Get all conjunctions, which will not conain any disjunctions since they were processed above.
-          conjunctions (filter #(#{:and :condition :not} (:type %)) children)]
-      
-
-      ;; TODO: Nodes with only a single expression as a child can be flattened.      
-      (condp = (:type ast)
-
-        :and
-        (let [disjunctions (map :content (filter #(#{:or} (:type %)) children))]
-          (if (empty? disjunctions)
-            {:type :and
-             :content (vec children)}
-
-            {:type :or 
-             :content (vec (for [c (cartesian-join disjunctions conjunctions)] 
-                          {:type :and
-                           :content c}))}))
-        :or
-        ;; Merge all child disjunctions into a single list.
-        (let [disjunctions (mapcat :content (filter #(#{:or} (:type %)) children))]
-          {:type :or
-           ;; Nested disjunctions can be merged into the parent disjunction. We
-           ;; the simply append nested conjunctions to create our DNF.
-           :content (vec (concat disjunctions conjunctions))})))))
-
-(defn- conjunction-to-cond-seq
-  "Convert a conjunction expression to a sequence of ICondition objects."
+(defn variables-as-keywords
+  "Returns symbols in the given s-expression that start with '?' as keywords"
   [expression]
-
-  (condp = (:type expression)    
-
-    ;; Recurse to nested elements. We need only recurse on ands,
-    ;; since we are in DNF with nots pushed to the leaves.
-    :and (apply concat (map conjunction-to-cond-seq (:content expression)))      
-    
-    ;; The expression is a simple condition, so use it.
-    :condition [(:content expression)]
-
-    ;; The expression is a negation, so create a negated condition around the raw condition.
-    :not [(->NegatedCondition (:content (first (:content expression))))]
-    
-    ;; The expression is a test.
-    :test [(:content expression)]))
-
-(defn- expression-to-cond-seqs 
-  "Given a rule, returns a vector containing one or more sequences
-   of ICondition objects that trigger the rule."
-  [expression]
-  (let [dnf-expression (ast-to-dnf expression)]
-
-    (if (= :or (:type dnf-expression))
-      ;; If the DNF form has a top-level or, process each disjunction separatel.
-      (vec (map conjunction-to-cond-seq (:content dnf-expression)))
-
-      ;; Otherwise, return a single item vector, since there is only one disjuction.
-      [(conjunction-to-cond-seq dnf-expression)])))
-
-(defn- add-beta-tree 
-  "Adds a condition sequence to the tree structure of beta nodes."
-  [cond-seq production beta-tree]
-  ;; Build a nested key pointing to our produciton, and add it to the tree.
-  (assoc-in beta-tree 
-            (concat (map condition-key cond-seq) 
-                    (if (:rhs production) ; Use the appropriate key for queries and productions.
-                      [:production]
-                      [:query])) 
-            production))
-
-(defn- condition-comparator 
-  "Helper function to sort conditions to ensure bindings
-   are created in the needed order. The current implementation
-   simply pushes tests to the end (since they don't create new bindings)
-   with accumulators before them, as they may rely on previously bound items
-   to complete successfully."
-  [cond1 cond2]
-
-  (condp = (type cond1)
-    ;; Conditions are always sorted first.
-    clara.rules.engine.Condition true
-
-    ;; Negated conditions occur before tests and accumulators.
-    clara.rules.engine.NegatedCondition (boolean (#{clara.rules.engine.Test
-                                                    clara.rules.engine.Accumulator} (type cond2)))
-
-    ;; Accumulators are sorted before tests.
-    clara.rules.engine.Accumulator (= clara.rules.engine.Test (type cond2))
-
-    ;; Tests are last.
-    clara.rules.engine.Test false))
-
-(defn- add-to-shredded
-  "Adds a production to the shredded rules."
-  [shredded-rules production]
-  (let [unsorted-cond-seqs (expression-to-cond-seqs (:lhs production))
-        cond-seqs (map #(sort condition-comparator %) unsorted-cond-seqs)
-        all-conds (apply concat cond-seqs)]
-
-    ;; Merge the beta portion of the network to the tree.
-    {:beta-tree
-     (reduce (fn [beta-tree cond-seq] 
-                     (add-beta-tree cond-seq production beta-tree))
-                   (:beta-tree shredded-rules)
-                   cond-seqs)
-     
-     ;; Update our map of all conditions.
-     :conditions 
-     (into (:conditions shredded-rules) 
-           (for [condition all-conds] 
-             [(condition-key condition) condition]))
-
-     ;; Preserve the rules used.
-     :rules (if (:rhs production)
-              (conj (:rules shredded-rules) production)
-              (:rules shredded-rules))
-
-     ;; Preserve the queries used.
-     :queries (if (not (:rhs production))
-                (conj (:queries shredded-rules) production)
-                (:queries shredded-rules))
-     }))
-
-(defn shred-rules
-  "Shred the given rules into separate conditions, allowing for analysis, 
-   combination of duplicate logic, and assembly into a rule base.
-
-   This function breaks up productions into distinct pieces. Specifically:
-  
-   First, we have a tree of beta nodes. The beta side of a Rete network (ignoring the alpha side for now)
-   is logically a tree, with shared logic represented as shared branches on the tree.
-   We model that here by having each condition from all of the rules map to a
-   \"condition key\", and that key is used as a node in our beta tree. So if multiple
-   rules have a common condition in a common point in a tree, they map to the same
-   place and therefore the logic is shared, in line with the Rete algorithm.
-
-   The \"beta-tree\" produced by this shredding logic is modeled as a series of
-   nested maps, where the key to each nested map is the condition-key described above.
-   The leaves in our beta tree are the production rules or queries themselves.
-
-   Second, we maintain a map of the condition keys used in the beta tree to the conditions
-   themselves. If multiple rules have equivalent conditions, they will have
-   the same condition key, and hence will map to the same point of our conditions
-   map so the same item and alpha node will be used for both.
-
-   This shredding operation also preserves the rules and queries provided by the
-   caller. This is useful if a consumer wants to get back to the original rules
-   for some other use, such as combining them with others to create a new
-   knowledge base."
-  [productions]
-  (reduce add-to-shredded 
-          {:beta-tree {}
-           :conditions {}
-           :rules []
-           :queries []} 
-          productions))
-
-
-(defn- node-id 
-  "Generates a unique id for a node's children and some content identifying the node itself."
-  [children content]
-  (->> children
-       (tree-seq 
-        #(or (sequential? %) (map? %) (set? %))
-        (fn [item]
-          (if (map? item)
-            (concat (keys item) (vals item))
-            item)))
-       (filter #(or (string? %) (keyword? %) (symbol? %) (number? %)))
-       (hash)
-       (* (hash content))))
-
-(defn- compile-beta-node
-  "Compile a given beta node with a condition key and children,
-   returning tuple of [beta-node node-map], where node-map is
-   a map of condition keys to a list of beta nodes requiring that condition."
-  [condition-key children ancestor-binding-keys condition-map]
-
-  (condp = condition-key
-
-    :production
-    (let [production (->ProductionNode (node-id children condition-key) children (:rhs children))]
-      [production {:production [production]}])
-
-    :query
-    (let [query (->QueryNode (node-id children condition-key) children (:params children))]
-      [query {:query [query]}])
-
-    ;; The node is neither a production or query terminal node, so compile the condition.
-    (let [condition (get condition-map condition-key)
-          ;; Get the binding keys defined in the condition, if any.
-          binding-keys (binding-keys condition)                        
-
-          ;; The keys used for any join operations performed by this node.
-          join-binding-keys (s/intersection ancestor-binding-keys binding-keys)
-
-          ;; All keys for the current node and the ancestors. 
-          all-binding-keys (s/union ancestor-binding-keys binding-keys)
-
-          ;; Get the child [beta-node node-map] tuples
-          child-tuples (for [[child-condition-key grandchildren] children]
-                         (compile-beta-node child-condition-key grandchildren all-binding-keys condition-map))
-
-          ;; Get the child beta nodes and node maps themselves.
-          child-nodes (map first child-tuples)
-          child-maps (map second child-tuples)
-
-          ;; Create a map to all children nodes by merging them together.
-          node-map (apply merge-with concat child-maps)
-          id (node-id child-nodes condition-key)]
-      
-      (condp = (mode condition)
-
-        :normal
-        (let [join-node (->JoinNode id condition child-nodes join-binding-keys)]
-          [join-node (update-in node-map [condition-key] #(conj % join-node))])
-        
-        :accumulator
-        (let [accumulate-node (->AccumulateNode id condition (:definition condition) child-nodes join-binding-keys)]
-          [accumulate-node (update-in node-map [condition-key] #(conj % accumulate-node))])
-
-        ;; TODO: some inconsistency here in how we access the nested condition to be cleaned up.
-        :negation
-        (let [negation-node (->NegationNode id (alpha-condition condition) child-nodes join-binding-keys)]
-          [negation-node (update-in node-map [condition-key] #(conj % negation-node))])
-        
-        :test
-        (let [test-node (->TestNode id condition child-nodes)]
-          [test-node (update-in node-map [condition-key] #(conj % test-node))])))))
-
-(defn- compile-alpha-nodes
-  "Compiles alpha nodes."
-  [beta-node-map conditions]
-
-  (for [[condition-key condition] conditions
-
-        ;; Test conditions have no alpha node, so exclude them.
-        :when (not (= :test (mode condition)))
-
-        ;; Find all beta nodes that use the given condition.
-        :let [beta-nodes (get beta-node-map condition-key)]]
-
-    ;; Create the alpha node with corresponding beta node children.
-    (->AlphaNode (alpha-condition condition) beta-nodes (activate-fn condition))))
-
-
-
-(defn- node-id-map 
-  "Generates a map of unique ids to nodes."
-  [beta-roots]
-  (let [beta-nodes (distinct
-                    (mapcat 
-                     #(tree-seq :children :children %)
-                     beta-roots))
-        items (into {} (for [beta-node beta-nodes] [(:id beta-node) beta-node]))]
-    items))
-
-(defn compile-shredded-rules 
-  "Compile shredded rules into a digraph representing the rule base, sharing nodes when possible"
-  [shredded-rules] (let [compiled-betas (for [[condition-key children] (:beta-tree shredded-rules)]
-                                          (compile-beta-node condition-key children [] (:conditions shredded-rules)))
-
-        beta-roots (map first compiled-betas)
-        child-maps (map second compiled-betas)
-        beta-node-map (apply merge-with concat child-maps)
-        alpha-nodes (compile-alpha-nodes beta-node-map (:conditions shredded-rules)) 
-
-        ;; Group alpha nodes by their type for use in the rulebase.
-        alpha-map (group-by #(get-in % [:condition :type]) alpha-nodes)
-
-        ;; Get a map of queries to the corresponding nodes.
-        query-map (into {} (for [query-node (:query beta-node-map)]
-                             [(:query query-node) query-node]))
-
-        id-to-node (node-id-map beta-roots)]
-   
-    (map->Rulebase 
-       {:alpha-roots alpha-map
-        :beta-roots beta-roots
-        :productions (:rules shredded-rules)
-        :queries (:queries shredded-rules)
-        :production-nodes (:production beta-node-map)
-        :query-nodes query-map
-        :id-to-node id-to-node})))
+  (into #{} (for [item (flatten expression) 
+                  :when (and (symbol? item) 
+                             (= \? (first (name item))))] 
+              (keyword item))))
 
 (defn conj-rulebases 
-  "Conjoin two rulebases, returning a new one with the same rules."
+  "DEPRECATED. Simply concat sequences of rules and queries.
+
+   Conjoin two rulebases, returning a new one with the same rules."
   [base1 base2]
-  (-> (concat (:queries base1) (:queries base2) 
-              (:productions base1) (:productions base2))
-      (shred-rules)
-      (compile-shredded-rules)))
+  (concat base1 base2))
 
 (defn fire-rules* 
-   "Fire rules for the given nodes."
-   [rulebase nodes transient-memory transport get-alphas-fn]
-   (binding [*current-session* {:rulebase rulebase 
-                                :transient-memory transient-memory 
-                                :transport transport
-                                :insertions (atom 0)
-                                :get-alphas-fn get-alphas-fn}]
-          
-     (loop [activations (mem/get-activations transient-memory)]
+  "Fire rules for the given nodes."
+  [rulebase nodes transient-memory transport get-alphas-fn]
+  (binding [*current-session* {:rulebase rulebase 
+                               :transient-memory transient-memory 
+                               :transport transport
+                               :insertions (atom 0)
+                               :get-alphas-fn get-alphas-fn}]
+    
+    (loop [activations (mem/get-activations transient-memory)]
 
-       ;; Clear the activations we're processing; new ones may
-       ;; be added during insertions.         
-       (mem/clear-activations! transient-memory)
+      ;; Clear the activations we're processing; new ones may
+      ;; be added during insertions.         
+      (mem/clear-activations! transient-memory)
 
-       (doseq [[node tokens] activations
-               token tokens]
-         (binding [*rule-context* {:token token :node node}]
-           ((:rhs node) token)))
-         
-       ;; If new activations were created, loop to fire those as well.
-       (when (seq (mem/get-activations transient-memory))
-         (recur (mem/get-activations transient-memory))))))
+      (doseq [[node tokens] activations
+              token tokens]
+        (binding [*rule-context* {:token token :node node}]
+          ((:rhs node) token (:env (:production node)))))
+      
+      ;; If new activations were created, loop to fire those as well.
+      (when (seq (mem/get-activations transient-memory))
+        (recur (mem/get-activations transient-memory))))))
 
 (defn create-get-alphas-fn
   "Returns a function that given a sequence of facts,
@@ -896,7 +514,7 @@
           
           ;; If the matching alpha nodes are cached, simply return them.
           [alpha-nodes facts]
-                          
+          
           ;; The alpha nodes weren't cached for the type, so get them now.
           (let [ancestors (conj (ancestors fact-type) fact-type)
                 
@@ -960,46 +578,424 @@
       (left-activate beta-node {} [empty-token] memory transport))
     (mem/to-persistent! memory)))
 
+
+(defn- expr-type [expression]
+  (if (map? expression)
+    :condition
+    (first expression)))
+
+(defn- cartesian-join [lists lst]
+  (if (seq lists)
+    (let [[h & t] lists]
+      (mapcat 
+       (fn [l]
+         (map #(conj % l) (cartesian-join t lst)))
+       h))
+    [lst]))
+
+(defn to-dnf 
+  "Convert a lhs expression to disjunctive normal form."
+  [expression] 
+  
+  ;; Always validate the expression schema, as this is only done at compile time.
+  (sc/validate schema/Condition expression)
+  (condp = (expr-type expression)
+    ;; Individual conditions can return unchanged.
+    :condition
+    expression
+
+    :test
+    expression
+
+    ;; Apply de Morgan's law to push negation nodes to the leaves. 
+    :not
+    (let [children (rest expression)
+          child (first children)]
+
+      (when (not= 1 (count children))
+        (throw (RuntimeException. "Negation must have only one child.")))
+
+      (condp = (expr-type child)
+
+        ;; If the child is a single condition, simply return the ast.
+        :condition expression
+
+        :test expression
+
+        ;; DeMorgan's law converting conjunction to negated disjuctions.
+        :and (to-dnf (into [:or] (for [grandchild (rest child)] [:not grandchild])))
+        
+        ;; DeMorgan's law converting disjuction to negated conjuctions.
+        :or  (to-dnf (into [:and] (for [grandchild (rest child)] [:not grandchild])))))
+    
+    ;; For all others, recursively process the children.
+    (let [children (map to-dnf (rest expression))
+          ;; Get all conjunctions, which will not conain any disjunctions since they were processed above.
+          conjunctions (filter #(#{:and :condition :not} (expr-type %)) children)]
+      
+      ;; If there is only one child, the and or or operator can simply be eliminated.
+      (if (= 1 (count children))
+        (first children)
+
+        (condp = (expr-type expression)
+
+          :and
+          (let [disjunctions (map rest (filter #(= :or (expr-type %)) children))]
+            (if (empty? disjunctions)
+              (into [:and] (apply concat 
+                                  (for [child children]
+                                    (if (= :and (expr-type child))
+                                      (rest child)
+                                      [child]))))
+              (into [:or] 
+                    (for [c (cartesian-join disjunctions conjunctions)] 
+                      (into [:and] c)))))
+          :or
+          ;; Merge all child disjunctions into a single list.
+          (let [disjunctions (mapcat rest (filter #(#{:or} (expr-type %)) children))]
+            (into [:or] (concat disjunctions conjunctions))))))))
+
+
+
+(defn- add-to-beta-tree
+  "Adds a sequence of conditions and the corresponding production to the beta tree."
+  [beta-nodes
+   [[condition env] & more] 
+   bindings 
+   production]
+  (let [is-negation (= :not (first condition))
+        accumulator (:accumulator condition)
+        result-binding (:result-binding condition) ; Get the optional result binding used by accumulators.
+        condition (cond
+                   is-negation (second condition) 
+                   accumulator (:from condition)
+                   :default condition)        
+        node-type (cond
+                   is-negation :negation
+                   accumulator :accumulator
+                   (:type condition) :join
+                   :else :test)
+
+        ;; For the sibling beta nodes, find a match for the candidate.
+        matching-node (first (for [beta-node beta-nodes
+                                   :when (and (= condition (:condition beta-node))
+                                              (= node-type (:node-type beta-node))
+                                              (= env (:env beta-node))
+                                              (= accumulator (:accumulator beta-node)))]
+                               beta-node))
+
+        other-nodes (remove #(= matching-node %) beta-nodes)
+        cond-bindings (variables-as-keywords (:constraints condition))
+
+        ;; Create either the rule or query node, as appropriate.
+        production-node (if (:rhs production) 
+                          {:node-type :production
+                           :production production}
+                          {:node-type :query
+                           :query production})]
+
+    (vec
+     (conj
+      other-nodes
+      (if condition
+        ;; There are more conditions, so recurse.
+        (if matching-node
+          (assoc matching-node 
+            :children 
+            (add-to-beta-tree (:children matching-node) more (s/union bindings cond-bindings) production))
+
+          (cond-> 
+           {:node-type node-type
+            :condition condition
+            :children (add-to-beta-tree [] more (s/union bindings cond-bindings) production)}
+
+           ;; Add the join bindings to join, accumulator or negation nodes.
+           (#{:join :negation :accumulator} node-type) (assoc :join-bindings (s/intersection bindings cond-bindings))
+
+           accumulator (assoc :accumulator accumulator)
+           
+           result-binding (assoc :result-binding result-binding)
+
+           env (assoc :env env)))
+
+        ;; There are no more conditions, so add our query or rule.
+        (if matching-node
+          (update-in matching-node [:children] conj production-node)
+          production-node))))))
+
+(defn- condition-comp 
+  "Helper function to sort conditions to ensure bindings
+   are created in the needed order. The current implementation
+   simply pushes tests to the end (since they don't create new bindings)
+   with accumulators before them, as they may rely on previously bound items
+   to complete successfully."
+  [cond1 cond2]
+
+  (letfn [(cond-type [condition]
+            (cond 
+             (:type condition) :condition
+             (:accumulator condition) :accumulator
+             (= :not (first condition)) :negation
+             :default :test))]
+
+    (case (cond-type cond1)
+      ;; Conditions are always sorted first.
+      :condition true
+
+      ;; Negated conditions occur before tests and accumulators.
+      :negation (boolean (#{:test :accumulator} (cond-type cond2)))
+
+      ;; Accumulators are sorted before tests.
+      :accumulator (= :test (cond-type cond2))
+
+      ;; Tests are last.
+      :test false)))
+
+(sc/defn to-beta-tree :- [schema/BetaNode]
+  "Convert a sequence of rules and/or queries into a beta tree. Returns each root."
+  [productions :- [schema/Production]]
+  (let [conditions (for [production productions
+                         :let [lhs-expression (into [:and] (:lhs production)) ; Add implied and.
+                               expression  (to-dnf lhs-expression)]
+                         disjunction (if (= :or (first expression))
+                                       (rest expression)
+                                       [expression])
+                         :let [conditions (if (and (vector? disjunction) 
+                                                   (= :and (first disjunction)))
+                                            (rest disjunction)
+                                            [disjunction])
+                               
+                               ;; Sort conditions, see the condition-comp function for the reason.
+                               sorted-conditions (sort condition-comp conditions) 
+
+                               ;; Attach the conditions environment. TODO: narrow environment to those used?
+                               conditions-with-env (for [condition sorted-conditions]
+                                                     [condition (:env production)])]]
+
+                     [conditions-with-env production])
+
+        raw-roots (reduce 
+                   (fn [beta-roots [conditions production]]
+                    (add-to-beta-tree beta-roots conditions #{} production))
+                   []
+                   conditions)
+
+        nodes (for [root raw-roots
+                    node (tree-seq :children :children root)]
+                node)
+
+        ;; Sort nodes so the same id is assigned consistently,
+        ;; then map the to corresponding ids.
+        nodes-to-id (zipmap 
+                     (sort #(< (hash %1) (hash %2)) nodes)
+                     (range))
+        
+        ;; Anonymous function to walk the nodes and
+        ;; assign identifiers to them.
+        assign-ids-fn (fn assign-ids [node]
+                        (if (:children node)
+                          (merge node
+                                 {:id (nodes-to-id node)
+                                  :children (map assign-ids (:children node))})
+                          (assoc node :id (nodes-to-id node))))]
+    
+    ;; Assign IDs to the roots and return them.
+    (map assign-ids-fn raw-roots)))
+
+(sc/defn to-alpha-nodes :- [{:type sc/Any 
+                             :alpha-fn sc/Any ;; TODO: is a function...
+                             (sc/optional-key :env) {sc/Keyword sc/Any}
+                             :children [sc/Number]}]
+  "Returns a sequence of [condition-fn, [node-ids]] tuples to represent the alpha side of the network."
+  [beta-roots :- [schema/BetaNode]
+   {alpha-compile-fn :alpha-compile-fn}]
+
+  ;; Create a sequence of tuples of conditions + env to beta node ids.
+  (let [condition-to-node-ids (for [root beta-roots
+                                    node (tree-seq :children :children root)
+                                    :when (:condition node)]
+                                [[(:condition node) (:env node)] (:id node)])
+
+        ;; Merge common conditions together.
+        condition-to-node-map (reduce
+                               (fn [node-map [[condition env] node-id]]
+
+                                 ;; Can't use simple update-in because we need to ensure
+                                 ;; the value is a vector, not a list.
+                                 (if (get node-map [condition env])
+                                   (update-in node-map [[condition env]] conj node-id)
+                                   (assoc node-map [condition env] [node-id])))
+                               {}
+                               condition-to-node-ids)]
+
+    ;; Compile conditions into functions.
+    (vec
+     (for [[[condition env] node-ids] condition-to-node-map
+           :when (:type condition) ; Exclude test conditions.
+           :let [{:keys [type constraints fact-binding args]} condition]]
+
+       (cond-> {:type type
+                :alpha-fn (alpha-compile-fn type (first args) constraints fact-binding env)
+                :children node-ids}
+               env (assoc :env env))))))
+
+(sc/defn compile-beta-tree
+  "Compile the beta tree to the nodes used at runtime."
+  ([beta-nodes  :- [schema/BetaNode]
+    parent-bindings
+    system-env]
+     (vec
+      (for [beta-node beta-nodes
+            :let [{:keys [condition children id production query join-bindings]} beta-node
+
+                  constraint-bindings (variables-as-keywords (:constraints condition))
+
+                  ;; Get all bindings from the parent, condition, and returned fact.
+                  all-bindings (cond-> (s/union parent-bindings constraint-bindings)
+                                       (:fact-binding condition) (conj (:fact-binding condition)))]] 
+
+        (case (:node-type beta-node)
+
+          :join
+          (->JoinNode 
+           id
+           condition  
+           (compile-beta-tree children all-bindings system-env)
+           join-bindings)
+
+          :negation
+          (->NegationNode
+           id
+           condition  
+           (compile-beta-tree children all-bindings system-env)
+           join-bindings)
+
+          :test          
+          (->TestNode 
+           id
+           ((:test-compile-fn system-env) (:constraints condition))  
+           (compile-beta-tree children all-bindings system-env))
+
+          :accumulator
+          (->AccumulateNode
+           id 
+           (((:accum-compile-fn system-env) (:accumulator beta-node) (:env beta-node)) (:env beta-node))
+           (:result-binding beta-node)
+           (compile-beta-tree children all-bindings system-env)
+           join-bindings)
+
+          :production
+          (->ProductionNode 
+           id
+           production 
+           ((:rhs-compile-fn system-env) all-bindings production))
+         
+          :query
+          (->QueryNode
+           id
+           query
+           (:params query))
+          )))))
+
+
+(sc/defn build-network
+  "Constructs the network from compiled beta tree and condition functions."
+  [beta-roots alpha-fns productions]
+  
+  (let [beta-nodes (for [root beta-roots
+                         node (tree-seq :children :children root)]
+                     node)
+
+        production-nodes (for [node beta-nodes
+                               :when (= ProductionNode (type node))]
+                           node)
+
+        query-nodes (for [node beta-nodes
+                          :when (= QueryNode (type node))]
+                      node)
+
+        ;; TOOD: assign query names as map keys as well?
+        query-map (into {} (for [query-node query-nodes]
+                             [(:query query-node) query-node]))
+
+        ;; Map of node ids to beta nodes.
+        id-to-node (into {} (for [node beta-nodes]
+                                 [(:id node) node]))
+        
+        ;; type, alpha node tuples.
+        alpha-nodes (for [{:keys [type alpha-fn children env]} alpha-fns
+                          :let [beta-children (map id-to-node children)]]
+                      [type (->AlphaNode env beta-children alpha-fn)])
+
+        ;; Merge the alpha nodes into a multi-map
+        alpha-map (reduce
+                   (fn [alpha-map [type alpha-node]]
+                     (update-in alpha-map [type] conj alpha-node))
+                   {}
+                   alpha-nodes)]
+    
+    (map->Rulebase 
+     {:alpha-roots alpha-map
+      :beta-roots beta-roots
+      :productions (filter :rhs productions)
+      :queries (remove :rhs productions)
+      :production-nodes production-nodes
+      :query-nodes query-map
+      :id-to-node id-to-node})))
+
+
 ;; Cache of sessions for fast reloading.
 (def ^:private session-cache (atom {}))
+
+(sc/defn mk-session* 
+  "Compile the rules into a rete network and return the given session."
+  [productions :- [schema/Production]
+   options :- {sc/Keyword sc/Any}
+   system-env :- {:alpha-compile-fn sc/Any
+                  :rhs-compile-fn sc/Any
+                  :test-compile-fn sc/Any
+                  :accum-compile-fn sc/Any}]
+  (let [beta-struct (to-beta-tree productions)
+        beta-tree (compile-beta-tree beta-struct #{} system-env)
+        alpha-nodes (to-alpha-nodes beta-struct system-env)
+        rulebase (build-network beta-tree alpha-nodes productions)
+        transport (LocalTransport.)
+
+        ;; The fact-type uses Clojure's type function unless overridden.
+        fact-type-fn (get options :fact-type-fn type)
+
+        ;; Create a function that groups a sequence of facts by the collection
+        ;; of alpha nodes they target.
+        ;; We cache an alpha-map for facts of a given type to avoid computing
+        ;; them for every fact entered.
+        get-alphas-fn (create-get-alphas-fn fact-type-fn rulebase)]
+
+    (LocalSession. rulebase (local-memory rulebase transport) transport get-alphas-fn)))
 
 (defn mk-session
   "Creates a new session using the given rule source. Thew resulting session
    is immutable, and can be used with insert, retract, fire-rules, and query functions."
-  ([source & more]
+  ([sources-and-options
+    system-env]
 
      ;; If an equivalent session has been created, simply reuse it.
      ;; This essentially memoizes this function unless the caller disables caching.
-     (if-let [session (get @session-cache [source more])]
+     (if-let [session (get @session-cache [sources-and-options])]
        session
 
-       ;; Merge all of the sources together and create a session.
-       (let [rulebase (load-rules source)
-             transport (LocalTransport.)
-             other-sources (take-while (complement keyword?) more)
-             options (apply hash-map (drop-while (complement keyword?) more))
-
-             ;; Merge other rule sessions into one.
-             merged-rules (reduce           
-                           (fn [rulebase other-source]
-                             (conj-rulebases rulebase (load-rules other-source)))
-                           (load-rules source)
-                           other-sources)
-
-             ;; The fact-type uses Clojure's type function unless overridden.
-             fact-type-fn (get options :fact-type-fn type)
-
-             ;; Create a function that groups a sequence of facts by the collection
-             ;; of alpha nodes they target.
-             ;; We cache an alpha-map for facts of a given type to avoid computing
-             ;; them for every fact entered.
-             get-alphas-fn (create-get-alphas-fn fact-type-fn merged-rules)
-
-             session (LocalSession. merged-rules (local-memory merged-rules transport) transport get-alphas-fn)]
+       ;; Separate sources and options, then load them.
+       (let [sources (take-while (complement keyword?) sources-and-options)
+             options (apply hash-map (drop-while (complement keyword?) sources-and-options))
+             productions (mapcat
+                          #(if (satisfies? IRuleSource %)
+                             (load-rules %)
+                             %)
+                          sources) ; Load rules from the source, or just use the input as a seq.
+             session (mk-session* productions options system-env)]
 
          ;; Cache the session unless instructed not to.
          (when (get options :cache true)
-           (swap! session-cache assoc [source more] session))
-
+           (swap! session-cache assoc [sources-and-options] session))
+         
          ;; Return the session.
          session))))

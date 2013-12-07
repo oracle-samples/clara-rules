@@ -1,11 +1,12 @@
-(defproject org.toomuchcode/clara-rules "0.4.0-SNAPSHOT"
+(defproject org.toomuchcode/clara-rules "0.4.0-alpha1-SNAPSHOT"
   :description "Clara Rules Engine"
   :url "http://rbrush.github.io/clara-rules/"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.5.1"]
                  [org.codehaus.jsr166-mirror/jsr166y "1.7.0"]
-                 [org.clojure/clojurescript "0.0-2030"]]
+                 [org.clojure/clojurescript "0.0-2030"]
+                 [prismatic/schema "0.1.9"]]
   :plugins [[codox "0.6.4"]
             [lein-javadoc "0.1.1"]
             [lein-cljsbuild "1.0.0-alpha2"]
@@ -18,7 +19,8 @@
   :source-paths ["src/main/clojure"]
   :test-paths ["src/test/clojure"]
   :java-source-paths ["src/main/java"]
-  :hooks [leiningen.cljsbuild]
+;; Temporarily drop CLJS support during refactoring effort.
+;  :hooks [leiningen.cljsbuild] 
   :cljsbuild {:builds [{:source-paths ["src/main/clojurescript"]
                         :jar true
                         :compiler {:pretty-print true

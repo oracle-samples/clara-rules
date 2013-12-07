@@ -2,8 +2,8 @@
   (:use clojure.test
         clara.rules
         clojure.pprint
-        [clara.rules.engine :only [->Token ast-to-dnf load-rules *trace-transport* 
-                                   description]]
+        [clara.rules.engine :only [->Token load-rules *trace-transport* 
+                                   description to-beta-tree to-alpha-nodes]]
         clara.rules.testfacts)
   (:require [clara.sample-ruleset :as sample]
             [clojure.set :as s]
@@ -30,7 +30,7 @@
         hottest-fact (mk-query [] [[?t <- (acc/max :temperature :returns-fact true) from [Temperature]]])
 
         average-temp (mk-query [] [[?t <- (acc/average :temperature) from [Temperature]]])
-
+        
         session (-> (mk-rulebase coldest coldest-fact hottest hottest-fact average-temp) 
                     (mk-session)
                     (insert (->Temperature 30 "MCI"))
@@ -42,6 +42,8 @@
            (set (query session coldest-fact))))
 
     (is (= {:?t 80} (first (query session hottest))))   
+
+
     (is (= #{{:?t (->Temperature 80 "MCI")}}
            (set (query session hottest-fact))))
 
@@ -84,8 +86,8 @@
                      (->Temperature 90 "MCI")}}}
            (set (query session distinct))))
 
-    (comment (is (= #{{:?t #{ 80 90}}}
-                    (set (query session distinct-field)))))))
+    (is (= #{{:?t #{ 80 90}}}
+           (set (query session distinct-field))))))
 
 (deftest test-max-min-avg
   ;; Tests a single query that gets the maximum, minimum, and average temperatures.
@@ -120,8 +122,10 @@
 
     (is (= {:?c 0 :?loc "MCI"} (first (query session count))))))
 
+
+  
 ;; Same as the above test, but the binding occurs in a rule after
-;; the accumulator, to test reordering.
+;; the accumulator, to test reordering.  
 (deftest test-count-none-with-later-bind
   (let [count (mk-query [] [[?c <- (acc/count) from [Temperature (= ?loc location)]]
                             [WindSpeed (> windspeed 10) (= ?loc location)]])
@@ -135,7 +139,7 @@
 
 (deftest test-count-some-empty
   (let [count (mk-query [:?loc] [[?c <- (acc/count) from [Temperature (= ?loc location)]]
-                                [WindSpeed (> windspeed 10) (= ?loc location)]])
+                                 [WindSpeed (> windspeed 10) (= ?loc location)]])
 
         session (-> (mk-rulebase count)
                     (mk-session)

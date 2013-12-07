@@ -8,7 +8,9 @@
             [clojure.core.reducers :as r]
             [clojure.set :as s]
             [clara.rules.engine :as eng]
-            [clojure.string :as string]))
+            [clojure.string :as string]
+            [clara.rules.schema :as schema]
+            [schema.core :as sc]))
 
 (def ^:private reflector
   "For some reason (bug?) the default reflector doesn't use the
@@ -134,12 +136,21 @@
        :else
        (list (list 'if exp (cons 'do compiled-rest) nil))))))  
 
-(defn- compile-condition 
+(defn variables-as-keywords
+  "Returns symbols in the given s-expression that start with '?' as keywords"
+  [expression]
+  (into #{} (for [item (flatten expression) 
+                  :when (and (symbol? item) 
+                             (= \? (first (name item))))] 
+              (keyword  item))))
+
+(defn compile-condition 
   "Returns a function definition that can be used in alpha nodes to test the condition."
-  [type destructured-fact constraints binding-keys result-binding]
+  [type destructured-fact constraints result-binding env]
   (let [;; Get a map of fieldnames to access function symbols.
         accessors (get-fields type)
 
+        binding-keys (variables-as-keywords constraints)
         ;; The assignments should use the argument destructuring if provided, or default to accessors otherwise.
         assignments (if destructured-fact
                       ;; Simply destructure the fact if arguments are provided.
@@ -150,6 +161,11 @@
                                         [name (list accessor '?__fact__)]) 
                                       accessors)))
 
+        ;; The destructured environment, if any
+        destructured-env (if (> (count env) 0)
+                           {:keys (mapv #(symbol (name %)) (keys env))}
+                           '?__env__)
+
         ;; Initial bindings used in the return of the compiled condition expresion.
         initial-bindings (if result-binding {result-binding 'this}  {})]
 
@@ -157,131 +173,39 @@
              (with-meta 
                '?__fact__ 
                {:tag (symbol (.getName type))})  ; Add type hint to avoid runtime refection.
-             '?__fact__)]
-
+             '?__fact__)
+          ~destructured-env] ;; TODO: add destructured environment parameter...
        (let [~@assignments
              ~'?__bindings__ (atom ~initial-bindings)]
          (do ~@(compile-constraints constraints (set binding-keys)))))))
 
+;; FIXME: add env...
+(defn compile-test [tests]
+  (let [binding-keys (variables-as-keywords tests)
+        assignments (mapcat #(list (symbol (name %)) (list 'get-in '?__token__ [:bindings %])) binding-keys)]
+
+    `(fn [~'?__token__] 
+      (let [~@assignments]
+        (and ~@tests)))))
+
 (defn compile-action
   "Compile the right-hand-side action of a rule, returning a function to execute it."
-  [binding-keys rhs]
-  (let [assignments (mapcat #(list (symbol (name %)) (list 'get-in '?__token__ [:bindings %])) binding-keys)]
-    `(fn [~'?__token__] 
+  [binding-keys rhs env]
+  (let [assignments (mapcat #(list (symbol (name %)) (list 'get-in '?__token__ [:bindings %])) binding-keys)
+        
+        ;; The destructured environment, if any.
+        destructured-env (if (> (count env) 0)
+                           {:keys (mapv #(symbol (name %)) (keys env))}
+                           '?__env__)]
+    `(fn [~'?__token__  ~destructured-env] 
        (let [~@assignments]
          ~rhs))))
 
-(defn variables-as-keywords
-  "Returns symbols in the given s-expression that start with '?' as keywords"
-  [expression]
-  (into #{} (for [item (flatten expression) 
-                  :when (and (symbol? item) 
-                             (= \? (first (name item))))] 
-              (keyword  item))))
-
-;; Record representing a compiled accumulator definition.
-(defrecord AccumulatorDef [initial-value reduce-fn combine-fn convert-return-fn])
-
-(defn- construct-condition [condition result-binding]
-  (let [type (if (symbol? (first condition)) 
-               (if-let [resolved (resolve (first condition))] 
-                 resolved
-                 (first condition)) ; For ClojureScript compatibility, we keep the symbol if we can't resolve it.
-               (first condition))
-        ;; Args is an optional vector of arguments following the type.
-        args (if (vector? (second condition)) (second condition) nil)
-        constraints (vec (if args (drop 2 condition) (rest condition)))
-        binding-keys (variables-as-keywords constraints)
-        text (pr-str condition)]
-
-    (when (> (count args) 1)
-      (throw (IllegalArgumentException. "Only one argument can be passed to a condition.")))
-    
-    `(eng/map->Condition {:type ~type 
-                          :args '~(first args)
-                          :constraints '~constraints 
-                          :binding-keys ~binding-keys 
-                          :activate-fn ~(compile-condition type (first args) constraints binding-keys result-binding)
-                          :text ~text})))
-
-(defn create-condition [condition]
-  ;; Grab the binding of the operation result, if present.
-  (let [result-binding (if (= '<- (second condition)) (keyword (first condition)) nil)
-        condition (if result-binding (drop 2 condition) condition)]
-
-    (when (and (not= nil result-binding)
-               (not= \? (first (name result-binding))))
-      (throw (IllegalArgumentException. (str "Invalid binding for condition: " result-binding))))
-
-    ;; If it's an s-expression, simply let it expand itself, and assoc the binding with the result.
-    (if (#{'from :from} (second condition)) ; If this is an accumulator....
-      `(eng/map->Accumulator {:result-binding ~result-binding
-                              :definition ~(first condition)
-                              :input-condition ~(construct-condition (nth condition 2) nil)
-                              :text ~(pr-str condition)})
-      
-      ;; Not an accumulator, so simply create the condition.
-      (construct-condition condition result-binding))))
-
-;; Let operators be symbols or keywords.
-(def operators #{'and 'or 'not :and :or :not})
-
-(defn mk-test [tests]
-  (let [binding-keys (variables-as-keywords tests)
-        assignments (mapcat #(list (symbol (name %)) (list 'get-in '?__token__ [:bindings %])) binding-keys)]
-    `(eng/->Test 
-      (fn [~'?__token__] 
-        (let [~@assignments]
-          (and ~@tests)))
-      '~tests
-      ~(pr-str tests))))
-
-(defn- parse-expression [expression]
-  (cond 
-   (operators (first expression))
-   {:type (keyword (first expression)) 
-    :content (vec (map parse-expression (rest expression)))}
-
-   (#{'test :test} (first expression))
-   {:type :test 
-    :content (mk-test (rest expression))}
-
-   :default
-   {:type :condition :content (create-condition expression)}))
-
-(defn parse-lhs
-  "Parse the left-hand side and returns an AST"
-  [lhs] 
-  (parse-expression 
-   (if (operators (first lhs))
-     lhs
-     (cons 'and lhs)))) ; "and" is implied if a list of constraints are given without an operator.
-
-(defn separator?
-  "True iff `x` is a rule body separator symbol."
-  [x] (and (symbol? x) (= "=>" (name x))))
-
-(defn parse-rule-body [[head & more]]
-  (cond
-   ;; Detect the separator for the right-hand side.
-   (separator? head) {:lhs (list) :rhs (first more)}
-
-   ;; Handle a normal left-hand side element.
-   (sequential? head) (update-in 
-                       (parse-rule-body more)
-                       [:lhs] conj head)
-
-   ;; Handle the <- style assignment
-   (symbol? head) (update-in 
-                   (parse-rule-body (drop 2 more))
-                   [:lhs] conj (conj head (take 2 more)))))
-
-(defn parse-query-body [[head & more]]
-  (cond
-   (nil? head) (list)
-
-   ;; Handle a normal left-hand side element.
-   (sequential? head) (conj (parse-query-body more) head)
-
-   ;; Handle the <- style assignment
-   (symbol? head) (conj (parse-query-body (drop 2 more)) (conj head (take 2 more)))))
+(defn compile-accum
+  [accum env]
+  (let [destructured-env 
+        (if (> (count env) 0)
+          {:keys (mapv #(symbol (name %)) (keys env))}
+          '?__env__)]
+    `(fn [~destructured-env] 
+       ~accum)))
