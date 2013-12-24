@@ -12,9 +12,9 @@
 
 (def ^:private reflector
   "For some reason (bug?) the default reflector doesn't use the
-  Clojure dynamic class loader, which prevents reflecting on
+   Clojure dynamic class loader, which prevents reflecting on
   `defrecords`.  Work around by supplying our own which does."
-  (clojure.reflect.JavaReflector. (clojure.lang.RT/baseLoader)))
+  (clojure.reflect.JavaReflector. (clojure.lang.RT/makeClassLoader)))
 
 ;; This technique borrowed from Prismatic's schema library.
 (defn compiling-cljs?
