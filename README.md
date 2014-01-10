@@ -50,7 +50,7 @@ Here's a simple example. The [clara-examples project](https://github.com/rbrush/
 ;; Notify Alice that Acme has a new support request!
 ```
 
-## Usage
+## Release Usage
 Add the following to your project.clj:
 
 ```clj
@@ -65,6 +65,19 @@ or to your Maven POM:
   <artifactId>clara-rules</artifactId>
   <version>0.3.0</version>
 </dependency>
+```
+
+## Bleeding Edge Usage
+Snapshot builds are published for users wanting to experiment with unreleased features. The snapshot repository can be used by adding the following to your project.clj:
+
+```clj
+:repositories [["snapshots" {:url "https://oss.sonatype.org/content/repositories/snapshots/"}]]
+```
+
+The currently active snapshot version is:
+
+```clj
+[org.toomuchcode/clara-rules "0.4.0-alpha1-SNAPSHOT"]
 ```
 
 ## Learn more
