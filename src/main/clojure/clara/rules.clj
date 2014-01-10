@@ -241,7 +241,9 @@
         definition (if properties (rest body) body)
         {:keys [lhs rhs]} (dsl/parse-rule-body definition)]
     `(def ~(vary-meta name assoc :rule true :doc doc)
-       (mk-rule ~lhs ~rhs ~properties))))
+       (cond-> (mk-rule ~lhs ~rhs ~properties)
+           ~name (assoc :name ~(clojure.core/name name))
+           ~doc (assoc :doc ~doc)))))
 
 (defmacro defquery 
   "Defines a query and stored it in the given var. For instance, a simple query that accepts no
@@ -259,5 +261,8 @@
         binding (if doc (second body) (first body))
         definition (if doc (drop 2 body) (rest body) )]
     `(def ~(vary-meta name assoc :query true :doc doc) 
-       (mk-query ~binding ~(dsl/parse-query-body definition)))))
+       (cond-> (mk-query ~binding ~(dsl/parse-query-body definition))
+               ~name (assoc :name ~(clojure.core/name name))
+                ~doc (assoc :doc ~doc)
+))))
 

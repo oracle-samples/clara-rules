@@ -1,6 +1,19 @@
 (ns clara.rules.schema
   (:require [schema.core :as s]))
 
+(s/defn condition-type :- (s/enum :or :not :and :fact :accumulator :test)
+  "Returns the type of node in a LHS condition expression."
+  [condition]
+  (if (map? condition) ; Leaf nodes are maps, per the schema
+    
+    (cond
+     (:type condition) :fact
+     (:accumulator condition) :accumulator
+     :else :test)
+    
+    ;; Otherwise the node must a vector that starts with the boolean operator.
+    (first condition)))
+
 ;; Rule and query structure schema.
 (def FactCondition
   {:type s/Any
@@ -35,7 +48,8 @@
    map? LeafCondition))
 
 (def Rule
-  {(s/optional-key :doc) s/String
+  {(s/optional-key :name) s/String
+   (s/optional-key :doc) s/String
    (s/optional-key :props) {s/Keyword s/Any}
    (s/optional-key :env) {s/Keyword s/Any}
    :lhs [Condition]
@@ -43,7 +57,8 @@
    })
 
 (def Query
-  {(s/optional-key :doc) s/String
+  {(s/optional-key :name) s/String
+   (s/optional-key :doc) s/String
    (s/optional-key :props) {s/Keyword s/Any}
    (s/optional-key :env) {s/Keyword s/Any}
    :lhs [Condition]
@@ -114,4 +129,11 @@
    #(= (:node-type %) :query)
    QueryNode))
 
+;; Alpha network schema.
+(def AlphaNode
+  {:condition FactCondition
+   ;; Opional environment for the alpha node.
+   (s/optional-key :env) {s/Keyword s/Any}
+   ;; IDs of the beta nodes that are the children.
+   :beta-children [s/Number]})
 

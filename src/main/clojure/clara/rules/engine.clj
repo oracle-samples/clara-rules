@@ -802,6 +802,39 @@
     ;; Assign IDs to the roots and return them.
     (map assign-ids-fn raw-roots)))
 
+(sc/defn to-alpha-tree :- [schema/AlphaNode]
+  "Returns a sequence of [condition-fn, [node-ids]] tuples to represent the alpha side of the network."
+  [beta-roots :- [schema/BetaNode]]
+
+  ;; Create a sequence of tuples of conditions + env to beta node ids.
+  (let [condition-to-node-ids (for [root beta-roots
+                                    node (tree-seq :children :children root)
+                                    :when (:condition node)]
+                                [[(:condition node) (:env node)] (:id node)])
+
+        ;; Merge common conditions together.
+        condition-to-node-map (reduce
+                               (fn [node-map [[condition env] node-id]]
+
+                                 ;; Can't use simple update-in because we need to ensure
+                                 ;; the value is a vector, not a list.
+                                 (if (get node-map [condition env])
+                                   (update-in node-map [[condition env]] conj node-id)
+                                   (assoc node-map [condition env] [node-id])))
+                               {}
+                               condition-to-node-ids)]
+
+    ;; Compile conditions into functions.
+    (vec
+     (for [[[condition env] node-ids] condition-to-node-map
+           :when (:type condition) ; Exclude test conditions.
+           ]
+
+       (cond-> {:condition condition
+                :beta-children node-ids}
+               env (assoc :env env))))))
+
+;; FIXME: reuse logic in to-alpha-tree....
 (sc/defn to-alpha-nodes :- [{:type sc/Any 
                              :alpha-fn sc/Any ;; TODO: is a function...
                              (sc/optional-key :env) {sc/Keyword sc/Any}
