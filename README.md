@@ -80,6 +80,8 @@ The currently active snapshot version is:
 [org.toomuchcode/clara-rules "0.4.0-alpha1-SNAPSHOT"]
 ```
 
+Note that ClojureScript support is temporarily disabled in the 0.4 snapshots pending refactoring in [issue 34](https://github.com/rbrush/clara-rules/issues/34). It will be re-added prior to the 0.4 release.
+
 ## Learn more
 
 * The [introduction page](https://github.com/rbrush/clara-rules/wiki/Introduction) provides an overview of the project.
