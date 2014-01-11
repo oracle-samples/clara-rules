@@ -831,7 +831,7 @@
            ]
 
        (cond-> {:condition condition
-                :beta-children node-ids}
+                :beta-children (distinct node-ids)}
                env (assoc :env env))))))
 
 ;; FIXME: reuse logic in to-alpha-tree....
@@ -869,7 +869,7 @@
 
        (cond-> {:type type
                 :alpha-fn (alpha-compile-fn type (first args) constraints fact-binding env)
-                :children node-ids}
+                :children (distinct node-ids)}
                env (assoc :env env))))))
 
 (sc/defn compile-beta-tree

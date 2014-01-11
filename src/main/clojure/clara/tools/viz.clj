@@ -15,10 +15,21 @@
 
 (defn condition-to-html 
   "Returns an HTML-based description of the given condition. "
-  [{:keys [constraints type] :as condition}]
-  (h/html [:table  {:border "0" :cellborder "0"}
-           [:tr [:td [:b (str (last (string/split (.getName type) #"\.")))]]]
-           [:tr [:td (h/h (str constraints))]]]))
+  [condition]
+  (h/html 
+   (if (:accumulator condition)
+
+     ;; Accumulator
+     [:table  {:border "0" :cellborder "0"}
+      [:tr [:td (h/h (str (:accumulator condition)))] [:td (str "into " (:result-binding condition))]  ]
+      [:tr [:td [:b (str "from: "(last (string/split (.getName (get-in condition [:from :type])) #"\.")))]]]
+      [:tr [:td (h/h (str (get-in condition [:from :constraints])))]]]
+
+     ;; Handle as a normal, non-accumulator
+     [:table  {:border "0" :cellborder "0"}
+      (when (:type condition) 
+        [:tr [:td [:b (str (last (string/split (.getName (:type condition)) #"\.")))]]])
+      [:tr [:td (h/h (str (:constraints condition)))]]])))
 
 (defn rhs-to-html
   "Returns an HTML-based description of the right-hand side of a production.."
@@ -54,13 +65,16 @@
             :join :diamond
             :production :rectangle
             :query :parallelogram
-            :Msquare
+            :Mrect
             )
           :label
           (case (:node-type beta-node)
-            :join (str "JOIN: " (:join-bindings beta-node))
+            :join (str "JOIN ON: " (:join-bindings beta-node))
             :production (rhs-to-html (:production beta-node))
             :query (str (:name (:query beta-node)))
+            :accumulator (h/h (str "ACCUMULATE: " (:accumulator beta-node)))
+            :test (h/h (str "TEST: "(:condition beta-node)))
+            :negation "NEGATION"
             )}])
 
       ;; Graph alpha edges.
