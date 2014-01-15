@@ -3,7 +3,7 @@
         clara.rules
         clojure.pprint
         [clara.rules.engine :only [->Token load-rules *trace-transport* 
-                                   description to-beta-tree to-alpha-nodes]]
+                                   description to-beta-tree]]
         clara.rules.testfacts)
   (:require [clara.sample-ruleset :as sample]
             [clojure.set :as s]
