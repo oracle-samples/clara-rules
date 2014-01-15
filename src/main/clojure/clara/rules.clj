@@ -14,6 +14,12 @@
   [session & facts] 
   (eng/insert session facts))
 
+(defn insert-all
+  "Inserts a sequence of facts into a working session. It does not modify the given
+   session, but returns a new session with the facts added."
+  [session fact-seq] 
+  (eng/insert session fact-seq))
+
 (defn retract
   "Retracts a fact from a working session. It does not modify the given session,
    but returns a new session with the facts retracted."
