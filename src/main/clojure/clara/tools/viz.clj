@@ -6,14 +6,16 @@
            [hiccup.core :as h]
            [clojure.string :as string]))
 
-(defn get-productions [sources]
+(defn get-productions 
+  "Returns a sequence of productions from the given sources."
+  [sources]
   (mapcat
    #(if (satisfies? eng/IRuleSource %)
       (eng/load-rules %)
       %)
    sources))
 
-(defn condition-to-html 
+(defn- condition-to-html 
   "Returns an HTML-based description of the given condition. "
   [condition]
   (h/html 
@@ -31,7 +33,7 @@
         [:tr [:td [:b (str (last (string/split (.getName (:type condition)) #"\.")))]]])
       [:tr [:td (h/h (str (:constraints condition)))]]])))
 
-(defn rhs-to-html
+(defn- rhs-to-html
   "Returns an HTML-based description of the right-hand side of a production.."
   [{:keys [name rhs] :as production}]
  (h/html [:table  {:border "0" :cellborder "0"}
@@ -94,7 +96,7 @@
      dot/dot
      dot/show!)))
 
-(def operators #{:and :or :not})
+(def ^:private operators #{:and :or :not})
 
 (defn- condition-to-id-map
   "Returns a map associating conditions to node ids"
@@ -114,7 +116,7 @@
           conditions
           (range)))))
 
-(defn production-to-dot [production]
+(defn- production-to-dot [production]
   (let [condition-to-ids (condition-to-id-map production) 
 
         ;; Identify root conditions by first finding all children,
@@ -157,7 +159,7 @@
      (for [[condition id] root-conditions]
        [id (hash production)]))))
 
-(defn get-insertions 
+(defn- get-insertions 
   "Returns the insertions done by a production."
   [production]
   (if-let [rhs (:rhs production)]
@@ -175,7 +177,15 @@
             (subs (name create-fact-fn) 2)))) ; Return the record type.
     #{}))
 
-(defn insertions-to-dot [productions]
+(defn- get-uses
+  "Returns the facts consumed by a production."
+  [production]
+  (into #{}
+        (for [[condition id] (condition-to-id-map production)
+              :when (:type condition)]
+          (.getName (:type condition)))))
+
+(defn- insertions-to-dot [productions]
   (let [types-to-ids ; A map of all conditions and their node ids.
         (reduce
          (fn [map [type id]]
@@ -199,17 +209,28 @@
           condition-id (get types-to-ids insertion)]
       [(hash production) condition-id {:style :dashed}])))
 
+(defn inserts? 
+  "Predicate that returns true when the given rule inserts the given fact"
+  [rule fact]
+  (contains? (get-insertions rule)
+             (.getName fact)))
+
+(defn uses?
+  "Predicate that returns true when the given rule uses the given fact."
+  [rule fact]
+  (contains? (get-uses rule)
+             (.getName fact)))
 
 (defn show-logic! 
   [& sources]
   (let [productions (get-productions sources)]
     
-    (->
+    (->>
      (concat
       (mapcat production-to-dot productions)
       (insertions-to-dot productions))
      vec ; dorothy assumes a vector.
-     dot/digraph
-     dot/dot
+     dot/digraph 
+     dot/dot 
      dot/show!
      )))
