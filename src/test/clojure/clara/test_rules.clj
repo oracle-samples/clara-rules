@@ -1120,3 +1120,36 @@
 
     ;; Only one reduced temperature should be present.
     (is (= [{:?t 9}] (query session temp-query)))))
+
+
+;; Test behavior discussed in https://github.com/rbrush/clara-rules/issues/35
+(deftest test-identical-facts
+  (let [ident-query (mk-query [] [[?t1 <- Temperature (= ?loc location)]
+                                [?t2 <- Temperature (= ?loc location)]
+                                [:test (not (identical? ?t1 ?t2))]])
+
+        temp (->Temperature 15 "MCI")
+        temp2 (->Temperature 15 "MCI")
+
+        session (-> (mk-rulebase ident-query) 
+                    (mk-session)
+                    (insert temp
+                            temp))
+
+        session-with-dups (-> (mk-rulebase ident-query) 
+                              (mk-session)
+                              (insert temp
+                                      temp2))]
+
+    ;; The inserted facts are identical, so there cannot be a non-identicial match.
+    (is (empty? (query session ident-query)))
+    
+
+    ;; Duplications should have two matches, since either fact can bind to either condition.
+    (is (= [{:?t1 #clara.rules.testfacts.Temperature{:temperature 15, :location "MCI"} 
+             :?t2 #clara.rules.testfacts.Temperature{:temperature 15, :location "MCI"}
+             :?loc  "MCI"}
+            {:?t2 #clara.rules.testfacts.Temperature{:temperature 15, :location "MCI"} 
+             :?t1 #clara.rules.testfacts.Temperature{:temperature 15, :location "MCI"}
+             :?loc "MCI"}]
+           (query session-with-dups ident-query)))))
