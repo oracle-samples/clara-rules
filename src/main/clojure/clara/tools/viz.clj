@@ -221,16 +221,22 @@
   (contains? (get-uses rule)
              (.getName fact)))
 
-(defn show-logic! 
-  [& sources]
+(defn logic-to-dot
+  [sources]
   (let [productions (get-productions sources)]
     
-    (->>
+    (->
      (concat
       (mapcat production-to-dot productions)
       (insertions-to-dot productions))
      vec ; dorothy assumes a vector.
      dot/digraph 
-     dot/dot 
-     dot/show!
-     )))
+     dot/dot)))
+
+(defn save-png! 
+  [destination & sources]
+  (dot/save! (logic-to-dot sources) destination {:format :png}))
+
+(defn show-logic! 
+  [& sources]
+  (dot/show! (logic-to-dot sources)))
