@@ -2,6 +2,7 @@
   "Java support. Users should use the Java API, or the clara.rules namespace from Clojure."
   (:require [clara.rules :as clara]
             [clara.rules.engine :as eng]
+            [clara.rules.compiler :as com]
             [clara.rules.memory :as mem])
   (:refer-clojure :exclude [==])
   (import [clara.rules.engine LocalTransport]
@@ -47,5 +48,5 @@
 
 (defn mk-java-session [rulesets]
   (JavaWorkingMemory. 
-   (eng/mk-session (map symbol rulesets) clara/system-env)))
+   (com/mk-session (map symbol rulesets) clara/system-env)))
 

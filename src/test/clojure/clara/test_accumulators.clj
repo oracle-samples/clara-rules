@@ -2,8 +2,7 @@
   (:use clojure.test
         clara.rules
         clojure.pprint
-        [clara.rules.engine :only [->Token load-rules *trace-transport* 
-                                   description to-beta-tree]]
+        [clara.rules.engine :only [->Token  *trace-transport*]]
         clara.rules.testfacts)
   (:require [clara.sample-ruleset :as sample]
             [clojure.set :as s]

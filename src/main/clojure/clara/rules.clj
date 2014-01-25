@@ -124,14 +124,18 @@
       ~(com/variables-as-keywords lhs))))
 
 (defmacro mk-query
-  "Creates a new query based on a sequence of a conditions. 
+  "DEPRECATED. Users generally should use defquery, although clojure.rules.dsl/parse-query is available for specialized needs.
+
+   Creates a new query based on a sequence of a conditions. 
    This is only used when creating queries dynamically; most users should use defquery instead."
   [params lhs]
   ;; TODO: validate params exist as keyworks in the query.
   (dsl/parse-query params lhs &env))
 
 (defmacro mk-rule
-  "Creates a new rule based on a sequence of a conditions and a righthand side. 
+  "DEPRECATED. Users generally should use defrule, although clojure.rules.dsl/parse-rule is available for specialized needs.
+
+   Creates a new rule based on a sequence of a conditions and a righthand side. 
    This is only used when creating new rules directly; most users should use defrule instead."
   ([lhs rhs]
      (dsl/parse-rule lhs rhs nil &env))
@@ -211,12 +215,12 @@
      Defaults to true. Callers may wish to set this to false when needing to dynamically reload rules."
   [& args]
   (if (and (seq args) (not (keyword? (first args))))
-    `(eng/mk-session ~(vec args) system-env) ; At least one namespace given, so use it.
-    `(eng/mk-session (concat [(ns-name *ns*)] ~(vec args)) system-env))) ; No namespace given, so use the current one.
+    `(com/mk-session ~(vec args) system-env) ; At least one namespace given, so use it.
+    `(com/mk-session (concat [(ns-name *ns*)] ~(vec args)) system-env))) ; No namespace given, so use the current one.
 
 ;; Treate a symbol as a rule source, loading all items in its namespace.
 (extend-type clojure.lang.Symbol
-  eng/IRuleSource
+  com/IRuleSource
   (load-rules [sym]
 
     ;; Find the rules and queries in the namespace, shred them,
