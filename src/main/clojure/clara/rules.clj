@@ -181,25 +181,6 @@
   [& productions]
   productions)
 
-;; Environmental settings specific to Clojure.
-;; TODO: should this be private?
-(def system-env 
-  {:alpha-compile-fn
-   (fn [type arg constraints fact-binding env]
-     (eval (com/compile-condition type arg constraints fact-binding env)))
-
-   :rhs-compile-fn
-   (fn [all-bindings production]
-     (eval (com/compile-action all-bindings (:rhs production) (:env production))))
-   
-   :test-compile-fn
-   (fn [tests]
-     (eval (com/compile-test tests)))
-
-   :accum-compile-fn
-   (fn [accum env]
-     (eval (com/compile-accum accum env)))})
-
 (defmacro mk-session
    "Creates a new session using the given rule sources. Thew resulting session
    is immutable, and can be used with insert, retract, fire-rules, and query functions.
@@ -215,8 +196,8 @@
      Defaults to true. Callers may wish to set this to false when needing to dynamically reload rules."
   [& args]
   (if (and (seq args) (not (keyword? (first args))))
-    `(com/mk-session ~(vec args) system-env) ; At least one namespace given, so use it.
-    `(com/mk-session (concat [(ns-name *ns*)] ~(vec args)) system-env))) ; No namespace given, so use the current one.
+    `(com/mk-session ~(vec args)) ; At least one namespace given, so use it.
+    `(com/mk-session (concat [(ns-name *ns*)] ~(vec args))))) ; No namespace given, so use the current one.
 
 ;; Treate a symbol as a rule source, loading all items in its namespace.
 (extend-type clojure.lang.Symbol

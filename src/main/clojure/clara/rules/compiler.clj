@@ -480,21 +480,19 @@
                                   :alpha-fn sc/Any ;; TODO: is a function...
                                   (sc/optional-key :env) {sc/Keyword sc/Any}
                                   :children [sc/Number]}]
-  [alpha-nodes :- [schema/AlphaNode]
-   {alpha-compile-fn :alpha-compile-fn}]
+  [alpha-nodes :- [schema/AlphaNode]]
   (for [{:keys [condition beta-children env]} alpha-nodes
         :let [{:keys [type constraints fact-binding args]} condition]]
 
     (cond-> {:type type
-             :alpha-fn (alpha-compile-fn type (first args) constraints fact-binding env)
+             :alpha-fn (eval (compile-condition type (first args) constraints fact-binding env))
              :children beta-children}
             env (assoc :env env))))
 
 (sc/defn compile-beta-tree
   "Compile the beta tree to the nodes used at runtime."
   ([beta-nodes  :- [schema/BetaNode]
-    parent-bindings
-    system-env]
+    parent-bindings]
      (vec
       (for [beta-node beta-nodes
             :let [{:keys [condition children id production query join-bindings]} beta-node
@@ -511,35 +509,35 @@
           (eng/->JoinNode
            id
            condition
-           (compile-beta-tree children all-bindings system-env)
+           (compile-beta-tree children all-bindings)
            join-bindings)
 
           :negation
           (eng/->NegationNode
            id
            condition
-           (compile-beta-tree children all-bindings system-env)
+           (compile-beta-tree children all-bindings)
            join-bindings)
 
           :test
           (eng/->TestNode
            id
-           ((:test-compile-fn system-env) (:constraints condition))
-           (compile-beta-tree children all-bindings system-env))
+           (eval (compile-test (:constraints condition)))
+           (compile-beta-tree children all-bindings))
 
           :accumulator
           (eng/->AccumulateNode
            id
-           (((:accum-compile-fn system-env) (:accumulator beta-node) (:env beta-node)) (:env beta-node))
+           ((eval (compile-accum (:accumulator beta-node) (:env beta-node))) (:env beta-node))
            (:result-binding beta-node)
-           (compile-beta-tree children all-bindings system-env)
+           (compile-beta-tree children all-bindings)
            join-bindings)
 
           :production
           (eng/->ProductionNode
            id
            production
-           ((:rhs-compile-fn system-env) all-bindings production))
+           (eval (compile-action all-bindings (:rhs production) (:env production))))
 
           :query
           (eng/->QueryNode
@@ -633,14 +631,10 @@
 (sc/defn mk-session*
   "Compile the rules into a rete network and return the given session."
   [productions :- [schema/Production]
-   options :- {sc/Keyword sc/Any}
-   system-env :- {:alpha-compile-fn sc/Any
-                  :rhs-compile-fn sc/Any
-                  :test-compile-fn sc/Any
-                  :accum-compile-fn sc/Any}]
+   options :- {sc/Keyword sc/Any}]
   (let [beta-struct (to-beta-tree productions)
-        beta-tree (compile-beta-tree beta-struct #{} system-env)
-        alpha-nodes (compile-alpha-nodes (to-alpha-tree beta-struct) system-env)
+        beta-tree (compile-beta-tree beta-struct #{})
+        alpha-nodes (compile-alpha-nodes (to-alpha-tree beta-struct))
         rulebase (build-network beta-tree alpha-nodes productions)
         transport (LocalTransport.)
 
@@ -658,8 +652,7 @@
 (defn mk-session
   "Creates a new session using the given rule source. Thew resulting session
    is immutable, and can be used with insert, retract, fire-rules, and query functions."
-  ([sources-and-options
-    system-env]
+  ([sources-and-options]
 
      ;; If an equivalent session has been created, simply reuse it.
      ;; This essentially memoizes this function unless the caller disables caching.
@@ -674,7 +667,7 @@
                              (load-rules %)
                              %)
                           sources) ; Load rules from the source, or just use the input as a seq.
-             session (mk-session* productions options system-env)]
+             session (mk-session* productions options)]
 
          ;; Cache the session unless instructed not to.
          (when (get options :cache true)
