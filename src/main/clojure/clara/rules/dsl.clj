@@ -41,8 +41,6 @@
    ;; Handle the <- style assignment
    (symbol? head) (conj (parse-query-body (drop 2 more)) (conj head (take 2 more)))))
 
-
-
 (defn- construct-condition [condition result-binding]
   (let [type (if (symbol? (first condition)) 
                (if-let [resolved (resolve (first condition))] 
@@ -57,8 +55,8 @@
       (throw (IllegalArgumentException. "Only one argument can be passed to a condition.")))
 
     (cond-> {:type type
-             :constraints (list 'quote constraints)}
-            args (assoc :args (list 'quote args))
+             :constraints constraints}
+            args (assoc :args args)
             result-binding (assoc :fact-binding result-binding))))
 
 (defn parse-condition-or-accum [condition]
@@ -73,7 +71,7 @@
     ;; If it's an s-expression, simply let it expand itself, and assoc the binding with the result.
     (if (#{'from :from} (second condition)) ; If this is an accumulator....
       {:result-binding result-binding
-       :accumulator (list 'quote (first condition))
+       :accumulator  (first condition)
        :from (construct-condition (nth condition 2) nil)}
       
       ;; Not an accumulator, so simply create the condition.
@@ -89,11 +87,10 @@
          (map parse-expression (rest expression)))
 
    (contains? #{'test :test} (first expression))
-   {:constraints (list 'quote (vec (rest expression)))}
+   {:constraints (vec (rest expression))}
 
    :default
    (parse-condition-or-accum expression)))
-
 
 (defn resolve-vars
   "Resolve vars used in expression. TODO: this should be narrowed to resolve only
@@ -110,7 +107,7 @@
 (defn parse-rule
   [lhs rhs properties env]
   (let [rule (resolve-vars 
-              {:lhs (mapv parse-expression lhs)
+              {:lhs (list 'quote (mapv parse-expression lhs))
                :rhs (list 'quote rhs)})
 
         symbols (set (filter symbol? (flatten (concat lhs rhs))))
@@ -130,7 +127,7 @@
 (defn parse-query
   [params lhs env] 
   (let [query (resolve-vars 
-               {:lhs (mapv parse-expression lhs)
+               {:lhs (list 'quote (mapv parse-expression lhs))
                 :params (set params)})
 
         symbols (set (filter symbol? (flatten lhs)))
@@ -138,8 +135,6 @@
                            (for [sym (keys env)
                                  :when (symbols sym)]
                              [(keyword (name sym)) sym]))]
+
     (cond-> query
-
-     (not (empty? env)) (assoc :env matching-env))))
-
-
+            (not (empty? env)) (assoc :env matching-env))))

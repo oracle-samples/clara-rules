@@ -30,3 +30,11 @@
   (?fact <- LousyWeather))
 
 
+(comment 
+;; Example usage:
+  (-> (mk-session 'clara.sample-ruleset)
+      (insert (->Temperature 10 "foo") 
+              (->WindSpeed 40 "foo")) 
+      (fire-rules) 
+      (query find-cold-and-windy))
+)

@@ -16,7 +16,7 @@
 
 ;; Rule and query structure schema.
 (def FactCondition
-  {:type s/Any
+  {:type s/Any ;(s/either s/Keyword (s/pred symbol?))
    :constraints [(s/pred list? "s-expression")]
    (s/optional-key :fact-binding) s/Keyword
    (s/optional-key :args) s/Any

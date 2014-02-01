@@ -22,7 +22,6 @@
   IRuleSource
   (load-rules [this] this)) ; A rulebase can be viewed as a rule loader; it simply loads itself.
 
-
 (def ^:private reflector
   "For some reason (bug?) the default reflector doesn't use the
    Clojure dynamic class loader, which prevents reflecting on
@@ -111,15 +110,29 @@
           [(symbol (string/replace (.. property (getName)) #"_" "-")) ; Replace underscore with idiomatic dash.
            (symbol (str "." (.. property (getReadMethod) (getName))))])))
 
+(defn effective-type [type]
+  (if (and (not (compiling-cljs?)) 
+           (symbol? type))
+    (.loadClass (clojure.lang.RT/makeClassLoader) (name type))      
+    type))
+
 (defn get-fields
   "Returns a map of field name to a symbol representing the function used to access it."
   [type]
-  (cond
-   (and (compiling-cljs?) (symbol? type)) (get-cljs-accessors type)
-   (isa? type clojure.lang.IRecord) (get-field-accessors type)
-   (class? type) (get-bean-accessors type) ; Treat unrecognized classes as beans.
-   :default []))  ; Other types have no accessors.
+  (if (compiling-cljs?)
 
+    ;; Get ClojureScript fields.
+    (if (symbol? type)
+      (get-cljs-accessors type)
+      [])
+    
+    ;; Attempt to load the corresponding class for the type if it's a symbol.
+    (let [type (effective-type type)]
+
+      (cond
+       (isa? type clojure.lang.IRecord) (get-field-accessors type)
+       (class? type) (get-bean-accessors type) ; Treat unrecognized classes as beans.
+       :default []))))
 
 (defn- compile-constraints [exp-seq assigment-set]
   (if (empty? exp-seq)
@@ -484,7 +497,7 @@
   (for [{:keys [condition beta-children env]} alpha-nodes
         :let [{:keys [type constraints fact-binding args]} condition]]
 
-    (cond-> {:type type
+    (cond-> {:type (effective-type type)
              :alpha-fn (eval (compile-condition type (first args) constraints fact-binding env))
              :children beta-children}
             env (assoc :env env))))
@@ -496,6 +509,11 @@
      (vec
       (for [beta-node beta-nodes
             :let [{:keys [condition children id production query join-bindings]} beta-node
+
+                  ;; If the condition is symbol, attempt to resolve the clas it belongs to.
+                  condition (if (symbol? condition) 
+                              (.loadClass (clojure.lang.RT/makeClassLoader) (name condition))   
+                              condition)
 
                   constraint-bindings (variables-as-keywords (:constraints condition))
 
@@ -563,9 +581,12 @@
                           :when (= QueryNode (type node))]
                       node)
 
-        ;; TOOD: assign query names as map keys as well?
-        query-map (into {} (for [query-node query-nodes]
-                             [(:query query-node) query-node]))
+        query-map (into {} (for [query-node query-nodes
+
+                                 ;; Queries can be looked up by reference or by name;
+                                 entry [[(:query query-node) query-node]
+                                        [(:name (:query query-node)) query-node]]]
+                             entry))
 
         ;; Map of node ids to beta nodes.
         id-to-node (into {} (for [node beta-nodes]

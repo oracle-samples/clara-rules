@@ -8,6 +8,7 @@
   (:require [clara.sample-ruleset :as sample]
             [clara.other-ruleset :as other]
             [clojure.set :as s]
+            [clojure.edn :as edn]
             [clojure.walk :as walk]
             schema.test)
   (import [clara.rules.testfacts Temperature WindSpeed Cold ColdAndWindy LousyWeather First Second Third Fourth]
@@ -1153,3 +1154,26 @@
              :?t1 #clara.rules.testfacts.Temperature{:temperature 15, :location "MCI"}
              :?loc "MCI"}]
            (query session-with-dups ident-query)))))
+
+
+;; An EDN string for testing. This would normally be stored in an external file. The structure simply needs to be a
+;; sequence of maps matching the clara.rules.schema/Production schema.
+(def external-rules "[{:name \"cold-query\", :params #{:?l}, :lhs [{:type clara.rules.testfacts.Temperature, :constraints [(< temperature 50) (== ?t temperature) (== ?l location)]}]}]")
+
+(deftest test-external-rules
+  (let [session (-> (mk-session (edn/read-string external-rules))
+                    (insert (->Temperature 15 "MCI"))
+                    (insert (->Temperature 20 "MCI")) ; Test multiple items in result.
+                    (insert (->Temperature 10 "ORD"))
+                    (insert (->Temperature 35 "BOS"))
+                    (insert (->Temperature 80 "BOS")))]
+
+    ;; Query by location.    
+    (is (= #{{:?l "BOS" :?t 35}}
+           (set (query session "cold-query" :?l "BOS"))))
+
+    (is (= #{{:?l "MCI" :?t 15} {:?l "MCI" :?t 20}}
+           (set (query session "cold-query" :?l "MCI"))))
+
+    (is (= #{{:?l "ORD" :?t 10}}
+           (set (query session "cold-query" :?l "ORD"))))))
