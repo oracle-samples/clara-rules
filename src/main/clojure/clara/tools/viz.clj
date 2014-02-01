@@ -4,14 +4,15 @@
            [clara.rules.schema :as schema]
            [clara.rules.engine :as eng]
            [hiccup.core :as h]
+           [clara.rules.compiler :as com]
            [clojure.string :as string]))
 
 (defn get-productions 
   "Returns a sequence of productions from the given sources."
   [sources]
   (mapcat
-   #(if (satisfies? eng/IRuleSource %)
-      (eng/load-rules %)
+   #(if (satisfies? com/IRuleSource %)
+      (com/load-rules %)
       %)
    sources))
 
@@ -44,11 +45,11 @@
   "Opens a window that contains a visualization of the Rete network associated with the rules."
   [& sources]
   (let [productions (get-productions sources)
-        beta-tree (eng/to-beta-tree productions)
+        beta-tree (com/to-beta-tree productions)
         beta-nodes (for [beta-root beta-tree
                          beta-node (tree-seq :children :children beta-root)]
                      beta-node)
-        alpha-nodes (eng/to-alpha-tree beta-tree)]
+        alpha-nodes (com/to-alpha-tree beta-tree)]
     
     (-> 
 
