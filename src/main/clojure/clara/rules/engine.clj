@@ -5,9 +5,7 @@
             [clojure.set :as s]
             [clojure.string :as string]
             [clara.rules.memory :as mem]
-            [clara.rules.platform :as platform]
-            [clara.rules.schema :as schema]
-            [schema.core :as sc]))
+            [clara.rules.platform :as platform]))
 
 
 ;; The accumulator is a Rete extension to run an accumulation (such as sum, average, or similar operation)
@@ -337,7 +335,7 @@
 ;; The AccumulateNode hosts Accumulators, a Rete extension described above, in the Rete network
 ;; It behavios similarly to a JoinNode, but performs an accumulation function on the incoming
 ;; working-memory elements before sending a new token to its descendents.
-(sc/defrecord AccumulateNode [id accumulator result-binding children binding-keys]
+(defrecord AccumulateNode [id accumulator result-binding children binding-keys]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport]
     (let [previous-results (mem/get-accum-reduced-all memory node join-bindings)]

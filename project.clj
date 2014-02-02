@@ -5,9 +5,10 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.5.1"]
                  [org.codehaus.jsr166-mirror/jsr166y "1.7.0"]
-                 [org.clojure/clojurescript "0.0-2030"]
+                 [org.clojure/clojurescript "0.0-2156"]
                  [prismatic/schema "0.1.9"]
                  [dorothy "0.0.4"]
+                 [com.cemerick/piggieback "0.1.2"]
                  [hiccup "1.0.4"]]
   :plugins [[codox "0.6.4"]
             [lein-javadoc "0.1.1"]
@@ -21,15 +22,8 @@
   :source-paths ["src/main/clojure"]
   :test-paths ["src/test/clojure"]
   :java-source-paths ["src/main/java"]
-;; Temporarily drop CLJS support during refactoring effort.
-;  :hooks [leiningen.cljsbuild] 
-  :cljsbuild {:builds [{:source-paths ["src/main/clojurescript"]
-                        :jar true
-                        :compiler {:pretty-print true
-                                   :output-to "target/js/clara.js"
-                                   :optimizations :whitespace}}
-
-                       ;; Build for unit tests.
+  :hooks [leiningen.cljsbuild] 
+  :cljsbuild {:builds [;; Build for unit tests.
                        {:source-paths ["src/main/clojurescript" "src/test/clojurescript"]
                         :compiler {:output-to "target/cljs/testable.js"
                                    :optimizations :whitespace
@@ -43,6 +37,9 @@
 
   ;; Austin for the ClojureScript REPL.
   :profiles {:dev {:plugins [[com.cemerick/austin "0.1.3"]]}}
+
+  ;; Include piggieback.
+  :repl-options {:nrepl-middleware [cemerick.piggieback/wrap-cljs-repl]}
 
   :scm {:name "git"
         :url "https://github.com/rbrush/clara-rules.git"}

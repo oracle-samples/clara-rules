@@ -61,14 +61,18 @@
       ;; Symbol qualified by a namespace, so look it up in the requires info.
       (if-let [source-ns (get-in ns-info [:requires (namespace sym)])]
         (symbol (name source-ns) (name sym))
-        (throw (RuntimeException. (str "Unable to resolve symbol: " sym " in namespace " ns-sym))))
+        ;; Not in the requires block, so assume the qualified name is a refers and simply return the symbol.
+        sym)
 
       ;; Symbol is unqualified, so check in the uses block.
       (if-let [source-ns (get-in ns-info [:uses sym])]
         (symbol (name source-ns) (name sym))
 
-        ;; Symbol not found in eiher block, so assume it is local.
-        (symbol (name ns-sym) (name sym))))))
+        ;; Symbol not found in eiher block, so attempt to retrieve it from
+        ;; the current namespace.
+        (if (get-in (get-namespace-info ns-sym) [:defs sym]) 
+          (symbol (name ns-sym) (name sym))
+          nil)))))
 
 (defn- get-cljs-accessors
   "Returns accessors for ClojureScript. WARNING: this touches
@@ -111,10 +115,12 @@
            (symbol (str "." (.. property (getReadMethod) (getName))))])))
 
 (defn effective-type [type]
-  (if (and (not (compiling-cljs?)) 
-           (symbol? type))
-    (.loadClass (clojure.lang.RT/makeClassLoader) (name type))      
-    type))
+  (if (compiling-cljs?)
+    type
+    
+    (if (symbol? type)
+      (.loadClass (clojure.lang.RT/makeClassLoader) (name type))      
+      type)))
 
 (defn get-fields
   "Returns a map of field name to a symbol representing the function used to access it."
@@ -226,6 +232,7 @@
          ~rhs))))
 
 (defn compile-accum
+  "Used to create accumulators that take the environment into account."
   [accum env]
   (let [destructured-env
         (if (> (count env) 0)
@@ -546,6 +553,8 @@
           :accumulator
           (eng/->AccumulateNode
            id
+           ;; We create an accumulator that accepts the environment for the beta node
+           ;; into its context, hence the function with the given environment.
            ((eval (compile-accum (:accumulator beta-node) (:env beta-node))) (:env beta-node))
            (:result-binding beta-node)
            (compile-beta-tree children all-bindings)

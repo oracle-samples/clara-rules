@@ -2,11 +2,13 @@
   (:require [clojure.reflect :as reflect]
             [clojure.core.reducers :as r]
             [clojure.set :as s]
-            [clara.rules.engine :as eng]
             [clojure.string :as string]
+            [clojure.walk :as walk]
+            [clara.rules.engine :as eng]
+            [clara.rules.compiler :as com]
             [clara.rules.schema :as schema]
-            [schema.core :as sc]
-            [clojure.walk :as walk]))
+            [cljs.analyzer :as ana] ; TODO: make CLJS dep optional?
+            [schema.core :as sc]))
 
 
 ;; Let operators be symbols or keywords.
@@ -92,16 +94,31 @@
    :default
    (parse-condition-or-accum expression)))
 
+(defn- maybe-qualify
+  "Attempt to qualify the given symbol, returning the symbol itself
+   if we can't qualify it for any reason."
+  [sym]
+  (if (com/compiling-cljs?)
+
+    ;; Qualify the symbol using the CLJS analyzer.
+    (if-let [resolved (and (symbol? sym) 
+                           (com/resolve-cljs-sym (com/cljs-ns) sym))]
+      resolved
+      sym)
+
+    ;; Qualify the Clojure symbol.
+    (if (and (symbol? sym) (resolve sym)  
+             (not (= "clojure.core" 
+                     (str (ns-name (:ns (meta (resolve sym))))))) (name sym))
+      (symbol (str (ns-name (:ns (meta (resolve sym))))) (name sym))
+      sym)))
+
 (defn resolve-vars
   "Resolve vars used in expression. TODO: this should be narrowed to resolve only
    those that aren't in the environment, condition, or right-hand side."
   [form]
-  (walk/prewalk
-   #(if (and (symbol? %) (resolve %)  
-             (not (= "clojure.core" 
-                     (str (ns-name (:ns (meta (resolve %))))))) (name %))
-      (symbol (str (ns-name (:ns (meta (resolve %))))) (name %))
-      %)
+  (walk/postwalk
+   maybe-qualify
    form))
 
 (defn parse-rule

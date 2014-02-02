@@ -232,7 +232,7 @@
         definition (if properties (rest body) body)
         {:keys [lhs rhs]} (dsl/parse-rule-body definition)]
     `(def ~(vary-meta name assoc :rule true :doc doc)
-       (cond-> (mk-rule ~lhs ~rhs ~properties)
+       (cond-> ~(dsl/parse-rule lhs rhs properties {})
            ~name (assoc :name ~(clojure.core/name name))
            ~doc (assoc :doc ~doc)))))
 
@@ -252,8 +252,7 @@
         binding (if doc (second body) (first body))
         definition (if doc (drop 2 body) (rest body) )]
     `(def ~(vary-meta name assoc :query true :doc doc) 
-       (cond-> (mk-query ~binding ~(dsl/parse-query-body definition))
+       (cond-> ~(dsl/parse-query binding (dsl/parse-query-body definition) {})
                ~name (assoc :name ~(clojure.core/name name))
-                ~doc (assoc :doc ~doc)
-))))
+                ~doc (assoc :doc ~doc)))))
 
