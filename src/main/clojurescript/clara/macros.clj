@@ -25,9 +25,9 @@
         body (if doc (rest body) body)
         properties (if (map? (first body)) (first body) nil)
         definition (if properties (rest body) body)
-        {:keys [lhs rhs]} (dsl/parse-rule-body definition)
+        {:keys [lhs rhs]} (dsl/split-lhs-rhs definition)
 
-        production (cond-> (dsl/parse-rule lhs rhs properties {})
+        production (cond-> (dsl/parse-rule* lhs rhs properties {})
                            name (assoc :name (clojure.core/name name))
                            doc (assoc :doc doc))]
     (add-production name production)
@@ -40,7 +40,7 @@
         binding (if doc (second body) (first body))
         definition (if doc (drop 2 body) (rest body) )
 
-        query (cond-> (dsl/parse-query binding (dsl/parse-query-body definition) {})
+        query (cond-> (dsl/parse-query* binding definition {})
                       name (assoc :name (clojure.core/name name))
                       doc (assoc :doc doc))]
     (add-production name query)

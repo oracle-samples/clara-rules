@@ -130,7 +130,7 @@
    This is only used when creating queries dynamically; most users should use defquery instead."
   [params lhs]
   ;; TODO: validate params exist as keyworks in the query.
-  (dsl/parse-query params lhs &env))
+  (dsl/parse-query* params lhs &env))
 
 (defmacro mk-rule
   "DEPRECATED. Users generally should use defrule, although clojure.rules.dsl/parse-rule is available for specialized needs.
@@ -138,9 +138,9 @@
    Creates a new rule based on a sequence of a conditions and a righthand side. 
    This is only used when creating new rules directly; most users should use defrule instead."
   ([lhs rhs]
-     (dsl/parse-rule lhs rhs nil &env))
+     (dsl/parse-rule* lhs rhs nil &env))
   ([lhs rhs properties]
-     (dsl/parse-rule lhs rhs properties &env)))
+     (dsl/parse-rule* lhs rhs properties &env)))
 
 (defn accumulate 
   "Creates a new accumulator based on the given properties:
@@ -230,9 +230,9 @@
         body (if doc (rest body) body)
         properties (if (map? (first body)) (first body) nil)
         definition (if properties (rest body) body)
-        {:keys [lhs rhs]} (dsl/parse-rule-body definition)]
+        {:keys [lhs rhs]} (dsl/split-lhs-rhs definition)]
     `(def ~(vary-meta name assoc :rule true :doc doc)
-       (cond-> ~(dsl/parse-rule lhs rhs properties {})
+       (cond-> ~(dsl/parse-rule* lhs rhs properties {})
            ~name (assoc :name ~(clojure.core/name name))
            ~doc (assoc :doc ~doc)))))
 
@@ -252,7 +252,7 @@
         binding (if doc (second body) (first body))
         definition (if doc (drop 2 body) (rest body) )]
     `(def ~(vary-meta name assoc :query true :doc doc) 
-       (cond-> ~(dsl/parse-query binding (dsl/parse-query-body definition) {})
+       (cond-> ~(dsl/parse-query* binding definition {})
                ~name (assoc :name ~(clojure.core/name name))
                 ~doc (assoc :doc ~doc)))))
 

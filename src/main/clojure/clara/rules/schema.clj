@@ -1,6 +1,7 @@
 (ns clara.rules.schema
   (:require [schema.core :as s]))
 
+
 (s/defn condition-type :- (s/enum :or :not :and :fact :accumulator :test)
   "Returns the type of node in a LHS condition expression."
   [condition]
@@ -14,7 +15,10 @@
     ;; Otherwise the node must a vector that starts with the boolean operator.
     (first condition)))
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Rule and query structure schema.
+
 (def FactCondition
   {:type s/Any ;(s/either s/Keyword (s/pred symbol?))
    :constraints [(s/pred list? "s-expression")]
@@ -70,10 +74,11 @@
    :rhs Rule
    :else Query))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Schema for the Rete network itself.
 
 (declare BetaNode)
 
-;; Schema for the Rete network itself.
 (def JoinNode
   {:node-type (s/enum :join :negation)
    :id s/Number
