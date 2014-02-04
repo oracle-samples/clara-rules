@@ -1,5 +1,9 @@
 This is a history of changes to clara-rules.
 
+### 0.4.0
+* [Rules as Data Support](http://www.toomuchcode.org/blog/2014/01/19/rules-as-data/)
+* [ClojureScript Rete network on the server side](https://github.com/rbrush/clara-rules/issues/34)
+	
 ### 0.3.0
 * [ClojureScript support](https://github.com/rbrush/clara-rules/issues/4)
 * [No-loop option for rules](https://github.com/rbrush/clara-rules/issues/23)
