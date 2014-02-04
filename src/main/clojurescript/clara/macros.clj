@@ -28,7 +28,7 @@
         {:keys [lhs rhs]} (dsl/split-lhs-rhs definition)
 
         production (cond-> (dsl/parse-rule* lhs rhs properties {})
-                           name (assoc :name (clojure.core/name name))
+                           name (assoc :name (str (clojure.core/name (com/cljs-ns)) "/" (clojure.core/name name)))
                            doc (assoc :doc doc))]
     (add-production name production)
     `(def ~name
@@ -41,7 +41,7 @@
         definition (if doc (drop 2 body) (rest body) )
 
         query (cond-> (dsl/parse-query* binding definition {})
-                      name (assoc :name (clojure.core/name name))
+                      name (assoc :name (str (clojure.core/name (com/cljs-ns)) "/" (clojure.core/name name)))
                       doc (assoc :doc doc))]
     (add-production name query)
     `(def ~name

@@ -1,5 +1,5 @@
 (ns clara.rules
-  "Forward-chaining rules for Clojure. The primary API is in this namespace"
+  "Forward-chaining rules for Clojure. The primary API is in this namespace."
   (:require [clara.rules.engine :as eng]
             [clara.rules.memory :as mem]
             [clara.rules.compiler :as com]
@@ -40,6 +40,9 @@
    The optional parameters should be in map form. For example, a query call might be:
 
    (query session get-by-last-name :last-name \"Jones\")
+
+   The query itself may be either the var created by a defquery statement,
+   or the actual name of the query.
    "
   [session query & params]
   (eng/query session query (apply hash-map params)))
@@ -112,24 +115,12 @@
 
       (eng/alpha-retract root fact-group transient-memory transport))))
 
-(comment ; TODO: remove
-  (defmacro mk-query
-    "Creates a new query based on a sequence of a conditions. 
-   This is only used when creating queries dynamically; most users should use defquery instead."
-    [params lhs]
-    ;; TODO: validate params exist as keyworks in the query.
-    `(eng/->Query
-      ~params
-      ~(com/parse-lhs lhs)
-      ~(com/variables-as-keywords lhs))))
-
 (defmacro mk-query
   "DEPRECATED. Users generally should use defquery, although clojure.rules.dsl/parse-query is available for specialized needs.
 
    Creates a new query based on a sequence of a conditions. 
    This is only used when creating queries dynamically; most users should use defquery instead."
   [params lhs]
-  ;; TODO: validate params exist as keyworks in the query.
   (dsl/parse-query* params lhs &env))
 
 (defmacro mk-rule
@@ -193,7 +184,10 @@
    * :fact-type-fn, which must have a value of a function used to determine the logical type of a given 
      cache. Defaults to Clojures type function.
    * :cache, indicating whether the session creation can be cached, effectively memoizing mk-session. 
-     Defaults to true. Callers may wish to set this to false when needing to dynamically reload rules."
+     Defaults to true. Callers may wish to set this to false when needing to dynamically reload rules.
+
+   This is not supported in ClojureScript, since it requires eval to dynamically build a session. ClojureScript
+   users must use pre-defined rulesessions using defsession."
   [& args]
   (if (and (seq args) (not (keyword? (first args))))
     `(com/mk-session ~(vec args)) ; At least one namespace given, so use it.
@@ -233,7 +227,7 @@
         {:keys [lhs rhs]} (dsl/split-lhs-rhs definition)]
     `(def ~(vary-meta name assoc :rule true :doc doc)
        (cond-> ~(dsl/parse-rule* lhs rhs properties {})
-           ~name (assoc :name ~(clojure.core/name name))
+           ~name (assoc :name ~(str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name)))
            ~doc (assoc :doc ~doc)))))
 
 (defmacro defquery 
@@ -253,6 +247,6 @@
         definition (if doc (drop 2 body) (rest body) )]
     `(def ~(vary-meta name assoc :query true :doc doc) 
        (cond-> ~(dsl/parse-query* binding definition {})
-               ~name (assoc :name ~(clojure.core/name name))
+               ~name (assoc :name ~(str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name)))
                 ~doc (assoc :doc ~doc)))))
 
