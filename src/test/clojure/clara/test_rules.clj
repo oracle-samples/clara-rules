@@ -242,6 +242,21 @@
     (is (= #{{:?t (->Temperature 10 "MCI")}}
            (set (query session coldest-query))))))
 
+(deftest test-query-accumulator-output
+  (let [set-cold (dsl/parse-rule [[?t <- (min-fact :temperature) from [Temperature]]]
+                                 (insert! (->Cold (:temperature ?t))))
+        
+        cold-query (dsl/parse-query [] [[?c <- Cold]])
+
+        session (-> (mk-session [set-cold cold-query]) 
+                    (insert (->Temperature 15 "MCI"))
+                    (insert (->Temperature 10 "MCI"))
+                    (insert (->Temperature 80 "MCI"))
+                    (fire-rules))]
+
+    ;; Accumulator returns the lowest value.
+    (is (= #{{:?c (->Cold 10)}}
+           (set (query session cold-query))))))
 
 (defn average-value 
   "Test accumulator that returns the average of a field"

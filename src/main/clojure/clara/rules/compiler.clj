@@ -526,7 +526,10 @@
 
                   ;; Get all bindings from the parent, condition, and returned fact.
                   all-bindings (cond-> (s/union parent-bindings constraint-bindings)
-                                       (:fact-binding condition) (conj (:fact-binding condition)))]]
+                                       ;; Optional fact binding from a condition.
+                                       (:fact-binding condition) (conj (:fact-binding condition))
+                                       ;; Optional accumulator result.
+                                       (:result-binding beta-node) (conj (:result-binding beta-node)))]]
 
         (case (:node-type beta-node)
 
