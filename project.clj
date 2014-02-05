@@ -23,11 +23,16 @@
   :test-paths ["src/test/clojure"]
   :java-source-paths ["src/main/java"]
   :hooks [leiningen.cljsbuild] 
-  :cljsbuild {:builds [;; Build for unit tests.
+  :cljsbuild {:builds [{:source-paths ["src/main/clojurescript"]
+                        :jar true
+                        :compiler {:pretty-print true
+                                   :output-to "target/js/clara.js"
+                                   :optimizations :advanced}}
+
+                       ;; Build for unit tests.
                        {:source-paths ["src/main/clojurescript" "src/test/clojurescript"]
                         :compiler {:output-to "target/cljs/testable.js"
-                                   :optimizations :whitespace
-                                   :pretty-print true}}]
+                                   :optimizations :advanced}}]
               :test-commands {"unit-tests" ["phantomjs" :runner
                                             "window.literal_js_was_evaluated=true"
                                             "target/cljs/testable.js"]}

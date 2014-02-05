@@ -1,8 +1,6 @@
 (ns clara.rules
   (:require [clara.rules.engine :as eng]
-            [clara.rules.memory :as mem])
-  (:import [clara.rules.engine LocalTransport LocalSession]))
-
+            [clara.rules.memory :as mem]))
 
 (defrecord Rulebase [alpha-roots beta-roots productions queries production-nodes query-nodes id-to-node])
 
@@ -89,7 +87,7 @@
   "This is used by tools to create a session; most users won't use this function."
   [beta-roots alpha-fns productions options]
   (let [rulebase (mk-rulebase beta-roots alpha-fns productions)
-        transport (LocalTransport.)
+        transport (eng/LocalTransport.)
 
         ;; The fact-type uses Clojure's type function unless overridden.
         fact-type-fn (get options :fact-type-fn type)
@@ -100,7 +98,7 @@
         ;; them for every fact entered.
         get-alphas-fn (create-get-alphas-fn fact-type-fn rulebase)]
 
-    (LocalSession. rulebase (eng/local-memory rulebase transport) transport get-alphas-fn)))
+    (eng/LocalSession. rulebase (eng/local-memory rulebase transport) transport get-alphas-fn)))
 
 
 (defn accumulate 
