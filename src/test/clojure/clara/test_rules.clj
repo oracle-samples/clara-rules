@@ -1127,3 +1127,24 @@
 
     (is (= #{{:?l "ORD" :?t 10}}
            (set (query session "cold-query" :?l "ORD"))))))
+
+
+(defsession my-session 'clara.sample-ruleset)
+
+(deftest test-defsession
+
+  (is (= #{{:?loc "MCI"} {:?loc "BOS"}}
+       (set (-> my-session
+                (insert (->Temperature 15 "MCI"))
+                (insert (->Temperature 22 "BOS"))
+                (insert (->Temperature 50 "SFO"))
+                (query sample/freezing-locations)))))
+
+  (let [session (-> (mk-session 'clara.sample-ruleset)
+                    (insert (->Temperature 15 "MCI"))
+                    (insert (->WindSpeed 45 "MCI"))
+                    (fire-rules))]
+
+    (is (= #{{:?fact (->ColdAndWindy 15 45)}}  
+           (set 
+            (query session sample/find-cold-and-windy))))))

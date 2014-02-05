@@ -117,10 +117,26 @@
       })))
 
 (defmacro defsession 
-  "Creates a sesson given a list of sources, which are typically ClojureScript namespaces."
-  [name & sources]
+  "Creates a sesson given a list of sources and keyword-style options, which are typically ClojureScript namespaces.
 
-  (let [;; Sources are typically quoted for consistency for the caller, so eval to unquote.
+  Typical usage would be like this, with a session defined as a var:
+
+(defsession my-session 'example.namespace)
+
+That var contains an immutable session that then can be used as a starting point to create sessions with
+caller-provided data. Since the session itself is immutable, it can be safely used from multiple threads
+and will not be modified by callers. So a user might grab it, insert facts, and otherwise
+use it as follows:
+
+   (-> my-session
+     (insert (->Temperature 23))
+     (fire-rules))  
+"
+  [name & sources-and-options]
+
+  (let [sources (take-while #(not (keyword? %)) sources-and-options)
+        options (apply hash-map (drop-while #(not (keyword? %)) sources-and-options))
+        ;; Sources are typically quoted for consistency for the caller, so eval to unquote.
         sources (eval (vec sources))
 
         ;; TODO: remove need for ugly eval by changing our quoting strategy.
