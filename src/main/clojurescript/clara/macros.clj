@@ -6,8 +6,7 @@
             [clara.rules.dsl :as dsl]            
             [cljs.analyzer :as ana]
             [cljs.env :as env]
-            [clojure.set :as s])
-  (:import [clara.rules.engine LocalTransport LocalSession]))
+            [clojure.set :as s]))
 
 
 ;; Store production in cljs.env/*compiler* under ::productions seq?

@@ -1,6 +1,8 @@
 This is a history of changes to clara-rules.
 
 ### 0.4.0
+This is a major refactoring of the Clara engine, turning all rule and Rete network representations into well-defined data structures. Details are at these links:
+
 * [Rules as Data Support](http://www.toomuchcode.org/blog/2014/01/19/rules-as-data/)
 * [ClojureScript Rete network on the server side](https://github.com/rbrush/clara-rules/issues/34)
 	

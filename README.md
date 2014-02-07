@@ -50,11 +50,11 @@ Here's a simple example. The [clara-examples project](https://github.com/rbrush/
 ;; Notify Alice that Acme has a new support request!
 ```
 
-## Release Usage
+## Usage
 Add the following to your project.clj:
 
 ```clj
-[org.toomuchcode/clara-rules "0.3.0"]
+[org.toomuchcode/clara-rules "0.4.0"]
 ```
 
 or to your Maven POM:
@@ -63,24 +63,9 @@ or to your Maven POM:
 <dependency>
   <groupId>org.toomuchcode</groupId>
   <artifactId>clara-rules</artifactId>
-  <version>0.3.0</version>
+  <version>0.4.0</version>
 </dependency>
 ```
-
-## Bleeding Edge Usage
-Snapshot builds are published for users wanting to experiment with unreleased features. The snapshot repository can be used by adding the following to your project.clj:
-
-```clj
-:repositories [["snapshots" {:url "https://oss.sonatype.org/content/repositories/snapshots/"}]]
-```
-
-The currently active snapshot version is:
-
-```clj
-[org.toomuchcode/clara-rules "0.4.0-alpha1-SNAPSHOT"]
-```
-
-Note that ClojureScript support is temporarily disabled in the 0.4 snapshots pending refactoring in [issue 34](https://github.com/rbrush/clara-rules/issues/34). It will be re-added prior to the 0.4 release.
 
 ## Learn more
 
@@ -91,7 +76,7 @@ Note that ClojureScript support is temporarily disabled in the 0.4 snapshots pen
 
 ## License
 
-Copyright © 2013 Ryan Brush
+Copyright © 2014 Ryan Brush
 
 Distributed under the Eclipse Public License, the same as Clojure.
 

@@ -1,6 +1,7 @@
 (ns clara.tools.viz
-  (use clara.rules)
+  "Simple visualizations of Clara rules. This namespace should be considered experimental."
   (require [dorothy.core :as dot]
+		   [clara.rules :refer :all]
            [clara.rules.schema :as schema]
            [clara.rules.engine :as eng]
            [hiccup.core :as h]

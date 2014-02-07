@@ -5,8 +5,8 @@
             [clara.rules.compiler :as com]
             [clara.rules.memory :as mem])
   (:refer-clojure :exclude [==])
-  (import [clara.rules.engine LocalTransport]
-          [clara.rules WorkingMemory QueryResult]))
+  (:import [clara.rules.engine LocalTransport]
+           [clara.rules WorkingMemory QueryResult]))
 
 (deftype JavaQueryResult [result]
   QueryResult

@@ -1,9 +1,6 @@
 (ns clara.rules.compiler
   "The Clara rules compiler, translating raw data structures into compiled versions and functions.
    Most users should use only the clara.rules namespace."
-  (:use clara.rules.memory
-        clojure.pprint
-        clojure.java.io)
   (:require [clojure.reflect :as reflect]
             [clojure.core.reducers :as r]
             [clojure.set :as s]

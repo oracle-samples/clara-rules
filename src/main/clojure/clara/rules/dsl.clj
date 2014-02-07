@@ -1,4 +1,5 @@
 (ns clara.rules.dsl
+  "Implementation of the defrule-style DSL for Clara. Most users should simply use the clara.rules namespace."
   (:require [clojure.reflect :as reflect]
             [clojure.core.reducers :as r]
             [clojure.set :as s]
