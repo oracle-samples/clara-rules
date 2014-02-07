@@ -56,7 +56,6 @@
 
                   constraint-bindings (com/variables-as-keywords (:constraints condition))
 
-                  abc (spit "debug.txt" (str constraint-bindings parent-bindings condition))
                   ;; Get all bindings from the parent, condition, and returned fact.
                   all-bindings (cond-> (s/union parent-bindings constraint-bindings)
                                        ;; Optional fact binding from a condition.
