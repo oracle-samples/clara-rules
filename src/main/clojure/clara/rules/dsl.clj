@@ -60,10 +60,12 @@
 
     ;; If it's an s-expression, simply let it expand itself, and assoc the binding with the result.
     (if (#{'from :from} (second condition)) ; If this is an accumulator....
-      {:result-binding result-binding
-       :accumulator  (first condition)
-       :from (construct-condition (nth condition 2) nil)}
-      
+      (let [parsed-accum {:accumulator (first condition)
+                          :from (construct-condition (nth condition 2) nil)}]
+        ;; A result binding is optional for an accumulator.
+        (if result-binding
+          (assoc parsed-accum :result-binding result-binding)
+          parsed-accum))
       ;; Not an accumulator, so simply create the condition.
       (construct-condition condition result-binding))))
 

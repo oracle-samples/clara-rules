@@ -372,6 +372,21 @@
     (is (= #{{:?t (->Temperature 5 "SFO") :?loc "SFO"}}
            (set (query session coldest-query :?loc "SFO"))))))
 
+(deftest test-accumulator-rule-with-no-fact-binding
+  (let [fired? (atom false)
+        ;; Ensure accumulate works, even without a fact binding given in the rule.
+        rule (dsl/parse-rule [[(accumulate :initial-value []
+                                           :reduce-fn conj
+                                           :combine-fn into)
+                               from [WindSpeed]]]
+                             (reset! fired? true))
+        session (-> (mk-session [rule])
+                    (insert (->WindSpeed 20 "MCI")
+                            (->WindSpeed 20 "SFO"))
+                    (fire-rules))]
+    
+    (is (true? @fired?))))
+
 (deftest test-simple-negation
   (let [not-cold-query (dsl/parse-query [] [[:not [Temperature (< temperature 20)]]])
 
