@@ -496,7 +496,7 @@
 (sc/defn compile-alpha-nodes :- [{:type sc/Any
                                   :alpha-fn sc/Any ;; TODO: is a function...
                                   (sc/optional-key :env) {sc/Keyword sc/Any}
-                                  :children [sc/Number]}]
+                                  :children [sc/Num]}]
   [alpha-nodes :- [schema/AlphaNode]]
   (for [{:keys [condition beta-children env]} alpha-nodes
         :let [{:keys [type constraints fact-binding args]} condition]]

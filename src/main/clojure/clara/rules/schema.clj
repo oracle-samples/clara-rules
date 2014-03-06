@@ -54,8 +54,8 @@
    map? LeafCondition))
 
 (def Rule
-  {(s/optional-key :name) s/String
-   (s/optional-key :doc) s/String
+  {(s/optional-key :name) s/Str
+   (s/optional-key :doc) s/Str
    (s/optional-key :props) {s/Keyword s/Any}
    (s/optional-key :env) {s/Keyword s/Any}
    :lhs [Condition]
@@ -63,8 +63,8 @@
    })
 
 (def Query
-  {(s/optional-key :name) s/String
-   (s/optional-key :doc) s/String
+  {(s/optional-key :name) s/Str
+   (s/optional-key :doc) s/Str
    (s/optional-key :props) {s/Keyword s/Any}
    (s/optional-key :env) {s/Keyword s/Any}
    :lhs [Condition]
@@ -83,7 +83,7 @@
 
 (def JoinNode
   {:node-type (s/enum :join :negation)
-   :id s/Number
+   :id s/Num
    :condition LeafCondition
    :join-bindings #{s/Keyword}
    (s/optional-key :env) {s/Keyword s/Any}
@@ -91,14 +91,14 @@
 
 (def TestNode
   {:node-type (s/enum :test)
-   :id s/Number
+   :id s/Num
    :condition TestCondition
    (s/optional-key :env) {s/Keyword s/Any}
    :children  [(s/recursive #'BetaNode)]})
 
 (def AccumulatorNode
   {:node-type (s/eq :accumulator)
-   :id s/Number
+   :id s/Num
    :condition LeafCondition
    :accumulator s/Any
    (s/optional-key :env) {s/Keyword s/Any}
@@ -108,12 +108,12 @@
 
 (def ProductionNode
   {:node-type (s/eq :production)
-   :id s/Number
+   :id s/Num
    :production Production })
 
 (def QueryNode
   {:node-type (s/eq :query)
-   :id s/Number
+   :id s/Num
    :query Query})
 
 ;; Beta network schema.
@@ -142,5 +142,5 @@
    ;; Opional environment for the alpha node.
    (s/optional-key :env) {s/Keyword s/Any}
    ;; IDs of the beta nodes that are the children.
-   :beta-children [s/Number]})
+   :beta-children [s/Num]})
 
