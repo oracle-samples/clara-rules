@@ -6,7 +6,7 @@
   :dependencies [[org.clojure/clojure "1.5.1"]
                  [org.codehaus.jsr166-mirror/jsr166y "1.7.0"]
                  [org.clojure/clojurescript "0.0-2156"]
-                 [prismatic/schema "0.1.9"]
+                 [prismatic/schema "0.2.1"]
                  [dorothy "0.0.4"]
                  [com.cemerick/piggieback "0.1.2"]
                  [hiccup "1.0.4"]]
