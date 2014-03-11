@@ -11,22 +11,22 @@
 (defn insert
   "Inserts one or more facts into a working session. It does not modify the given
    session, but returns a new session with the facts added."
-  [session & facts] 
+  [session & facts]
   (eng/insert session facts))
 
 (defn insert-all
   "Inserts a sequence of facts into a working session. It does not modify the given
    session, but returns a new session with the facts added."
-  [session fact-seq] 
+  [session fact-seq]
   (eng/insert session fact-seq))
 
 (defn retract
   "Retracts a fact from a working session. It does not modify the given session,
    but returns a new session with the facts retracted."
-  [session & facts] 
+  [session & facts]
   (eng/retract session facts))
 
-(defn fire-rules 
+(defn fire-rules
   "Fires are rules in the given session. Once a rule is fired, it is labeled in a fired
    state and will not be re-fired unless facts affecting the rule are added or retracted.
 
@@ -35,7 +35,7 @@
   [session]
   (eng/fire-rules session))
 
-(defn query 
+(defn query
   "Runs the given query with the optional given parameters against the session.
    The optional parameters should be in map form. For example, a query call might be:
 
@@ -47,9 +47,9 @@
   [session query & params]
   (eng/query session query (apply hash-map params)))
 
-(defn- insert-facts! 
+(defn- insert-facts!
   "Perform the actual fact insertion, optionally making them unconditional."
-  [facts unconditional] 
+  [facts unconditional]
   (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn]} eng/*current-session*
         {:keys [node token]} eng/*rule-context*]
 
@@ -65,7 +65,7 @@
 
       (eng/alpha-activate root fact-group transient-memory transport))))
 
-(defn insert! 
+(defn insert!
   "To be executed within a rule's right-hand side, this inserts a new fact or facts into working memory.
 
    Inserted facts are logical, in that if the support for the insertion is removed, the fact
@@ -74,14 +74,14 @@
    the rule is retracted, the \"Cold\" fact the rule inserted is also retracted. This is the underlying
    truth maintenance facillity.
 
-   This truth maintenance is also transitive: if a rule depends on some criteria to fire, and a 
+   This truth maintenance is also transitive: if a rule depends on some criteria to fire, and a
    criterion becomes invalid, it may retract facts that invalidate other rules, which in turn
    retract their conclusions. This way we can ensure that information inferred by rules is always
    in a consistent state."
   [& facts]
   (insert-facts! facts false))
 
-(defn insert-unconditional! 
+(defn insert-unconditional!
   "To be executed within a rule's right-hand side, this inserts a new fact or facts into working memory.
 
    This differs from insert! in that it is unconditional. The facts inserted will not be retracted
@@ -101,7 +101,7 @@
 
    The reason for this is that retractions remove information from the knowledge base, and doing truth
    maintenance over retractions would require holding onto all retracted items, which would be an issue
-   in some use cases. This retract! method is included to help with certain use cases, but unless you 
+   in some use cases. This retract! method is included to help with certain use cases, but unless you
    have a specific need, it is better to simply do inserts on the rule's right-hand side, and let
    Clara's underlying truth maintenance retract inserted items if their support becomes false."
   [& facts]
@@ -115,25 +115,7 @@
 
       (eng/alpha-retract root fact-group transient-memory transport))))
 
-(defmacro mk-query
-  "DEPRECATED. Users generally should use defquery, although clojure.rules.dsl/parse-query is available for specialized needs.
-
-   Creates a new query based on a sequence of a conditions. 
-   This is only used when creating queries dynamically; most users should use defquery instead."
-  [params lhs]
-  (dsl/parse-query* params lhs &env))
-
-(defmacro mk-rule
-  "DEPRECATED. Users generally should use defrule, although clojure.rules.dsl/parse-rule is available for specialized needs.
-
-   Creates a new rule based on a sequence of a conditions and a righthand side. 
-   This is only used when creating new rules directly; most users should use defrule instead."
-  ([lhs rhs]
-     (dsl/parse-rule* lhs rhs nil &env))
-  ([lhs rhs properties]
-     (dsl/parse-rule* lhs rhs properties &env)))
-
-(defn accumulate 
+(defn accumulate
   "Creates a new accumulator based on the given properties:
 
    * An initial-value to be used with the reduced operations.
@@ -152,25 +134,9 @@
      }
     args)))
 
-(defn add-productions
-  "DEPRECATED as of 0.4. Simply conjoin productions and create a new session.
-
-   Returns a new rulebase identical to the given one, but with the additional
-   rules or queries. This is only used when dynamically adding rules to a rulebase."
-
-  [rulebase & productions]
-  (concat rulebase productions))
 
 ;; Cache of sessions for fast reloading.
 (def ^:private session-cache (atom {}))
-
-(defn mk-rulebase 
-  "DEPRECATED as of 0.4. Just use mk-session directly against a sequence of productions. The rulebase
-   construct is no longer necessary in this API.
-
-   Creates a rulebase with the given productions. This is only used when generating rulebases dynamically."
-  [& productions]
-  productions)
 
 (defmacro mk-session
    "Creates a new session using the given rule sources. Thew resulting session
@@ -181,9 +147,9 @@
    The caller may also specify keyword-style options at the end of the parameters. Currently two
    options are supported:
 
-   * :fact-type-fn, which must have a value of a function used to determine the logical type of a given 
+   * :fact-type-fn, which must have a value of a function used to determine the logical type of a given
      cache. Defaults to Clojures type function.
-   * :cache, indicating whether the session creation can be cached, effectively memoizing mk-session. 
+   * :cache, indicating whether the session creation can be cached, effectively memoizing mk-session.
      Defaults to true. Callers may wish to set this to false when needing to dynamically reload rules.
 
    This is not supported in ClojureScript, since it requires eval to dynamically build a session. ClojureScript
@@ -205,7 +171,7 @@
          (filter #(or (:rule (meta %)) (:query (meta %)))) ; Filter down to rules and queries.
          (map deref))))  ; Get the rules from the symbols.
 
-(defmacro defsession 
+(defmacro defsession
   "Creates a sesson given a list of sources and keyword-style options, which are typically Clojure namespaces.
 
   Typical usage would be like this, with a session defined as a var:
@@ -219,14 +185,14 @@ use it as follows:
 
    (-> my-session
      (insert (->Temperature 23))
-     (fire-rules))  
+     (fire-rules))
 
    "
   [name & sources-and-options]
 
   `(def ~name (com/mk-session ~(vec sources-and-options))))
 
-(defmacro defrule 
+(defmacro defrule
   "Defines a rule and stores it in the given var. For instance, a simple rule would look like this:
 
 (defrule hvac-approval
@@ -234,10 +200,10 @@ use it as follows:
   [WorkOrder (= type :hvac)]
   [:not [ApprovalForm (= formname \"27B-6\")]]
   =>
-  (insert! (->ValidationError 
-            :approval 
+  (insert! (->ValidationError
+            :approval
             \"HVAC repairs must include a 27B-6 form.\")))
-  
+
   See the guide at https://github.com/rbrush/clara-rules/wiki/Guide for details."
 
   [name & body]
@@ -251,10 +217,10 @@ use it as follows:
            ~name (assoc :name ~(str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name)))
            ~doc (assoc :doc ~doc)))))
 
-(defmacro defquery 
+(defmacro defquery
   "Defines a query and stored it in the given var. For instance, a simple query that accepts no
    parameters would look like this:
-    
+
 (defquery check-job
   \"Checks the job for validation errors.\"
   []
@@ -266,7 +232,7 @@ use it as follows:
   (let [doc (if (string? (first body)) (first body) nil)
         binding (if doc (second body) (first body))
         definition (if doc (drop 2 body) (rest body) )]
-    `(def ~(vary-meta name assoc :query true :doc doc) 
+    `(def ~(vary-meta name assoc :query true :doc doc)
        (cond-> ~(dsl/parse-query* binding definition {})
                ~name (assoc :name ~(str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name)))
                 ~doc (assoc :doc ~doc)))))
