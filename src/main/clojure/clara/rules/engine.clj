@@ -522,7 +522,7 @@
   (query [session query params]
     (let [query-node (get-in rulebase [:query-nodes query])]
       (when (= nil query-node)
-        (platform/throw-error "The given query is invalid or not included in the rule base."))
+        (platform/throw-error (str "The query " query " is invalid or not included in the rule base.")))
       (map :bindings (mem/get-tokens (mem/to-transient (working-memory session)) query-node params))))
 
   (working-memory [session] memory))
