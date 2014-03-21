@@ -29,12 +29,11 @@
   []
   (?fact <- LousyWeather))
 
+freezing-locations
 
-(comment 
 ;; Example usage:
-  (-> (mk-session 'clara.sample-ruleset)
-      (insert (->Temperature 10 "foo") 
-              (->WindSpeed 40 "foo")) 
-      (fire-rules) 
-      (query find-cold-and-windy))
-)
+(-> (mk-session 'clara.sample-ruleset)
+    (insert (->Temperature 10 "KC")
+            (->WindSpeed 40 "KC"))
+    (fire-rules)
+    (query find-cold-and-windy))

@@ -1,19 +1,20 @@
 (ns clara.rules.schema
   "Schema definition of Clara data structures using Prismatic's Schema library. This includes structures for rules and queries, as well as the schema
    for the underlying Rete network itself. This can be used by tools or other libraries working with rules."
-  (:require [schema.core :as s]))
+  (:require [schema.core :as s]
+            [schema.macros :as sm]))
 
 
-(s/defn condition-type :- (s/enum :or :not :and :fact :accumulator :test)
+(sm/defn condition-type :- (s/enum :or :not :and :fact :accumulator :test)
   "Returns the type of node in a LHS condition expression."
   [condition]
   (if (map? condition) ; Leaf nodes are maps, per the schema
-    
+
     (cond
      (:type condition) :fact
      (:accumulator condition) :accumulator
      :else :test)
-    
+
     ;; Otherwise the node must a vector that starts with the boolean operator.
     (first condition)))
 
@@ -45,7 +46,7 @@
 (declare Condition)
 
 (def BooleanCondition
-  [(s/one (s/enum :or :not :and) "operator") 
+  [(s/one (s/enum :or :not :and) "operator")
    (s/recursive #'Condition)])
 
 (def Condition
@@ -59,7 +60,7 @@
    (s/optional-key :props) {s/Keyword s/Any}
    (s/optional-key :env) {s/Keyword s/Any}
    :lhs [Condition]
-   :rhs s/Any 
+   :rhs s/Any
    })
 
 (def Query
@@ -123,7 +124,7 @@
 
    #(#{:join :negation} (:node-type %))
    JoinNode
-  
+
    #(= (:node-type %) :test)
    TestNode
 

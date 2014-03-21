@@ -7,7 +7,8 @@
             [clara.rules.engine :as eng]
             [clojure.string :as string]
             [clara.rules.schema :as schema]
-            [schema.core :as sc])
+            [schema.core :as sc]
+            [schema.macros :as sm])
   (:import [clara.rules.engine ProductionNode QueryNode LocalTransport LocalSession]))
 
 ;; Protocol for loading rules from some arbitrary source.
@@ -67,7 +68,7 @@
 
         ;; Symbol not found in eiher block, so attempt to retrieve it from
         ;; the current namespace.
-        (if (get-in (get-namespace-info ns-sym) [:defs sym]) 
+        (if (get-in (get-namespace-info ns-sym) [:defs sym])
           (symbol (name ns-sym) (name sym))
           nil)))))
 
@@ -114,9 +115,9 @@
 (defn effective-type [type]
   (if (compiling-cljs?)
     type
-    
+
     (if (symbol? type)
-      (.loadClass (clojure.lang.RT/makeClassLoader) (name type))      
+      (.loadClass (clojure.lang.RT/makeClassLoader) (name type))
       type)))
 
 (defn get-fields
@@ -128,7 +129,7 @@
     (if (symbol? type)
       (get-cljs-accessors type)
       [])
-    
+
     ;; Attempt to load the corresponding class for the type if it's a symbol.
     (let [type (effective-type type)]
 
@@ -340,6 +341,7 @@
                                    :when (and (= condition (:condition beta-node))
                                               (= node-type (:node-type beta-node))
                                               (= env (:env beta-node))
+                                              (= result-binding (:result-binding beta-node))
                                               (= accumulator (:accumulator beta-node)))]
                                beta-node))
 
@@ -410,7 +412,7 @@
       ;; Tests are last.
       :test false)))
 
-(sc/defn to-beta-tree :- [schema/BetaNode]
+(sm/defn to-beta-tree :- [schema/BetaNode]
   "Convert a sequence of rules and/or queries into a beta tree. Returns each root."
   [productions :- [schema/Production]]
   (let [conditions (for [production productions
@@ -461,7 +463,7 @@
     ;; Assign IDs to the roots and return them.
     (map assign-ids-fn raw-roots)))
 
-(sc/defn to-alpha-tree :- [schema/AlphaNode]
+(sm/defn to-alpha-tree :- [schema/AlphaNode]
   "Returns a sequence of [condition-fn, [node-ids]] tuples to represent the alpha side of the network."
   [beta-roots :- [schema/BetaNode]]
 
@@ -493,7 +495,7 @@
                 :beta-children (distinct node-ids)}
                env (assoc :env env))))))
 
-(sc/defn compile-alpha-nodes :- [{:type sc/Any
+(sm/defn compile-alpha-nodes :- [{:type sc/Any
                                   :alpha-fn sc/Any ;; TODO: is a function...
                                   (sc/optional-key :env) {sc/Keyword sc/Any}
                                   :children [sc/Num]}]
@@ -506,7 +508,7 @@
              :children beta-children}
             env (assoc :env env))))
 
-(sc/defn compile-beta-tree
+(sm/defn compile-beta-tree
   "Compile the beta tree to the nodes used at runtime."
   ([beta-nodes  :- [schema/BetaNode]
     parent-bindings]
@@ -515,8 +517,8 @@
             :let [{:keys [condition children id production query join-bindings]} beta-node
 
                   ;; If the condition is symbol, attempt to resolve the clas it belongs to.
-                  condition (if (symbol? condition) 
-                              (.loadClass (clojure.lang.RT/makeClassLoader) (name condition))   
+                  condition (if (symbol? condition)
+                              (.loadClass (clojure.lang.RT/makeClassLoader) (name condition))
                               condition)
 
                   constraint-bindings (variables-as-keywords (:constraints condition))
@@ -574,7 +576,7 @@
           )))))
 
 
-(sc/defn build-network
+(sm/defn build-network
   "Constructs the network from compiled beta tree and condition functions."
   [beta-roots alpha-fns productions]
 
@@ -658,7 +660,7 @@
 ;; Cache of sessions for fast reloading.
 (def ^:private session-cache (atom {}))
 
-(sc/defn mk-session*
+(sm/defn mk-session*
   "Compile the rules into a rete network and return the given session."
   [productions :- [schema/Production]
    options :- {sc/Keyword sc/Any}]

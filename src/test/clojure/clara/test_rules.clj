@@ -6,6 +6,7 @@
             [clara.rules.testfacts :refer :all]
             [clara.rules.engine :as eng]
             [clara.rules.compiler :as com]
+            [clara.rules.accumulators :as acc]
             [clara.rules.dsl :as dsl]
             [clojure.set :as s]
             [clojure.edn :as edn]
@@ -1178,3 +1179,16 @@
     (is (= #{{:?fact (->ColdAndWindy 15 45)}}  
            (set 
             (query session sample/find-cold-and-windy))))))
+
+;; Test for issue 46
+(deftest test-different-return-type
+  (let [q1 (dsl/parse-query [] [[?var1 <- (acc/count) :from [Temperature]]])
+        q2 (dsl/parse-query [] [[?var2 <- (acc/count) :from [Temperature]]])
+
+        session (-> (mk-session [q1 q2])
+                    (insert (->Temperature 40 "MCI")
+                            (->Temperature 50 "SFO"))
+                    (fire-rules))]
+    
+    (is (= [{:?var1 2}] (query session q1)))
+    (is (= [{:?var2 2}] (query session q2)))))
