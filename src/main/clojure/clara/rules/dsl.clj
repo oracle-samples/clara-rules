@@ -8,7 +8,6 @@
             [clara.rules.engine :as eng]
             [clara.rules.compiler :as com]
             [clara.rules.schema :as schema]
-            [cljs.analyzer :as ana] ; TODO: make CLJS dep optional?
             [schema.core :as sc]))
 
 
