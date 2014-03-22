@@ -195,7 +195,7 @@
                            '?__env__)
 
         ;; Initial bindings used in the return of the compiled condition expresion.
-        initial-bindings (if result-binding {result-binding 'this}  {})]
+        initial-bindings (if result-binding {result-binding '?__fact__}  {})]
 
     `(fn [~(if (symbol? type)
              (with-meta
