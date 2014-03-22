@@ -212,6 +212,9 @@ use it as follows:
         properties (if (map? (first body)) (first body) nil)
         definition (if properties (rest body) body)
         {:keys [lhs rhs]} (dsl/split-lhs-rhs definition)]
+    (when-not rhs
+      (throw (ex-info (str "Invalid rule " name ". No RHS (missing =>?).")
+                      {})))
     `(def ~(vary-meta name assoc :rule true :doc doc)
        (cond-> ~(dsl/parse-rule* lhs rhs properties {})
            ~name (assoc :name ~(str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name)))
@@ -236,4 +239,3 @@ use it as follows:
        (cond-> ~(dsl/parse-query* binding definition {})
                ~name (assoc :name ~(str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name)))
                 ~doc (assoc :doc ~doc)))))
-
