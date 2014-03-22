@@ -27,6 +27,7 @@
    :constraints [(s/pred list? "s-expression")]
    (s/optional-key :fact-binding) s/Keyword
    (s/optional-key :args) s/Any
+   (s/optional-key :cmeta) s/Any
    })
 
 (def AccumulatorCondition
