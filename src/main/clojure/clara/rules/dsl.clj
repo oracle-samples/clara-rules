@@ -86,36 +86,53 @@
 (defn- maybe-qualify
   "Attempt to qualify the given symbol, returning the symbol itself
    if we can't qualify it for any reason."
-  [sym]
-  (if (com/compiling-cljs?)
+  [env sym]
+  (let [env (set env)]
+    (if (com/compiling-cljs?)
 
-    ;; Qualify the symbol using the CLJS analyzer.
-    (if-let [resolved (and (symbol? sym) 
-                           (com/resolve-cljs-sym (com/cljs-ns) sym))]
-      resolved
-      sym)
+      ;; Qualify the symbol using the CLJS analyzer.
+      (if-let [resolved (and (symbol? sym)
+                             (not (env sym))
+                             (com/resolve-cljs-sym (com/cljs-ns) sym))]
+        resolved
+        sym)
 
-    ;; Qualify the Clojure symbol.
-    (if (and (symbol? sym) (resolve sym)  
-             (not (= "clojure.core" 
-                     (str (ns-name (:ns (meta (resolve sym))))))) (name sym))
-      (symbol (str (ns-name (:ns (meta (resolve sym))))) (name sym))
-      sym)))
+      ;; Qualify the Clojure symbol.
+      (if (and (symbol? sym) (not (env sym)) (resolve sym)
+               (not (= "clojure.core"
+                       (str (ns-name (:ns (meta (resolve sym))))))) (name sym))
+        (symbol (str (ns-name (:ns (meta (resolve sym))))) (name sym))
+        sym))))
 
 (defn- resolve-vars
   "Resolve vars used in expression. TODO: this should be narrowed to resolve only
    those that aren't in the environment, condition, or right-hand side."
-  [form]
+  [form env]
   (walk/postwalk
-   maybe-qualify
+   #(maybe-qualify env %)
    form))
+
+(defmacro local-syms []
+  (mapv #(list 'quote %) (keys &env)))
+
+(defn destructuring-sym? [sym]
+  (or (re-matches #"vec__\d+" (name sym))
+      (re-matches #"map__\d+" (name sym))))
+
+(defn- destructure-syms
+  [{:keys [args] :as condition}]
+  (if args
+    (remove destructuring-sym? (eval `(let [~args nil] (local-syms))))))
 
 (defn parse-rule*
   "Creates a rule from the DSL syntax using the given environment map."
   [lhs rhs properties env]
-  (let [rule (resolve-vars 
-              {:lhs (list 'quote (mapv parse-expression lhs))
-               :rhs (list 'quote rhs)})
+  (let [conditions (mapv parse-expression lhs)
+        rule {:lhs (list 'quote
+                         (mapv #(resolve-vars % (destructure-syms %))
+                               conditions))
+              :rhs (resolve-vars (list 'quote rhs)
+                                 (map :fact-binding conditions))}
 
         symbols (set (filter symbol? (flatten (concat lhs rhs))))
         matching-env (into {} (for [sym (keys env)
@@ -124,19 +141,20 @@
                                 [(keyword (name sym)) sym]))]
 
     (cond-> rule
-            
+
             ;; Add properties, if given.
             (not (empty? properties)) (assoc :props properties)
-            
+
             ;; Add the environment, if given.
             (not (empty? env)) (assoc :env matching-env))))
 
 (defn parse-query*
   "Creates a query from the DSL syntax using the given environment map."
-  [params lhs env] 
-  (let [query (resolve-vars 
-               {:lhs (list 'quote (mapv parse-expression lhs))
-                :params (set params)})
+  [params lhs env]
+  (let [conditions (mapv parse-expression lhs)
+        query {:lhs (list 'quote (mapv #(resolve-vars % (destructure-syms %))
+                                       conditions))
+               :params (set params)}
 
         symbols (set (filter symbol? (flatten lhs)))
         matching-env (into {}
