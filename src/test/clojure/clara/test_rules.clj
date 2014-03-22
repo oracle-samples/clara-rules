@@ -1192,3 +1192,23 @@
     
     (is (= [{:?var1 2}] (query session q1)))
     (is (= [{:?var2 2}] (query session q2)))))
+
+;; Test for overridding how type ancestors are determined.
+(deftest test-override-ancestors
+  (let [special-ancestor-query (dsl/parse-query [] [[?result <- :my-ancestor]])
+        type-ancestor-query (dsl/parse-query [] [[?result <- Object]])
+
+        session (-> (mk-session [special-ancestor-query type-ancestor-query] :ancestors-fn (fn [type] [:my-ancestor])) 
+                    (insert (->Temperature 15 "MCI"))
+                    (insert (->Temperature 10 "MCI"))
+                    (insert (->Temperature 80 "MCI")))]
+
+    ;; The special ancestor query should match everything since our trivial
+    ;; ancestry function treats :my-ancestor as an ancestor of everything.
+    (is (= #{{:?result (->Temperature 15 "MCI") }
+             {:?result (->Temperature 10 "MCI") }
+             {:?result (->Temperature 80 "MCI") }}
+           (set (query session special-ancestor-query))))
+
+    ;; There shouldn't be anything that matches our typical ancestor here.        
+    (is (empty? (query session type-ancestor-query)))))

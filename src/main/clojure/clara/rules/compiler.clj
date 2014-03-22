@@ -624,10 +624,10 @@
       :query-nodes query-map
       :id-to-node id-to-node})))
 
-(defn create-get-alphas-fn
+(defn- create-get-alphas-fn
   "Returns a function that given a sequence of facts,
   returns a map associating alpha nodes with the facts they accept."
-  [fact-type-fn merged-rules]
+  [fact-type-fn ancestors-fn merged-rules]
 
   ;; We preserve a map of fact types to alpha nodes for efficiency,
   ;; effectively memoizing this operation.
@@ -641,7 +641,7 @@
           [alpha-nodes facts]
 
           ;; The alpha nodes weren't cached for the type, so get them now.
-          (let [ancestors (conj (ancestors fact-type) fact-type)
+          (let [ancestors (conj (ancestors-fn fact-type) fact-type)
 
                 ;; Get all alpha nodes for all ancestors.
                 new-nodes (distinct
@@ -673,11 +673,14 @@
         ;; The fact-type uses Clojure's type function unless overridden.
         fact-type-fn (get options :fact-type-fn type)
 
+        ;; The ancestors for a logical type uses Clojure's ancestors function unless overridden.
+        ancestors-fn (get options :ancestors-fn ancestors)
+
         ;; Create a function that groups a sequence of facts by the collection
         ;; of alpha nodes they target.
         ;; We cache an alpha-map for facts of a given type to avoid computing
         ;; them for every fact entered.
-        get-alphas-fn (create-get-alphas-fn fact-type-fn rulebase)]
+        get-alphas-fn (create-get-alphas-fn fact-type-fn ancestors-fn rulebase)]
 
     (LocalSession. rulebase (eng/local-memory rulebase transport) transport get-alphas-fn)))
 
