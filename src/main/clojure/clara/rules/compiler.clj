@@ -501,10 +501,15 @@
                                   :children [sc/Num]}]
   [alpha-nodes :- [schema/AlphaNode]]
   (for [{:keys [condition beta-children env]} alpha-nodes
-        :let [{:keys [type constraints fact-binding args]} condition]]
+        :let [{:keys [type constraints cmeta fact-binding args]} condition]]
 
     (cond-> {:type (effective-type type)
-             :alpha-fn (eval (compile-condition type (first args) constraints fact-binding env))
+             :alpha-fn (binding [*file* (or (:file cmeta) *file*)]
+                         (eval (with-meta
+                                 (compile-condition
+                                  type (first args) constraints
+                                  fact-binding env)
+                                 cmeta)))
              :children beta-children}
             env (assoc :env env))))
 
@@ -566,7 +571,11 @@
           (eng/->ProductionNode
            id
            production
-           (eval (compile-action all-bindings (:rhs production) (:env production))))
+           (binding [*file* (:file (:rhs-meta production))]
+             (eval (with-meta
+                     (compile-action
+                      all-bindings (:rhs production) (:env production))
+                     (:rhs-meta production)))))
 
           :query
           (eng/->QueryNode
