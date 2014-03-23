@@ -62,6 +62,7 @@
    (s/optional-key :env) {s/Keyword s/Any}
    :lhs [Condition]
    :rhs s/Any
+   (s/optional-key :rhs-meta) s/Any
    })
 
 (def Query
