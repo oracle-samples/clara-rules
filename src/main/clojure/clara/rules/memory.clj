@@ -16,8 +16,14 @@
   ;; Returns the elements assoicated with the given node.
   (get-elements [memory node bindings])
 
+  ;; Returns all elements associated with the given node, regarldess of bindings.
+  (get-elements-all [memory node])
+
   ;; Returns the tokens associated with the given node.
   (get-tokens [memory node bindings])
+
+  ;; Returns all tokens associated with the given node, regardless of bindings
+  (get-tokens-all [memory node])
 
   ;; Returns the reduced form of objects processed by an accumulator node
   ;; for facts that match the given bindings.
@@ -98,8 +104,24 @@
   (get-elements [memory node bindings]
     (get content [:alpha-memory (:id node) bindings] []))
 
+  (get-elements-all [memory node]
+    (for [[key value] content
+          :when (sequential? key)
+          :let [[mem-type node-id] key] 
+          :when (and (= :alpha-memory mem-type)
+                     (= (:id node) node-id))
+          element value]
+      element))
+
   (get-tokens [memory node bindings]
     (get content [:beta-memory (:id node) bindings] []))
+
+  (get-tokens-all [memory node]
+    (for [[[mem-type node-id] bindings] content
+          :when (and (= :beta-memory mem-type)
+                     (= (:id node) node-id))
+          binding bindings]
+      binding))
 
   (get-accum-reduced [memory node join-bindings fact-bindings]
     (get-in content [[:accum-memory (:id node) join-bindings] fact-bindings]))
@@ -195,6 +217,45 @@
     (->PersistentLocalMemory rulebase (persistent! content))))
 
 (defrecord PersistentLocalMemory [rulebase content]
+  IMemoryReader
+  (get-rulebase [memory] rulebase)
+
+  (get-elements [memory node bindings]
+    (get content [:alpha-memory (:id node) bindings] []))
+
+  (get-elements-all [memory node]
+    (for [[key value] content
+          :when (sequential? key)
+          :let [[mem-type node-id] key] 
+          :when (and (= :alpha-memory mem-type)
+                     (= (:id node) node-id))
+          element value]
+      element))
+
+  (get-tokens [memory node bindings]
+    (get content [:beta-memory (:id node) bindings] []))
+
+  (get-tokens-all [memory node]
+    (for [[key value] content
+          :when (sequential? key)
+          :let [[mem-type node-id] key] 
+          :when (and (= :beta-memory mem-type)
+                     (= (:id node) node-id))
+          binding value]
+      binding))
+
+  (get-accum-reduced [memory node join-bindings fact-bindings]
+    (get-in content [[:accum-memory (:id node) join-bindings] fact-bindings]))
+
+  (get-accum-reduced-all [memory node join-bindings]
+    (get content [:accum-memory (:id node) join-bindings] {}))
+
+  (get-insertions [memory node token]
+    (get content [:production-memory (:id node) token] []))
+
+  (get-activations [memory]
+    (:activations content))
+
   IPersistentMemory
   (to-transient [memory] 
     (TransientLocalMemory. rulebase (transient content))))
