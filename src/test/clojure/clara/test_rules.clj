@@ -18,6 +18,9 @@
 
 (use-fixtures :once schema.test/validate-schemas)
 
+(defn- has-fact? [token fact]
+  (some #{fact} (:facts token)))
+
 (deftest test-simple-rule
   (let [rule-output (atom nil)
         cold-rule (dsl/parse-rule [[Temperature (< temperature 20)]] 
@@ -27,9 +30,7 @@
                     (insert (->Temperature 10 "MCI"))
                     (fire-rules))]
 
-    (is (= 
-         (eng/->Token [(->Temperature 10 "MCI")] {})
-         @rule-output))))
+    (is (has-fact? @rule-output (->Temperature 10 "MCI")))))
 
 (deftest test-multiple-condition-rule
   (let [rule-output (atom nil)
@@ -64,13 +65,9 @@
     (fire-rules session)
 
     ;; Check rule side effects contin the expected token.
-    (is (= 
-         (eng/->Token [(->Temperature 10 "MCI")] {})
-         @cold-rule-output))
+    (is (has-fact? @cold-rule-output (->Temperature 10 "MCI")))
 
-    (is (= 
-         (eng/->Token [(->WindSpeed 30 "MCI")] {})
-         @windy-rule-output))))
+    (is (has-fact? @windy-rule-output (->WindSpeed 30 "MCI")))))
 
 (deftest test-multiple-rules-same-fact
 
@@ -87,13 +84,9 @@
 
     (fire-rules session)
 
-    (is (= 
-         (eng/->Token [(->Temperature -10 "MCI")] {})
-         @cold-rule-output))
+    (is (has-fact? @cold-rule-output (->Temperature -10 "MCI") ))
 
-    (is (= 
-         (eng/->Token [(->Temperature -10 "MCI")] {})
-         @subzero-rule-output))))
+    (is (has-fact? @subzero-rule-output (->Temperature -10 "MCI")))))
 
 (deftest test-cancelled-activation
   (let [rule-output (atom nil)
@@ -800,9 +793,7 @@
 
     (fire-rules session)
 
-    (is (= 
-         (eng/->Token [(->Temperature 10 "MCI")] {})
-         @simple-defrule-side-effect))))
+    (is (has-fact? @simple-defrule-side-effect (->Temperature 10 "MCI") ))))
 
 (defquery cold-query  
   [:?l] 
@@ -880,9 +871,7 @@
                     (insert (->Temperature 10 "MCI"))
                     (fire-rules))]
 
-    (is (= 
-         (eng/->Token [(->Temperature 10 "MCI")] {})
-         @rule-output))
+    (is (has-fact? @rule-output (->Temperature 10 "MCI")))
     
     ;; Reset the side effect then re-fire the rules
     ;; to ensure the same one isn't fired twice.
@@ -896,9 +885,7 @@
         (insert (->Temperature 10 "MCI"))
         (fire-rules))
     
-    (is (= 
-         (eng/->Token [(->Temperature 10 "MCI")] {})
-         @rule-output))))
+    (is (has-fact? @rule-output (->Temperature 10 "MCI")))))
 
 
 (deftest test-chained-inference

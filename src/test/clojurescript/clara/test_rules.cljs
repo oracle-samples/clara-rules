@@ -14,6 +14,9 @@
  (cemerick.piggieback/cljs-repl :repl-env (cemerick.austin/exec-env))
 )
 
+(defn- has-fact? [token fact]
+  (some #{fact} (:facts token)))
+
 (def simple-defrule-side-effect (atom nil))
 (def other-defrule-side-effect (atom nil))
 
@@ -69,9 +72,7 @@
     
     (fire-rules session)
 
-    (is (= 
-         (eng/->Token [(->Temperature 10 "MCI")] {})
-         @simple-defrule-side-effect))))
+    (is (has-fact? @simple-defrule-side-effect (->Temperature 10 "MCI")))))
 
 (deftest test-simple-query
   (let [session (-> my-session
