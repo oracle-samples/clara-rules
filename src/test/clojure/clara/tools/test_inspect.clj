@@ -29,13 +29,25 @@
 
         rule-dump (inspect session)]
 
-    ;; Retrieve the tokens matching the cold query.
-    (is (= [(eng/map->Token {:facts [(->Temperature 15 "MCI")], :bindings {:?t 15}})
-            (eng/map->Token {:facts [(->Temperature 10 "MCI")], :bindings {:?t 10}})]           
-         (get-in rule-dump [:query-matches cold-query])))
+    ;; Retrieve the tokens matching the cold query. This test validates
+    ;; the tokens contain the expected matching conditions by retrieving
+    ;; them directly from the query in question.
+    (is (= [(eng/map->Token {:matches [[(->Temperature 15 "MCI") 
+                                        (first (:lhs cold-query))]],
+
+                             :bindings {:?t 15}})
+
+            (eng/map->Token {:matches [[(->Temperature 10 "MCI")
+                                        (first (:lhs cold-query))]], 
+                             :bindings {:?t 10}})]       
+    
+           (get-in rule-dump [:query-matches cold-query])))
 
     ;; Retrieve tokens matching the hot rule.
-    (is (= [(eng/map->Token {:facts [(->Temperature 90 "MCI")], :bindings {:?t 90}})]           
+    (is (= [(eng/map->Token {:matches [[(->Temperature 90 "MCI")
+                                        (first (:lhs hot-rule))]],
+                             :bindings {:?t 90}})]           
+
          (get-in rule-dump [:rule-matches hot-rule])))
     
     ;; Ensure the first condition in the rule matches the expected facts.

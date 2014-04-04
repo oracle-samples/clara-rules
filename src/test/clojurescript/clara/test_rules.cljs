@@ -15,7 +15,7 @@
 )
 
 (defn- has-fact? [token fact]
-  (some #{fact} (:facts token)))
+  (some #{fact} (map first (:matches token))))
 
 (def simple-defrule-side-effect (atom nil))
 (def other-defrule-side-effect (atom nil))

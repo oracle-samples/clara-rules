@@ -19,7 +19,7 @@
 (use-fixtures :once schema.test/validate-schemas)
 
 (defn- has-fact? [token fact]
-  (some #{fact} (:facts token)))
+  (some #{fact} (map first (:matches token))))
 
 (deftest test-simple-rule
   (let [rule-output (atom nil)
@@ -44,8 +44,8 @@
 
     (fire-rules session)
 
-    (is (= #{(->Temperature 10 "MCI") (->WindSpeed 30 "MCI")}        
-         (set (:facts @rule-output))))))
+    (is (has-fact? @rule-output (->WindSpeed 30 "MCI")))
+    (is (has-fact? @rule-output (->Temperature 10 "MCI")))))
 
 (deftest test-multiple-simple-rules
 
