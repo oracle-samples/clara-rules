@@ -1199,3 +1199,16 @@
 
     ;; There shouldn't be anything that matches our typical ancestor here.        
     (is (empty? (query session type-ancestor-query)))))
+
+
+(deftest test-shared-condition
+  (let [cold-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]])
+        cold-windy-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]
+                                              [WindSpeed (> windspeed 25)]])
+
+        beta-roots (com/to-beta-tree [cold-query cold-windy-query])]
+
+    ;; Since the conditions are shared, there should only be one beta root in the network.
+    (is (= 1 (count beta-roots)))))
+
+

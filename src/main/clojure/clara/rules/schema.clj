@@ -27,7 +27,6 @@
    :constraints [(s/pred list? "s-expression")]
    (s/optional-key :fact-binding) s/Keyword
    (s/optional-key :args) s/Any
-   (s/optional-key :cmeta) s/Any
    })
 
 (def AccumulatorCondition
@@ -62,7 +61,6 @@
    (s/optional-key :env) {s/Keyword s/Any}
    :lhs [Condition]
    :rhs s/Any
-   (s/optional-key :rhs-meta) s/Any
    })
 
 (def Query

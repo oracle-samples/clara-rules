@@ -41,13 +41,17 @@
     (when (> (count args) 1)
       (throw (IllegalArgumentException. "Only one argument can be passed to a condition.")))
 
-    (cond-> {:type type
-             :constraints constraints
-             :cmeta (if (seq constraints)
-                      (assoc (meta (first constraints))
-                        :file *file*))}
-            args (assoc :args args)
-            result-binding (assoc :fact-binding result-binding))))
+    ;; Include the original metadata in the returned condition so line numbers
+    ;; can be preserved when we compile it.
+    (with-meta 
+      (cond-> {:type type
+               :constraints constraints}
+              args (assoc :args args)
+              result-binding (assoc :fact-binding result-binding))
+
+      (if (seq constraints)
+        (assoc (meta (first constraints))
+          :file *file*)))))
 
 (defn- parse-condition-or-accum 
   "Parse an expression that could be a condition or an accumulator."
@@ -137,8 +141,7 @@
               :rhs (with-meta
                      (resolve-vars (list 'quote rhs)
                                    (map :fact-binding conditions))
-                     (assoc (meta rhs) :file *file*))
-              :rhs-meta (assoc (meta rhs) :file *file*)}
+                     (assoc (meta rhs) :file *file*))}
 
         symbols (set (filter symbol? (flatten (concat lhs rhs))))
         matching-env (into {} (for [sym (keys env)

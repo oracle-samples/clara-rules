@@ -382,16 +382,15 @@
           (cond->
            {:node-type node-type
             :condition condition
-            :children (add-to-beta-tree [] more (s/union bindings cond-bindings) production)}
+            :children (add-to-beta-tree [] more (s/union bindings cond-bindings) production)
+            :env (or env {})}
 
            ;; Add the join bindings to join, accumulator or negation nodes.
            (#{:join :negation :accumulator} node-type) (assoc :join-bindings (s/intersection bindings cond-bindings))
 
            accumulator (assoc :accumulator accumulator)
 
-           result-binding (assoc :result-binding result-binding)
-
-           env (assoc :env env)))
+           result-binding (assoc :result-binding result-binding)))
 
         ;; There are no more conditions, so add our query or rule.
         (if matching-node
@@ -515,7 +514,8 @@
                                   :children [sc/Num]}]
   [alpha-nodes :- [schema/AlphaNode]]
   (for [{:keys [condition beta-children env]} alpha-nodes
-        :let [{:keys [type constraints cmeta fact-binding args]} condition]]
+        :let [{:keys [type constraints fact-binding args]} condition
+              cmeta (meta condition)]]
 
     (cond-> {:type (effective-type type)
              :alpha-fn (binding [*file* (or (:file cmeta) *file*)]
@@ -523,7 +523,7 @@
                                  (compile-condition
                                   type (first args) constraints
                                   fact-binding env)
-                                 cmeta)))
+                                 (meta condition))))
              :children beta-children}
             env (assoc :env env))))
 
@@ -589,11 +589,11 @@
           (eng/->ProductionNode
            id
            production
-           (binding [*file* (:file (:rhs-meta production))]
+           (binding [*file* (:file (meta (:rhs production)))]
              (eval (with-meta
                      (compile-action
                       all-bindings (:rhs production) (:env production))
-                     (:rhs-meta production)))))
+                     (meta (:rhs production))))))
 
           :query
           (eng/->QueryNode
