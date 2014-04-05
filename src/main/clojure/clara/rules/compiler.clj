@@ -574,6 +574,10 @@
           :accumulator
           (eng/->AccumulateNode
            id
+           ;; Create an accumulator structure for use when examining the node or the tokens
+           ;; it produces.
+           {:accumulator (:accumulator beta-node) 
+            :from condition}
            ;; We create an accumulator that accepts the environment for the beta node
            ;; into its context, hence the function with the given environment.
            ((eval (compile-accum (:accumulator beta-node) (:env beta-node))) (:env beta-node))

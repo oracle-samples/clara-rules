@@ -304,9 +304,9 @@
 
 (defn- retract-accumulated
   "Helper function to retract an accumulated value."
-  [node accumulator result-binding token result fact-bindings transport memory]
+  [node accum-condition accumulator result-binding token result fact-bindings transport memory]
   (let [converted-result ((:convert-return-fn accumulator) result)
-        new-facts (conj (:matches token) [converted-result {:type :accumulator-result}])
+        new-facts (conj (:matches token) [converted-result accum-condition])
         new-bindings (merge (:bindings token)
                             fact-bindings
                             (when result-binding
@@ -318,7 +318,7 @@
 
 (defn- send-accumulated
   "Helper function to send the result of an accumulated value to the node's children."
-  [node accumulator result-binding token result fact-bindings transport memory]
+  [node accum-condition accumulator result-binding token result fact-bindings transport memory]
   (let [converted-result ((:convert-return-fn accumulator) result)
         new-bindings (merge (:bindings token)
                             fact-bindings
@@ -327,7 +327,7 @@
                                 converted-result}))]
 
     (send-tokens transport memory (:children node)
-                 [(->Token (conj (:matches token) [converted-result {:type :accumulator-result}]) new-bindings)])))
+                 [(->Token (conj (:matches token) [converted-result accum-condition]) new-bindings)])))
 
 (defn- has-keys?
   "Returns true if the given map has all of the given keys."
@@ -337,7 +337,7 @@
 ;; The AccumulateNode hosts Accumulators, a Rete extension described above, in the Rete network
 ;; It behavios similarly to a JoinNode, but performs an accumulation function on the incoming
 ;; working-memory elements before sending a new token to its descendents.
-(defrecord AccumulateNode [id accumulator result-binding children binding-keys]
+(defrecord AccumulateNode [id accum-condition accumulator result-binding children binding-keys]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport]
     (let [previous-results (mem/get-accum-reduced-all memory node join-bindings)]
@@ -350,7 +350,7 @@
          ;; If there are previously accumulated results to propagate, simply use them.
          (seq previous-results)
          (doseq [[fact-bindings previous] previous-results]
-           (send-accumulated node accumulator result-binding token previous fact-bindings transport memory))
+           (send-accumulated node accum-condition accumulator result-binding token previous fact-bindings transport memory))
 
          ;; There are no previously accumulated results, but we still may need to propagate things
          ;; such as a sum of zero items.
@@ -364,7 +364,7 @@
                previous (:initial-value accumulator)]
 
            ;; Send the created accumulated item to the children.
-           (send-accumulated node accumulator result-binding token previous fact-bindings transport memory)
+           (send-accumulated node accum-condition accumulator result-binding token previous fact-bindings transport memory)
 
            ;; Add it to the working memory.
            (mem/add-accum-reduced! memory node join-bindings previous fact-bindings))
@@ -376,7 +376,7 @@
     (let [previous-results (mem/get-accum-reduced-all memory node join-bindings)]
       (doseq [token (mem/remove-tokens! memory node join-bindings tokens)
               [fact-bindings previous] previous-results]
-        (retract-accumulated node accumulator result-binding token previous fact-bindings transport memory))))
+        (retract-accumulated node accum-condition accumulator result-binding token previous fact-bindings transport memory))))
 
   (get-join-keys [node] binding-keys)
 
@@ -403,7 +403,7 @@
       (when previous
 
         (doseq [token (mem/get-tokens memory node join-bindings)]
-          (retract-accumulated node accumulator result-binding token previous bindings transport memory)))
+          (retract-accumulated node accum-condition accumulator result-binding token previous bindings transport memory)))
 
       ;; Combine the newly reduced values with any previous items.
       (let [combined (if previous
@@ -412,7 +412,7 @@
 
         (mem/add-accum-reduced! memory node join-bindings combined bindings)
         (doseq [token matched-tokens]
-          (send-accumulated node accumulator result-binding token combined bindings transport memory)))))
+          (send-accumulated node accum-condition accumulator result-binding token combined bindings transport memory)))))
 
   IRightActivate
   (right-activate [node join-bindings elements memory transport]
@@ -445,11 +445,11 @@
       (mem/add-accum-reduced! memory node join-bindings retracted bindings)
 
       ;; Retract the previous token.
-      (retract-accumulated node accumulator result-binding token previous bindings transport memory)
+      (retract-accumulated node accum-condition accumulator result-binding token previous bindings transport memory)
 
       ;; Send a new accumulated token with our new, retracted information.
       (when retracted
-        (send-accumulated node accumulator result-binding token retracted bindings transport memory)))))
+        (send-accumulated node accum-condition accumulator result-binding token retracted bindings transport memory)))))
 
 
 (defn variables-as-keywords

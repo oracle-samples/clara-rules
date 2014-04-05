@@ -88,6 +88,8 @@
           :accumulator
           `(eng/->AccumulateNode
             ~id
+            {:accumulator '~(:accumulator beta-node)
+             :from '~condition}
             ~(:accumulator beta-node)
             ~(:result-binding beta-node)
             ~(gen-beta-network children all-bindings)
