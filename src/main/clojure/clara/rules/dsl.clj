@@ -104,12 +104,29 @@
         resolved
         sym)
 
-      ;; Qualify the Clojure symbol.
-      (if (and (symbol? sym) (not (env sym)) (resolve sym)
-               (not (= "clojure.core"
-                       (str (ns-name (:ns (meta (resolve sym))))))) (name sym))
-        (symbol (str (ns-name (:ns (meta (resolve sym))))) (name sym))
-        sym))))
+      (if (and (symbol? sym)
+               (.endsWith (name sym) "."))
+
+        ;; The . suffix indicates a type constructor, so we qualify the type instead, then
+        ;; re-add the . to the resolved type.
+        (-> (subs (name sym)
+                  0 
+                  (dec (count (name sym)))) ; Get the name without the trailing dot.
+            (symbol) ; Convert it back to a symbol.
+            (resolve) ; Resolve into the type class.
+            (.getName) ; Get the qualified name.
+            (str ".") ; Re-add the dot for the constructor, which is now qualified
+            (symbol)) ; Convert back into a symbol used at compile time.
+
+        ;; Qualify a normal clojure symbol.
+        (if (and (symbol? sym) ; Only qualify symbols...
+                 (not (env sym)) ; not in env (env contains locals). 
+                 (resolve sym) ; that we can resolve
+                 (not (= "clojure.core" 
+                         (str (ns-name (:ns (meta (resolve sym))))))) ; Don't qualify clojure.core for portability, since CLJS uses a different namespace.
+                 (name sym))
+          (symbol (str (ns-name (:ns (meta (resolve sym))))) (name sym))
+          sym)))))
 
 (defn- resolve-vars
   "Resolve vars used in expression. TODO: this should be narrowed to resolve only
