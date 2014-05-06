@@ -1,6 +1,6 @@
-(ns clara.rules.accumulators 
+(ns clara.rules.accumulators
   "A set of common accumulators usable in Clara rules."
-  (:require [clara.rules.engine :as eng] 
+  (:require [clara.rules.engine :as eng]
             [clojure.set :as set]
             [clara.rules :refer [accumulate]])
   (:refer-clojure :exclude [min max distinct count]))
@@ -35,21 +35,21 @@
 (defn average
   "Returns an accumulator that returns the average value of a given field."
   [field]
-  (accumulate 
+  (accumulate
    :initial-value [0 0]
    :reduce-fn (fn [[value count] item]
                 [(+ value (field item)) (inc count)])
    :combine-fn (fn [[value1 count1] [value2 count2]]
                  [(+ value1 value2) (+ count1 count2)])
-   :convert-return-fn (fn [[value count]]  
-                        (if (= 0 count) 
+   :convert-return-fn (fn [[value count]]
+                        (if (= 0 count)
                           nil
                           (/ value count)))))
 
 (defn sum
   "Returns an accumulator that returns the sum of values of a given field"
   [field]
-  (accumulate 
+  (accumulate
    :initial-value 0
    :reduce-fn (fn [total item]
                 (+ total (field item)))
@@ -58,7 +58,7 @@
 (defn count
   "Returns an accumulator that simply counts the number of matching facts"
   []
-  (accumulate 
+  (accumulate
    :initial-value 0
    :reduce-fn (fn [count value] (inc count))
    :combine-fn +))
@@ -67,13 +67,26 @@
   "Returns an accumulator producing a distinct set of facts.
    If given a field, returns a distinct set of values for that field."
   ([]
-     (accumulate 
+     (accumulate
       :initial-value #{}
       :reduce-fn (fn [items value] (conj items value))
       :combine-fn set/union))
   ([field]
-     (accumulate 
+     (accumulate
       :initial-value #{}
       :reduce-fn (fn [items value] (conj items (field value)))
       :combine-fn set/union)))
 
+(defn all
+  "Returns an accumulator that preserves all accumulated items.
+   If given a field, returns all values in that field."
+  ([]
+     (accumulate
+      :initial-value []
+      :reduce-fn (fn [items value] (conj items value))
+      :combine-fn concat))
+  ([field]
+     (accumulate
+      :initial-value []
+      :reduce-fn (fn [items value] (conj items (field value)))
+      :combine-fn concat)))

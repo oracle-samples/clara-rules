@@ -140,3 +140,25 @@
 
     ;; Ensure the two temperature readings at SFO are found as expected.
     (is (= {:?c 2 :?loc "SFO"} (first (query session count :?loc "SFO"))))))
+
+
+(deftest test-accum-all
+  (let [all (dsl/parse-query [] [[?t <- (acc/all) from [Temperature]]])
+        all-field (dsl/parse-query [] [[?t <- (acc/all :temperature) from [Temperature]]])
+
+        session (-> (mk-session [all all-field])
+                    (insert (->Temperature 80 "MCI"))
+                    (insert (->Temperature 80 "MCI"))
+                    (insert (->Temperature 90 "MCI")))]
+
+    ;; Ensure expected items are there. We sort the query results
+    ;; since ordering isn't guaranteed.
+    (is (= [{:?t [(->Temperature 80 "MCI")
+                  (->Temperature 80 "MCI")
+                  (->Temperature 90 "MCI")]}]
+
+           (sort-by :temperature (query session all))   ))
+
+    (is (= [{:?t [80 80 90]}]
+
+           (sort (query session all-field))))))
