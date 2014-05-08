@@ -8,6 +8,8 @@
 (defrecord Cold [temperature])
 (defrecord ColdAndWindy [temperature windspeed])
 (defrecord LousyWeather [])
+(defrecord TemperatureHistory [temperatures])
+
 
 ;; Test facts for chained rules.
 (defrecord First [])

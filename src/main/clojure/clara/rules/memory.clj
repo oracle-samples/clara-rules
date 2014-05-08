@@ -65,11 +65,15 @@
   ;; due to the given token. Used for truth maintenance.
   (remove-insertions! [memory node token])
 
-  ;; Add activations.
-  (add-activations! [memory node tokens])
+  ;; Add a sequence of activations.
+  (add-activations! [memory activations])
+
+  ;; Pop an activation from the working memory. Returns nil if no
+  ;; activations are pending.
+  (pop-activation! [memory])
 
   ;; Remove the given activations from the working memory.
-  (remove-activations! [memory node tokens])
+  (remove-activations! [memory activations])
 
   ;; Clear all activations from the working memory
   (clear-activations! [memory])
@@ -78,11 +82,11 @@
   (to-persistent! [memory]))
 
 
-(defn- remove-first-of-each 
-  "Remove the first instance of each item in the given set that 
+(defn- remove-first-of-each
+  "Remove the first instance of each item in the given set that
    appears in the collection."
   [set coll]
-  (lazy-seq 
+  (lazy-seq
    (when-let [s (seq coll)]
      (let [f (first s)
            r (rest s)]
@@ -107,7 +111,7 @@
   (get-elements-all [memory node]
     (for [[key value] content
           :when (sequential? key)
-          :let [[mem-type node-id] key] 
+          :let [[mem-type node-id] key]
           :when (and (= :alpha-memory mem-type)
                      (= (:id node) node-id))
           element value]
@@ -134,8 +138,8 @@
 
   (get-activations [memory]
     (:activations content))
-  
-  ITransientMemory  
+
+  ITransientMemory
   (add-elements! [memory node join-bindings elements]
     (let [key [:alpha-memory (:id node) join-bindings]
           current-facts (get content key [])]
@@ -173,7 +177,7 @@
                              fact-bindings
                              accum-result)]
       (set! content (assoc! content key updated-bindings))))
-  
+
   (add-insertions! [memory node token facts]
     (let [key [:production-memory (:id node) token]
           current-facts (get content key [])]
@@ -195,22 +199,32 @@
 
       results))
 
-  (add-activations! [memory node tokens]
-    (set! content (assoc! content :activations 
-                (assoc 
-                 (:activations content) 
-                  node 
-                  (concat tokens (get-in content [:activations node] []))))))
+  (add-activations! [memory activations]
+    (set! content
+          (assoc! content
+                  :activations
+                  (concat (get content :activations [])
+                          activations))))
 
-  (remove-activations! [memory node tokens]
-    (set! content (assoc! content :activations 
-                (assoc 
-                 (:activations content) 
-                  node 
-                  (remove-first-of-each (set tokens) (get-in content [:activations node] []))))))
+  (pop-activation! [memory]
+    (let [activation (first (:activations content))
+          remaining (rest (:activations content))]
+
+      (set! content
+            (assoc! content
+                    :activations
+                    remaining))
+      activation))
+
+  (remove-activations! [memory activations]
+   (set! content
+          (assoc! content
+                  :activations
+                  (remove-first-of-each (set activations)
+                                        (get content :activations [])))))
 
   (clear-activations! [memory]
-    (set! content (assoc! content  :activations {})))
+    (set! content (assoc! content :activations [])))
 
   (to-persistent! [memory]
 
@@ -226,7 +240,7 @@
   (get-elements-all [memory node]
     (for [[key value] content
           :when (sequential? key)
-          :let [[mem-type node-id] key] 
+          :let [[mem-type node-id] key]
           :when (and (= :alpha-memory mem-type)
                      (= (:id node) node-id))
           element value]
@@ -238,7 +252,7 @@
   (get-tokens-all [memory node]
     (for [[key value] content
           :when (sequential? key)
-          :let [[mem-type node-id] key] 
+          :let [[mem-type node-id] key]
           :when (and (= :beta-memory mem-type)
                      (= (:id node) node-id))
           binding value]
@@ -257,5 +271,5 @@
     (:activations content))
 
   IPersistentMemory
-  (to-transient [memory] 
+  (to-transient [memory]
     (TransientLocalMemory. rulebase (transient content))))

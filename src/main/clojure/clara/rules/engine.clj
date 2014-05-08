@@ -21,6 +21,9 @@
 ;; A working memory element, containing a single fact and its corresponding bound variables.
 (defrecord Element [fact bindings])
 
+;; An activation for the given production and token.
+(defrecord Activation [node token])
+
 ;; Token with no bindings, used as the root of beta nodes.
 (def empty-token (->Token [] {}))
 
@@ -150,14 +153,18 @@
       (mem/add-tokens! memory node join-bindings tokens)
 
       ;; The production matched, so add the tokens to the activation list.
-      (mem/add-activations! memory node tokens)))
+      (mem/add-activations! memory
+                            (for [token tokens]
+                              (->Activation node token)))))
 
   (left-retract [node join-bindings tokens memory transport]
     ;; Remove any tokens to avoid future rule execution on retracted items.
     (mem/remove-tokens! memory node join-bindings tokens)
 
     ;; Remove pending activations triggered by the retracted tokens.
-    (mem/remove-activations! memory node tokens)
+    (mem/remove-activations! memory
+                            (for [token tokens]
+                              (->Activation node token)))
 
     ;; Retract any insertions that occurred due to the retracted token.
     (let [insertions (mem/remove-insertions! memory node tokens)]
@@ -476,20 +483,17 @@
                                :insertions (atom 0)
                                :get-alphas-fn get-alphas-fn}]
 
-    (loop [activations (mem/get-activations transient-memory)]
+    ;; Continue popping and running activations while they exist.
+    (loop [activation (mem/pop-activation! transient-memory)]
 
-      ;; Clear the activations we're processing; new ones may
-      ;; be added during insertions.
-      (mem/clear-activations! transient-memory)
+      (when activation
 
-      (doseq [[node tokens] activations
-              token tokens]
-        (binding [*rule-context* {:token token :node node}]
-          ((:rhs node) token (:env (:production node)))))
+        (let [{:keys [node token]} activation]
 
-      ;; If new activations were created, loop to fire those as well.
-      (when (seq (mem/get-activations transient-memory))
-        (recur (mem/get-activations transient-memory))))))
+            (binding [*rule-context* {:token token :node node}]
+              ((:rhs node) token (:env (:production node))))
+
+          (recur (mem/pop-activation! transient-memory)))))))
 
 (deftype LocalSession [rulebase memory transport get-alphas-fn]
   ISession
@@ -537,4 +541,3 @@
     (doseq [beta-node (:beta-roots rulebase)]
       (left-activate beta-node {} [empty-token] memory transport))
     (mem/to-persistent! memory)))
-
