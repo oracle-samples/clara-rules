@@ -1,5 +1,12 @@
 This is a history of changes to clara-rules.
 
+### 0.5.0
+Contains several bug fixes and some usage enhancements, including:
+
+* The clara.tools.inspect package allows for inspection and explanation of why rules fired. Also see [issue 48](https://github.com/rbrush/clara-rules/issues/48).
+* [File and line information is preserved when compiling.](https://github.com/rbrush/clara-rules/pull/51)
+* A list of several other fixes can be seen via the [milestone summary](https://github.com/rbrush/clara-rules/issues?milestone=7&page=1&state=closed)
+
 ### 0.4.0
 This is a major refactoring of the Clara engine, turning all rule and Rete network representations into well-defined data structures. Details are at these links:
 

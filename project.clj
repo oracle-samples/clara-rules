@@ -1,4 +1,4 @@
-(defproject org.toomuchcode/clara-rules "0.5.0-SNAPSHOT"
+(defproject org.toomuchcode/clara-rules "0.5.0"
   :description "Clara Rules Engine"
   :url "http://rbrush.github.io/clara-rules/"
   :license {:name "Eclipse Public License"
@@ -13,7 +13,7 @@
   :plugins [[codox "0.6.4"]
             [lein-javadoc "0.1.1"]
             [lein-cljsbuild "1.0.0-alpha2"]
-            [com.cemerick/clojurescript.test "0.2.1"]]  
+            [com.cemerick/clojurescript.test "0.2.1"]]
   :codox {:exclude [clara.other-ruleset clara.sample-ruleset clara.test-java
                     clara.test-rules clara.rules.memory clara.test-accumulators
                     clara.rules.testfacts clara.rules.java clara.rules.engine
@@ -22,7 +22,7 @@
   :source-paths ["src/main/clojure"]
   :test-paths ["src/test/clojure"]
   :java-source-paths ["src/main/java"]
-  :hooks [leiningen.cljsbuild] 
+  :hooks [leiningen.cljsbuild]
   :cljsbuild {:builds [{:source-paths ["src/main/clojurescript"]
                         :jar true
                         :compiler {:pretty-print true
