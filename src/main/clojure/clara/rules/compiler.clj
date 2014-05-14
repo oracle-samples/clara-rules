@@ -10,7 +10,8 @@
             [schema.core :as sc]
             [schema.macros :as sm])
   (:import [clara.rules.engine ProductionNode QueryNode JoinNode NegationNode TestNode
-                               AccumulateNode AlphaNode LocalTransport LocalSession]))
+                               AccumulateNode AlphaNode LocalTransport LocalSession
+                               Accumulator]))
 
 ;; Protocol for loading rules from some arbitrary source.
 (defprotocol IRuleSource
@@ -572,18 +573,24 @@
            (compile-beta-tree children all-bindings))
 
           :accumulator
-          (eng/->AccumulateNode
-           id
-           ;; Create an accumulator structure for use when examining the node or the tokens
-           ;; it produces.
-           {:accumulator (:accumulator beta-node) 
-            :from condition}
-           ;; We create an accumulator that accepts the environment for the beta node
-           ;; into its context, hence the function with the given environment.
-           ((eval (compile-accum (:accumulator beta-node) (:env beta-node))) (:env beta-node))
-           (:result-binding beta-node)
-           (compile-beta-tree children all-bindings)
-           join-bindings)
+          ;; We create an accumulator that accepts the environment for the beta node
+          ;; into its context, hence the function with the given environment.
+          (let [compiled-accum ((eval (compile-accum (:accumulator beta-node) (:env beta-node))) (:env beta-node))]
+
+            ;; Ensure the compiled accumulator has the expected structure
+            (when (not (instance? Accumulator compiled-accum))
+              (throw (IllegalArgumentException. (str (:accumulator beta-node) " is not a valid accumulator."))))
+
+            (eng/->AccumulateNode
+              id
+              ;; Create an accumulator structure for use when examining the node or the tokens
+              ;; it produces.
+              {:accumulator (:accumulator beta-node)
+               :from condition}
+              compiled-accum
+              (:result-binding beta-node)
+              (compile-beta-tree children all-bindings)
+              join-bindings))
 
           :production
           (eng/->ProductionNode
