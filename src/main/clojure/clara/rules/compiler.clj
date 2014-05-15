@@ -187,6 +187,13 @@
                              (= \? (first (name item))))]
               (keyword  item))))
 
+(defn- add-meta
+  "Helper function to add metadata."
+  [fact-symbol fact-type]
+  (if (class? fact-type)
+    (vary-meta fact-symbol assoc :tag (symbol (.getName ^Class fact-type)))
+    fact-symbol))
+
 (defn compile-condition
   "Returns a function definition that can be used in alpha nodes to test the condition."
   [type destructured-fact constraints result-binding env]
@@ -212,11 +219,7 @@
         ;; Initial bindings used in the return of the compiled condition expresion.
         initial-bindings (if result-binding {result-binding '?__fact__}  {})]
 
-    `(fn [~(if (symbol? type)
-             (with-meta
-               '?__fact__
-               {:tag (symbol (.getName type))})  ; Add type hint to avoid runtime refection.
-             '?__fact__)
+    `(fn [~(add-meta '?__fact__ type)
           ~destructured-env] ;; TODO: add destructured environment parameter...
        (let [~@assignments
              ~'?__bindings__ (atom ~initial-bindings)]
