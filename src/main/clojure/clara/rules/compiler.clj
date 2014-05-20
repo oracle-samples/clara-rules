@@ -18,7 +18,7 @@
   (load-rules [source]))
 
 ;; These nodes exist in the beta network.
-(def BetaNode (sc/either ProductionNode QueryNode JoinNode 
+(def BetaNode (sc/either ProductionNode QueryNode JoinNode
                          NegationNode TestNode AccumulateNode))
 
 ;; A rulebase -- essentially an immutable Rete network with a collection of alpha and beta nodes and supporting structure.
@@ -417,8 +417,8 @@
              :default :test))]
 
     (case (cond-type cond1)
-      ;; Conditions are always sorted first.
-      :condition true
+      ;; Conditions are always sorted ahead of non-conditions.
+      :condition (not= :condition (cond-type cond2))
 
       ;; Negated conditions occur before tests and accumulators.
       :negation (boolean (#{:test :accumulator} (cond-type cond2)))
