@@ -535,6 +535,10 @@
   "Compile the beta tree to the nodes used at runtime."
   ([beta-nodes  :- [schema/BetaNode]
     parent-bindings]
+     (compile-beta-tree beta-nodes parent-bindings false))
+  ([beta-nodes  :- [schema/BetaNode]
+    parent-bindings
+    is-root]
      (vec
       (for [beta-node beta-nodes
             :let [{:keys [condition children id production query join-bindings]} beta-node
@@ -556,11 +560,18 @@
         (case (:node-type beta-node)
 
           :join
-          (eng/->JoinNode
-           id
-           condition
-           (compile-beta-tree children all-bindings)
-           join-bindings)
+          ;; Use an specialized root node for efficiency in this case.
+          (if is-root
+            (eng/->RootJoinNode
+             id
+             condition
+             (compile-beta-tree children all-bindings)
+             join-bindings)
+            (eng/->JoinNode
+             id
+             condition
+             (compile-beta-tree children all-bindings)
+             join-bindings))
 
           :negation
           (eng/->NegationNode
@@ -701,7 +712,7 @@
   [productions :- [schema/Production]
    options :- {sc/Keyword sc/Any}]
   (let [beta-struct (to-beta-tree productions)
-        beta-tree (compile-beta-tree beta-struct #{})
+        beta-tree (compile-beta-tree beta-struct #{} true)
         alpha-nodes (compile-alpha-nodes (to-alpha-tree beta-struct))
         rulebase (build-network beta-tree alpha-nodes productions)
         transport (LocalTransport.)

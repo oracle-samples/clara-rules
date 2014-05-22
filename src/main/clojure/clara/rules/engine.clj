@@ -85,24 +85,52 @@
   (send-elements [transport memory nodes elements]
     (when (and *trace-transport* (seq elements))
       (println "ELEMENTS " elements " TO " (map description nodes)))
-    (doseq [[bindings element-group] (group-by :bindings elements)
-            node nodes]
-      (right-activate node
-                      (select-keys bindings (get-join-keys node))
-                      element-group
-                      memory
-                      transport)))
+
+    (doseq [node nodes
+            :let [join-keys (get-join-keys node)]]
+
+      (if (> (count join-keys) 0)
+
+        ;; Group by the join keys for the activation.
+        (doseq [[join-bindings element-group] (group-by #(select-keys (:bindings %) join-keys) elements)]
+          (right-activate node
+                          join-bindings
+                          element-group
+                          memory
+                          transport))
+
+        ;; The node has no join keys, so just send everything at once
+        ;; (if there is something to send.)
+        (when (seq elements)
+          (right-activate node
+                          {}
+                          elements
+                          memory
+                          transport)))))
 
   (send-tokens [transport memory nodes tokens]
     (when (and *trace-transport* (seq tokens))
       (println "TOKENS " tokens " TO " (map description nodes)))
-    (doseq [[bindings token-group] (group-by :bindings tokens)
-            node nodes]
-      (left-activate node
-                     (select-keys bindings (get-join-keys node))
-                     token-group
-                     memory
-                     transport)))
+
+    (doseq [node nodes
+            :let [join-keys (get-join-keys node)]]
+
+      (if (> (count join-keys) 0)
+        (doseq [[join-bindings token-group] (group-by #(select-keys (:bindings %) join-keys) tokens)]
+
+          (left-activate node
+                         join-bindings
+                         token-group
+                         memory
+                         transport))
+
+        ;; The node has no join keys, so just send everything at once.
+        (when (seq tokens)
+          (left-activate node
+                         {}
+                         tokens
+                         memory
+                         transport)))))
 
   (retract-elements [transport memory nodes elements]
     (when (and *trace-transport* (seq elements))
@@ -209,6 +237,45 @@
      (for [fact facts
            :let [bindings (activation fact env)] :when bindings] ; FIXME: add env.
        (->Element fact bindings)))))
+
+(defrecord RootJoinNode [id condition children binding-keys]
+  ILeftActivate
+  (left-activate [node join-bindings tokens memory transport]
+    ;; This specialized root node doesn't need to deal with the
+    ;; empty token, so do nothing.
+    )
+
+  (left-retract [node join-bindings tokens memory transport]
+    ;; The empty token can't be retracted from the root node,
+    ;; so do nothing.
+    )
+
+  (get-join-keys [node] binding-keys)
+
+  (description [node] (str "RootJoinNode -- " (:text condition)))
+
+  IRightActivate
+  (right-activate [node join-bindings elements memory transport]
+
+    ;; Add elements to the working memory to support analysis tools.
+    (mem/add-elements! memory node join-bindings elements)
+    ;; Simply create tokens and send it downstream.
+    (send-tokens
+     transport
+     memory
+     children
+     (for [{:keys [fact bindings] :as element} elements]
+       (->Token [[fact condition]] bindings))))
+
+  (right-retract [node join-bindings elements memory transport]
+
+    ;; Remove matching elements and send the retraction downstream.
+    (retract-tokens
+     transport
+     memory
+     children
+     (for [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)]
+       (->Token [[fact condition]] bindings)))))
 
 ;; Record for the join node, a type of beta node in the rete network. This node performs joins
 ;; between left and right activations, creating new tokens when joins match and sending them to
