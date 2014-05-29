@@ -604,7 +604,7 @@
 (defn local-memory
   "Returns a local, in-process working memory."
   [rulebase transport]
-  (let [memory (mem/to-transient (mem/->PersistentLocalMemory rulebase {}))]
+  (let [memory (mem/to-transient (mem/local-memory rulebase))]
     (doseq [beta-node (:beta-roots rulebase)]
       (left-activate beta-node {} [empty-token] memory transport))
     (mem/to-persistent! memory)))

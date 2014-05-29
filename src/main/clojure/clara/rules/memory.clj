@@ -101,175 +101,216 @@
 
 ;;; Transient local memory implementation. Typically only persistent memory will be visible externally.
 
-(deftype TransientLocalMemory [rulebase ^:unsynchronized-mutable content]
+(deftype TransientLocalMemory [rulebase
+                               ^:unsynchronized-mutable alpha-memory
+                               ^:unsynchronized-mutable beta-memory
+                               ^:unsynchronized-mutable accum-memory
+                               ^:unsynchronized-mutable production-memory
+                               ^:unsynchronized-mutable activations]
+
   IMemoryReader
   (get-rulebase [memory] rulebase)
 
   (get-elements [memory node bindings]
-    (get content [:alpha-memory (:id node) bindings] []))
+    (get (get alpha-memory (:id node) {})
+         bindings
+         []))
 
   (get-elements-all [memory node]
-    (for [[key value] content
-          :when (sequential? key)
-          :let [[mem-type node-id] key]
-          :when (and (= :alpha-memory mem-type)
-                     (= (:id node) node-id))
-          element value]
-      element))
+    (vals (get alpha-memory (:id node) {})))
 
   (get-tokens [memory node bindings]
-    (get content [:beta-memory (:id node) bindings] []))
+    (get (get beta-memory (:id node) {})
+         bindings
+         []))
 
   (get-tokens-all [memory node]
-    (for [[[mem-type node-id] bindings] content
-          :when (and (= :beta-memory mem-type)
-                     (= (:id node) node-id))
-          binding bindings]
-      binding))
+    (vals (get beta-memory (:id node) {})))
 
   (get-accum-reduced [memory node join-bindings fact-bindings]
-    (get-in content [[:accum-memory (:id node) join-bindings] fact-bindings]))
+    (get-in accum-memory [(:id node) join-bindings fact-bindings]))
 
   (get-accum-reduced-all [memory node join-bindings]
-    (get content [:accum-memory (:id node) join-bindings] {}))
+    (get
+     (get accum-memory (:id node) {})
+     join-bindings))
 
   (get-insertions [memory node token]
-    (get content [:production-memory (:id node) token] []))
+    (get
+     (get production-memory (:id node) {})
+     token
+     []))
 
   (get-activations [memory]
-    (:activations content))
+    activations)
 
   ITransientMemory
   (add-elements! [memory node join-bindings elements]
-    (let [key [:alpha-memory (:id node) join-bindings]
-          current-facts (get content key [])]
-      (set! content (assoc! content key (concat current-facts elements)))))
+    (let [binding-element-map (get alpha-memory (:id node) {})
+          previous-elements (get binding-element-map join-bindings [])]
+
+      (set! alpha-memory
+            (assoc! alpha-memory
+                    (:id node)
+                    (assoc binding-element-map join-bindings (concat previous-elements elements))))))
 
   (remove-elements! [memory node join-bindings elements]
-    (let [key [:alpha-memory (:id node) join-bindings]
-          current-facts (get content key [])
+    (let [binding-element-map (get alpha-memory (:id node) {})
+          previous-elements (get binding-element-map join-bindings [])
           element-set (set elements)
-          filtered-facts (remove-first-of-each element-set current-facts)]
+          filtered-elements (remove-first-of-each element-set previous-elements)]
 
-      ;; Update the memory with the changed facts.
-      (set! content (assoc! content key filtered-facts))
+      (set! alpha-memory
+            (assoc! alpha-memory
+                    (:id node)
+                    (assoc binding-element-map join-bindings filtered-elements)))
 
       ;; return the removed elements.
-      (s/intersection element-set (set current-facts))))
+      (s/intersection element-set (set previous-elements))))
 
   (add-tokens! [memory node join-bindings tokens]
-    (let [key [:beta-memory (:id node) join-bindings]
-          current-tokens (get content key [])]
-		(set! content (assoc! content key (concat current-tokens tokens)))))
+    (let [binding-token-map (get beta-memory (:id node) {})
+          previous-tokens (get binding-token-map join-bindings [])]
+
+      (set! beta-memory
+            (assoc! beta-memory
+                    (:id node)
+                    (assoc binding-token-map join-bindings (concat previous-tokens tokens))))))
 
   (remove-tokens! [memory node join-bindings tokens]
-    (let [key [:beta-memory (:id node) join-bindings]
-          current-tokens (get content key [])
+    (let [binding-token-map (get beta-memory (:id node) {})
+          previous-tokens (get binding-token-map join-bindings [])
           token-set (set tokens)
-          filtered-tokens (remove-first-of-each token-set current-tokens)]
+          filtered-tokens (remove-first-of-each token-set previous-tokens)]
 
-      (set! content (assoc! content key filtered-tokens))
-      (s/intersection token-set (set current-tokens))))
+      (set! beta-memory
+            (assoc! beta-memory
+                    (:id node)
+                    (assoc binding-token-map join-bindings filtered-tokens)))
+
+      ;; return the removed elements.
+      (s/intersection token-set (set previous-tokens))))
 
   (add-accum-reduced! [memory node join-bindings accum-result fact-bindings]
-    (let [key [:accum-memory (:id node) join-bindings]
-          updated-bindings (assoc (get content key {})
-                             fact-bindings
-                             accum-result)]
-      (set! content (assoc! content key updated-bindings))))
+
+    (set! accum-memory
+          (assoc! accum-memory
+                  (:id node)
+                  (assoc-in (get accum-memory (:id node) {})
+                            [join-bindings fact-bindings]
+                            accum-result))))
 
   (add-insertions! [memory node token facts]
-    (let [key [:production-memory (:id node) token]
-          current-facts (get content key [])]
-      (set! content (assoc! content key (concat current-facts facts)))))
+    (let [token-facts-map (get production-memory (:id node) {})
+          previous-facts (get token-facts-map token [])]
+
+      (set! production-memory
+            (assoc! production-memory
+                    (:id node)
+                    (assoc token-facts-map token (concat previous-facts facts))))))
 
   (remove-insertions! [memory node tokens]
 
     ;; Remove the facts inserted from the given token.
-    (let [results (doall
+    (let [token-facts-map (get production-memory (:id node) {})
+          ;; Get removed tokens for the caller.
+          results (doall
                    (flatten
-                    (for [token tokens
-                          :let [key [:production-memory (:id node) token]]]
-                      (get content key))))]
+                    (for [token tokens]
+                      (get token-facts-map token))))]
 
-      ;; Clear the keys.
-      (doseq [token tokens
-              :let [key [:production-memory (:id node) token]]]
-        (set! content (assoc! content  key [])))
+      ;; Clear the tokens and update the memory.
+      (set! production-memory
+            (assoc! production-memory
+                    (:id node)
+                    (apply dissoc token-facts-map tokens)))
 
       results))
 
-  (add-activations! [memory activations]
-    (set! content
-          (assoc! content
-                  :activations
-                  (concat (get content :activations [])
-                          activations))))
+  (add-activations! [memory new-activations]
+    (set! activations
+          (concat activations new-activations)))
 
   (pop-activation! [memory]
-    (let [activation (first (:activations content))
-          remaining (rest (:activations content))]
+    (let [activation (first activations)
+          remaining (rest activations)]
 
-      (set! content
-            (assoc! content
-                    :activations
-                    remaining))
+      (set! activations remaining)
+
       activation))
 
-  (remove-activations! [memory activations]
-   (set! content
-          (assoc! content
-                  :activations
-                  (remove-first-of-each (set activations)
-                                        (get content :activations [])))))
+  (remove-activations! [memory to-remove]
+    (let [filtered-activations (remove-first-of-each (set to-remove)
+                                                     activations)]
+
+      (set! activations filtered-activations)))
 
   (clear-activations! [memory]
-    (set! content (assoc! content :activations [])))
+    (set! activations []))
 
   (to-persistent! [memory]
 
-    (->PersistentLocalMemory rulebase (persistent! content))))
+    (->PersistentLocalMemory rulebase
+                             (persistent! alpha-memory)
+                             (persistent! beta-memory)
+                             (persistent! accum-memory)
+                             (persistent! production-memory)
+                             activations)))
 
-(defrecord PersistentLocalMemory [rulebase content]
+(defrecord PersistentLocalMemory [rulebase
+                                  alpha-memory
+                                  beta-memory
+                                  accum-memory
+                                  production-memory
+                                  activations]
   IMemoryReader
   (get-rulebase [memory] rulebase)
 
+
   (get-elements [memory node bindings]
-    (get content [:alpha-memory (:id node) bindings] []))
+    (get (get alpha-memory (:id node) {})
+         bindings
+         []))
 
   (get-elements-all [memory node]
-    (for [[key value] content
-          :when (sequential? key)
-          :let [[mem-type node-id] key]
-          :when (and (= :alpha-memory mem-type)
-                     (= (:id node) node-id))
-          element value]
-      element))
+    (flatten (vals (get alpha-memory (:id node) {}))))
 
   (get-tokens [memory node bindings]
-    (get content [:beta-memory (:id node) bindings] []))
+    (get (get beta-memory (:id node) {})
+         bindings
+         []))
 
   (get-tokens-all [memory node]
-    (for [[key value] content
-          :when (sequential? key)
-          :let [[mem-type node-id] key]
-          :when (and (= :beta-memory mem-type)
-                     (= (:id node) node-id))
-          binding value]
-      binding))
+    (flatten (vals (get beta-memory (:id node) {}))))
 
   (get-accum-reduced [memory node join-bindings fact-bindings]
-    (get-in content [[:accum-memory (:id node) join-bindings] fact-bindings]))
+    (get-in accum-memory [(:id node) join-bindings fact-bindings]))
 
   (get-accum-reduced-all [memory node join-bindings]
-    (get content [:accum-memory (:id node) join-bindings] {}))
+    (get
+     (get accum-memory (:id node) {})
+     join-bindings))
 
   (get-insertions [memory node token]
-    (get content [:production-memory (:id node) token] []))
+    (get
+     (get production-memory (:id node) {})
+     token
+     []))
 
   (get-activations [memory]
-    (:activations content))
+    activations)
 
   IPersistentMemory
   (to-transient [memory]
-    (TransientLocalMemory. rulebase (transient content))))
+    (TransientLocalMemory. rulebase
+                           (transient alpha-memory)
+                           (transient beta-memory)
+                           (transient accum-memory)
+                           (transient production-memory)
+                           activations)))
+
+(defn local-memory
+  "Creates an persistent local memory for the given rule base."
+  [rulebase]
+
+  (->PersistentLocalMemory rulebase {} {} {} {} []))
