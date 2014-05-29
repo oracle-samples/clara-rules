@@ -56,12 +56,12 @@
     ;; Update the insertion count.
     (swap! insertions + (count facts))
 
+    ;; Track this insertion in our transient memory so logical retractions will remove it.
+    (when (not unconditional)
+      (mem/add-insertions! transient-memory node token facts))
+
     (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
             root alpha-roots]
-
-      ;; Track this insertion in our transient memory so logical retractions will remove it.
-      (when (not unconditional)
-        (mem/add-insertions! transient-memory node token facts))
 
       (eng/alpha-activate root fact-group transient-memory transport))))
 
