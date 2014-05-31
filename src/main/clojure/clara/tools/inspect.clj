@@ -46,8 +46,8 @@
 
    The above segment will return matches for the rule in question."
   [session]
-  (let [memory (eng/working-memory session)
-        {:keys [productions production-nodes query-nodes]} (mem/get-rulebase memory)
+  (let [{:keys [memory rulebase]} (eng/components session)
+        {:keys [productions production-nodes query-nodes]} rulebase
 
         beta-tree (com/to-beta-tree productions)
 

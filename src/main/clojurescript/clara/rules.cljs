@@ -1,6 +1,7 @@
 (ns clara.rules
   (:require [clara.rules.engine :as eng]
-            [clara.rules.memory :as mem]))
+            [clara.rules.memory :as mem]
+            [clara.rules.listener :as l]))
 
 (defrecord Rulebase [alpha-roots beta-roots productions queries production-nodes query-nodes id-to-node])
 
@@ -36,7 +37,7 @@
             (swap! alpha-map assoc fact-type new-nodes)
             [new-nodes facts]))))))
 
-(defn- mk-rulebase 
+(defn- mk-rulebase
   [beta-roots alpha-fns productions]
 
     (let [beta-nodes (for [root beta-roots
@@ -83,7 +84,7 @@
         :query-nodes query-map
         :id-to-node id-to-node})))
 
-(defn assemble-session 
+(defn assemble-session
   "This is used by tools to create a session; most users won't use this function."
   [beta-roots alpha-fns productions options]
   (let [rulebase (mk-rulebase beta-roots alpha-fns productions)
@@ -96,12 +97,16 @@
         ;; of alpha nodes they target.
         ;; We cache an alpha-map for facts of a given type to avoid computing
         ;; them for every fact entered.
-        get-alphas-fn (create-get-alphas-fn fact-type-fn rulebase)]
+        get-alphas-fn (create-get-alphas-fn fact-type-fn rulebase)
 
-    (eng/LocalSession. rulebase (eng/local-memory rulebase transport) transport get-alphas-fn)))
+        listener (if-let [listeners (:listeners options)]
+                   (l/delegating-listener listeners)
+                   l/default-listener)]
+
+    (eng/LocalSession. rulebase (eng/local-memory rulebase transport) transport listener get-alphas-fn)))
 
 
-(defn accumulate 
+(defn accumulate
   "Creates a new accumulator based on the given properties:
 
    * An initial-value to be used with the reduced operations.
@@ -123,22 +128,22 @@
 (defn insert
   "Inserts one or more facts into a working session. It does not modify the given
    session, but returns a new session with the facts added."
-  [session & facts] 
+  [session & facts]
   (eng/insert session facts))
 
 (defn insert-all
   "Inserts a sequence of facts into a working session. It does not modify the given
    session, but returns a new session with the facts added."
-  [session fact-seq] 
+  [session fact-seq]
   (eng/insert session fact-seq))
 
 (defn retract
   "Retracts a fact from a working session. It does not modify the given session,
    but returns a new session with the facts retracted."
-  [session & facts] 
+  [session & facts]
   (eng/retract session facts))
 
-(defn fire-rules 
+(defn fire-rules
   "Fires are rules in the given session. Once a rule is fired, it is labeled in a fired
    state and will not be re-fired unless facts affecting the rule are added or retracted.
 
@@ -147,7 +152,7 @@
   [session]
   (eng/fire-rules session))
 
-(defn query 
+(defn query
   "Runs the given query with the optional given parameters against the session.
    The optional parameters should be in map form. For example, a query call might be:
 
@@ -156,14 +161,16 @@
   [session query & params]
   (eng/query session query (apply hash-map params)))
 
-(defn- insert-facts! 
+(defn- insert-facts!
   "Perform the actual fact insertion, optionally making them unconditional."
-  [facts unconditional] 
-  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn]} eng/*current-session*
+  [facts unconditional]
+  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} eng/*current-session*
         {:keys [node token]} eng/*rule-context*]
 
     ;; Update the insertion count.
     (swap! insertions + (count facts))
+
+    (l/insert-facts! listener facts)
 
     (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
             root alpha-roots]
@@ -172,9 +179,9 @@
       (when (not unconditional)
         (mem/add-insertions! transient-memory node token facts))
 
-      (eng/alpha-activate root fact-group transient-memory transport))))
+      (eng/alpha-activate root fact-group transient-memory transport listener))))
 
-(defn insert! 
+(defn insert!
   "To be executed within a rule's right-hand side, this inserts a new fact or facts into working memory.
 
    Inserted facts are logical, in that if the support for the insertion is removed, the fact
@@ -183,14 +190,14 @@
    the rule is retracted, the \"Cold\" fact the rule inserted is also retracted. This is the underlying
    truth maintenance facillity.
 
-   This truth maintenance is also transitive: if a rule depends on some criteria to fire, and a 
+   This truth maintenance is also transitive: if a rule depends on some criteria to fire, and a
    criterion becomes invalid, it may retract facts that invalidate other rules, which in turn
    retract their conclusions. This way we can ensure that information inferred by rules is always
    in a consistent state."
   [& facts]
   (insert-facts! facts false))
 
-(defn insert-unconditional! 
+(defn insert-unconditional!
   "To be executed within a rule's right-hand side, this inserts a new fact or facts into working memory.
 
    This differs from insert! in that it is unconditional. The facts inserted will not be retracted
@@ -210,11 +217,11 @@
 
    The reason for this is that retractions remove information from the knowledge base, and doing truth
    maintenance over retractions would require holding onto all retracted items, which would be an issue
-   in some use cases. This retract! method is included to help with certain use cases, but unless you 
+   in some use cases. This retract! method is included to help with certain use cases, but unless you
    have a specific need, it is better to simply do inserts on the rule's right-hand side, and let
    Clara's underlying truth maintenance retract inserted items if their support becomes false."
   [& facts]
-  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn]} eng/*current-session*]
+  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} eng/*current-session*]
 
     ;; Update the count so the rule engine will know when we have normalized.
     (swap! insertions + (count facts))
@@ -222,4 +229,4 @@
     (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
             root alpha-roots]
 
-      (eng/alpha-retract root fact-group transient-memory transport))))
+      (eng/alpha-retract root fact-group transient-memory transport listener))))

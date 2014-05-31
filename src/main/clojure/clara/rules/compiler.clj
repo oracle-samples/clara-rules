@@ -5,6 +5,7 @@
             [clojure.core.reducers :as r]
             [clojure.set :as s]
             [clara.rules.engine :as eng]
+            [clara.rules.listener :as listener]
             [clojure.string :as string]
             [clara.rules.schema :as schema]
             [schema.core :as sc]
@@ -729,7 +730,12 @@
         ;; them for every fact entered.
         get-alphas-fn (create-get-alphas-fn fact-type-fn ancestors-fn rulebase)]
 
-    (LocalSession. rulebase (eng/local-memory rulebase transport) transport get-alphas-fn)))
+    (eng/assemble {:rulebase rulebase
+                   :memory (eng/local-memory rulebase transport)
+                   :transport transport
+                   :listeners (get options :listeners  [])
+                   :get-alphas-fn get-alphas-fn
+                   })))
 
 (defn mk-session
   "Creates a new session using the given rule source. Thew resulting session

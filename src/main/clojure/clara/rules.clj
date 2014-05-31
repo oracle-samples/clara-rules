@@ -5,6 +5,7 @@
             [clara.rules.compiler :as com]
             [clara.rules.schema :as schema]
             [clara.rules.dsl :as dsl]
+            [clara.rules.listener :as l]
             [schema.core :as sc])
   (import [clara.rules.engine LocalTransport LocalSession]))
 
@@ -50,20 +51,24 @@
 (defn- insert-facts!
   "Perform the actual fact insertion, optionally making them unconditional."
   [facts unconditional]
-  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn]} eng/*current-session*
+  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} eng/*current-session*
         {:keys [node token]} eng/*rule-context*]
 
     ;; Update the insertion count.
     (swap! insertions + (count facts))
 
     ;; Track this insertion in our transient memory so logical retractions will remove it.
-    (when (not unconditional)
-      (mem/add-insertions! transient-memory node token facts))
+    (if unconditional
+      (l/insert-facts! listener facts)
+      (do
+        (mem/add-insertions! transient-memory node token facts)
+        (l/insert-facts-logical! listener node token facts)
+        ))
 
     (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
             root alpha-roots]
 
-      (eng/alpha-activate root fact-group transient-memory transport))))
+      (eng/alpha-activate root fact-group transient-memory transport listener))))
 
 (defn insert!
   "To be executed within a rule's right-hand side, this inserts a new fact or facts into working memory.
@@ -105,7 +110,7 @@
    have a specific need, it is better to simply do inserts on the rule's right-hand side, and let
    Clara's underlying truth maintenance retract inserted items if their support becomes false."
   [& facts]
-  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn]} eng/*current-session*]
+  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} eng/*current-session*]
 
     ;; Update the count so the rule engine will know when we have normalized.
     (swap! insertions + (count facts))
@@ -113,7 +118,7 @@
     (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
             root alpha-roots]
 
-      (eng/alpha-retract root fact-group transient-memory transport))))
+      (eng/alpha-retract root fact-group transient-memory transport listener))))
 
 (defn accumulate
   "Creates a new accumulator based on the given properties:
