@@ -34,6 +34,10 @@
   ;; created by the accumulator's condition.
   (get-accum-reduced-all [memory node join-bindings])
 
+  ;; Returns a tuple of [join-bindings fact-bindings result] for all
+  ;; accumulated items on this node.
+  (get-accum-reduced-complete [memory node])
+
   ;; Returns insertions that occurred at the given node.
   (get-insertions [memory node token])
 
@@ -134,6 +138,14 @@
     (get
      (get accum-memory (:id node) {})
      join-bindings))
+
+  ;; TODO: rename existing get-accum-reduced-all and use something better here.
+  (get-accum-reduced-complete [memory node]
+    (for [[join-binding joins] (get accum-memory (:id node) {})
+          [fact-binding reduced] joins]
+      {:join-binding join-binding
+       :fact-binding fact-binding
+       :result reduced}))
 
   (get-insertions [memory node token]
     (get
@@ -290,6 +302,13 @@
     (get
      (get accum-memory (:id node) {})
      join-bindings))
+
+  (get-accum-reduced-complete [memory node]
+    (for [[join-binding joins] (get accum-memory (:id node) {})
+          [fact-binding reduced] joins]
+      {:join-binding join-binding
+       :fact-binding fact-binding
+       :result reduced}))
 
   (get-insertions [memory node token]
     (get
