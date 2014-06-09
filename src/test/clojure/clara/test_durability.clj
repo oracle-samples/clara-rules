@@ -9,6 +9,12 @@
 
 (use-fixtures :once schema.test/validate-schemas)
 
+(defn- restore-session
+  "Wrapper for d/restore-session-state that validates the session can be serialized."
+  [session session-state]
+  (d/restore-session-state session (-> (pr-str session-state)
+                                       (read-string))))
+
 (defn- has-fact? [token fact]
   (some #{fact} (map first (:matches token))))
 
@@ -24,7 +30,7 @@
         session-state (d/session-state session)
 
         restored-session (-> (mk-session [cold-query])
-                             (d/restore-session-state session-state))]
+                             (restore-session session-state))]
 
     (is (= [{:?t (->Temperature 10 "MCI")}]
            (query session cold-query)))
@@ -47,7 +53,7 @@
 
     ;; Restore the session and run the rule.
     (-> (mk-session [cold-rule])
-        (d/restore-session-state session-state)
+        (restore-session session-state)
         (fire-rules))
 
     (is (has-fact? @rule-output (->Temperature 10 "MCI")))))
@@ -71,7 +77,7 @@
     (reset! rule-output nil)
 
     (-> (mk-session [cold-rule])
-        (d/restore-session-state session-state)
+        (restore-session session-state)
         (fire-rules))
 
     (is (nil? @rule-output))))
@@ -95,11 +101,9 @@
         session-state (d/session-state session)
 
         restored-session (-> (mk-session [coldest-query])
-                             (d/restore-session-state session-state))
+                             (restore-session session-state))
 
         ]
-
-    (clojure.pprint/pprint session-state)
 
     ;; Accumulator returns the lowest value.
     (is (= #{{:?t (->Temperature 10 "MCI")}}

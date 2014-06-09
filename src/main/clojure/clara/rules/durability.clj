@@ -1,5 +1,13 @@
 (ns clara.rules.durability
-  "Support for persisting Clara sessions to an external store."
+  "Experimental namespace. This may change non-passively without warning.
+
+   Support for persisting Clara sessions to an external store. This has two models: obtaining the full
+   state of a session, and obtaining a \"diff\" of changes from a previous state.
+
+   See the session-state function to retrieve the full state of a session as a data structure that can
+   be easily serialized via EDN or Fressian. Sessions can then be recovered with the restore-session-state function.
+
+   TODO: add diff support -- functions for obtaining a diff of state from a previous point, allowing for a write-ahead log."
   (:require [clara.rules :refer :all]
             [clara.rules.listener :as l]
             [clara.rules.engine :as eng]
@@ -22,9 +30,7 @@
    :activations {s/Int [Token]}
 
    ;; Map of accumulator node IDs to accumulated results.
-   :accum-results {s/Int [{:join-bindings {s/Keyword s/Any} :fact-bindings {s/Keyword s/Any} :result s/Any}]}
-
-   })
+   :accum-results {s/Int [{:join-bindings {s/Keyword s/Any} :fact-bindings {s/Keyword s/Any} :result s/Any}]}})
 
 (sm/defn session-state :- session-state-schema
   "Returns the state of a session as an EDN- or Fressian-serializable data structure. The returned
@@ -62,13 +68,11 @@
 
         ]
 
+    ;; TODO: we don't yet handle truth management state, so restored sessions may
+    ;; not see automatic retraction of logically derived facts if their support changes.
     {:fact-counts fact-counts
      :activations (or activations {})
-     :accum-results (or accum-results {})
-     }
-
-    ))
-
+     :accum-results (or accum-results {})}))
 
 (defn- restore-activations
   "Restores the activations to the given session."
@@ -109,19 +113,20 @@
     (eng/assemble (assoc components :memory (mem/to-persistent! transient-memory)))))
 
 (sm/defn restore-session-state
-  "Restore the given session to have the provided session state."
+  "Restore the given session to have the provided session state. The given session should be
+   a newly-created session that was created with the same parameters as the session that was
+   serialized. For instance, it should use the same rulesets, type function, and other settings.
+
+   This function returns a new session instance that reflects the given saved state.  The returned
+   session should be indistinguishable from the session that had its state saved."
   [session
-   {:keys [fact-counts] :as session-state} :- ]
+   {:keys [fact-counts] :as session-state} :- session-state-schema]
   (let [fact-seq (for [[fact count] fact-counts
                        i (range count)]
-                   fact)
-        {:keys [rulebase memory] :as components} (eng/components session)
+                   fact)]
 
-        restored-session (-> (eng/assemble components)
-                             (insert-all fact-seq)
-                             (restore-activations session-state)
-                             (restore-accum-results session-state))
-
-        ]
-
-    restored-session))
+    ;; TODO: handle truth management state.
+    (-> session
+        (insert-all fact-seq)
+        (restore-activations session-state)
+        (restore-accum-results session-state))))
