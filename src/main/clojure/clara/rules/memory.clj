@@ -143,8 +143,8 @@
   (get-accum-reduced-complete [memory node]
     (for [[join-binding joins] (get accum-memory (:id node) {})
           [fact-binding reduced] joins]
-      {:join-binding join-binding
-       :fact-binding fact-binding
+      {:join-bindings join-binding
+       :fact-bindings fact-binding
        :result reduced}))
 
   (get-insertions [memory node token]
@@ -306,8 +306,8 @@
   (get-accum-reduced-complete [memory node]
     (for [[join-binding joins] (get accum-memory (:id node) {})
           [fact-binding reduced] joins]
-      {:join-binding join-binding
-       :fact-binding fact-binding
+      {:join-bindings join-binding
+       :fact-bindings fact-binding
        :result reduced}))
 
   (get-insertions [memory node token]

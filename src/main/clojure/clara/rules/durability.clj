@@ -91,18 +91,20 @@
 
 (defn- restore-accum-results
   [session {:keys [accum-results] :as session-state}]
-  (let [{:keys [memory rulebase] :as components} (eng/components session)
+  (let [{:keys [memory rulebase transport] :as components} (eng/components session)
         id-to-node (:id-to-node rulebase)
         transient-memory (mem/to-transient memory)]
 
-    ;; FIXME: this needs to be done with an activation of the accumulate node so
-    ;; it propagates down the network.
-
-    ;; Add the accumulator results.
+    ;; Add the results to the accumulator node.
     (doseq [[id results] accum-results
-            {:keys [join-binding fact-binding result]} results]
-      (mem/add-accum-reduced! transient-memory (id-to-node id) join-binding result fact-binding))
+            {:keys [join-bindings fact-bindings result]} results]
 
+      (eng/right-activate-reduced (id-to-node id)
+                                  join-bindings
+                                  [[fact-bindings result]]
+                                  transient-memory
+                                  transport
+                                  (l/to-transient l/default-listener)))
 
     (eng/assemble (assoc components :memory (mem/to-persistent! transient-memory)))))
 

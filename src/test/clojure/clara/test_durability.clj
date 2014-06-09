@@ -104,6 +104,3 @@
     ;; Accumulator returns the lowest value.
     (is (= #{{:?t (->Temperature 10 "MCI")}}
            (set (query restored-session coldest-query))))))
-
-(test-restore-accum-result)
-; (run-tests)
