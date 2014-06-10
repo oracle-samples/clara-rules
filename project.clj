@@ -8,17 +8,14 @@
                  [org.clojure/clojurescript "0.0-2173" :scope "provided"]
                  [prismatic/schema "0.2.1"]
                  [dorothy "0.0.4"]
-                 [com.cemerick/piggieback "0.1.2"]
                  [hiccup "1.0.4"]]
   :plugins [[codox "0.6.4"]
-            [lein-javadoc "0.1.1"]
             [lein-cljsbuild "1.0.0-alpha2"]
             [com.cemerick/clojurescript.test "0.2.1"]]
   :codox {:exclude [clara.other-ruleset clara.sample-ruleset clara.test-java
                     clara.test-rules clara.rules.memory clara.test-accumulators
                     clara.rules.testfacts clara.rules.java clara.rules.engine
                     clara.rules.compiler clara.rules.platform]}
-  :javadoc-opts {:package-names ["clara.rules"]}
   :source-paths ["src/main/clojure"]
   :test-paths ["src/test/clojure"]
   :java-source-paths ["src/main/java"]
@@ -39,12 +36,6 @@
               :crossovers [clara.rules.memory clara.rules.engine clara.rules.accumulators clara.rules.listener]
               :crossover-path "target/crossovers/clojurescript"
               :crossover-jar true}
-
-  ;; Austin for the ClojureScript REPL.
-  :profiles {:dev {:plugins [[com.cemerick/austin "0.1.3"]]}}
-
-  ;; Include piggieback.
-  :repl-options {:nrepl-middleware [cemerick.piggieback/wrap-cljs-repl]}
 
   :scm {:name "git"
         :url "https://github.com/rbrush/clara-rules.git"}
