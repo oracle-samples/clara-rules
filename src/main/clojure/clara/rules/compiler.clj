@@ -6,6 +6,7 @@
             [clojure.set :as s]
             [clara.rules.engine :as eng]
             [clara.rules.listener :as listener]
+            [clara.rules.platform :as platform]
             [clojure.string :as string]
             [clara.rules.schema :as schema]
             [schema.core :as sc]
@@ -681,7 +682,7 @@
   ;; effectively memoizing this operation.
   (let [alpha-map (atom {})]
     (fn [facts]
-      (for [[fact-type facts] (group-by fact-type-fn facts)]
+      (for [[fact-type facts] (platform/tuned-group-by fact-type-fn facts)]
 
         (if-let [alpha-nodes (get @alpha-map fact-type)]
 
