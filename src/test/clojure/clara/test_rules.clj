@@ -1241,3 +1241,32 @@
                                          (->Temperature 30 "SFO")})}]
            (query session1 temp-query)
            (query session2 temp-query)))))
+
+(deftest test-query-for-many-added-elements
+  (let [n 6000
+        temp-query (dsl/parse-query [] [[Temperature (= ?t temperature)]])
+
+        ;; Do not batch insert to expose any StackOverflowError potential
+        ;; of stacking lazy evaluations in working memory.
+        session (reduce insert (mk-session [temp-query])
+                        (for [i (range n)] (->Temperature i "MCI")))
+        session (fire-rules session)]
+
+    (is (= n
+           (count (query session temp-query))))))
+
+(deftest test-query-for-many-added-tokens
+  (let [n 6000
+        cold-temp (dsl/parse-rule [[Temperature (< temperature 30) (= ?t temperature)]]
+                                  (insert! (->Cold ?t)))
+        cold-query (dsl/parse-query [] [[Cold (= ?t temperature)]])
+
+        ;; Do not batch insert to expose any StackOverflowError potential
+        ;; of stacking lazy evaluations in working memory.
+        session (reduce insert (mk-session [cold-temp cold-query])
+                        (for [i (range n)] (->Temperature (- i) "MCI")))
+
+        session (fire-rules session)]
+
+    (is (= n
+           (count (query session cold-query))))))
