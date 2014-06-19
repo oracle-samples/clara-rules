@@ -164,7 +164,7 @@
       (set! alpha-memory
             (assoc! alpha-memory
                     (:id node)
-                    (assoc binding-element-map join-bindings (concat previous-elements elements))))))
+                    (assoc binding-element-map join-bindings (into previous-elements elements))))))
 
   (remove-elements! [memory node join-bindings elements]
     (let [binding-element-map (get alpha-memory (:id node) {})
@@ -187,7 +187,7 @@
       (set! beta-memory
             (assoc! beta-memory
                     (:id node)
-                    (assoc binding-token-map join-bindings (concat previous-tokens tokens))))))
+                    (assoc binding-token-map join-bindings (into previous-tokens tokens))))))
 
   (remove-tokens! [memory node join-bindings tokens]
     (let [binding-token-map (get beta-memory (:id node) {})
@@ -241,7 +241,7 @@
 
   (add-activations! [memory new-activations]
     (set! activations
-          (concat activations new-activations)))
+          (into activations new-activations)))
 
   (pop-activation! [memory]
     (let [activation (first activations)

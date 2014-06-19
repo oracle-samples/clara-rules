@@ -102,7 +102,7 @@
       (if (> (count join-keys) 0)
 
         ;; Group by the join keys for the activation.
-        (doseq [[join-bindings element-group] (group-by #(select-keys (:bindings %) join-keys) elements)]
+        (doseq [[join-bindings element-group] (platform/tuned-group-by #(select-keys (:bindings %) join-keys) elements)]
           (right-activate node
                           join-bindings
                           element-group
@@ -126,7 +126,7 @@
             :let [join-keys (get-join-keys node)]]
 
       (if (> (count join-keys) 0)
-        (doseq [[join-bindings token-group] (group-by #(select-keys (:bindings %) join-keys) tokens)]
+        (doseq [[join-bindings token-group] (platform/tuned-group-by #(select-keys (:bindings %) join-keys) tokens)]
 
           (left-activate node
                          join-bindings
@@ -500,7 +500,7 @@
   IAccumRightActivate
   (pre-reduce [node elements]
     ;; Return a map of bindings to the pre-reduced value.
-    (for [[bindings element-group] (group-by :bindings elements)]
+    (for [[bindings element-group] (platform/tuned-group-by :bindings elements)]
       [bindings
        (r/reduce (:reduce-fn accumulator)
                  (:initial-value accumulator)
