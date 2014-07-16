@@ -74,15 +74,26 @@
   "Prints a human-readable explanation of the facts and conditions that created the Rete token."
   ([token] (explain-token token ""))
   ([token prefix]
-      (doseq [[fact {:keys [type constraints]}] (:matches token) ]
-        (println prefix fact)
-        (println prefix "  is a" type)
-        (println prefix "  where" constraints))))
+     (doseq [[fact condition] (:matches token)]
+       (if (:from condition)
+         ;; Explain why the accumulator matched.
+         (let [{:keys [accumulator from]} condition]
+           (println prefix fact)
+           (println prefix "  accumulated with" accumulator)
+           (println prefix "  from" (:type from))
+           (println prefix "  where" (:constraints from)))
+
+         ;; Explain why a condition matched.
+         (let [{:keys [type constraints]} condition]
+           (println prefix fact)
+           (println prefix "  is a" type)
+           (println prefix "  where" constraints))))))
 
 (defn explain-activations
   "Prints a human-friend explanation of why rules and queries matched in the given session."
   [session]
-  (doseq [[rule tokens] (:rule-matches (inspect session))]
+  (doseq [[rule tokens] (:rule-matches (inspect session))
+          :when (seq tokens)]
     (println "rule"  (or (:name rule) (str "<" (:lhs rule) ">")))
     (println "  executed")
     (println "   " (:rhs rule))
@@ -91,7 +102,8 @@
       (explain-token token "    "))
     (println))
 
-  (doseq [[rule tokens] (:query-matches (inspect session))]
+  (doseq [[rule tokens] (:query-matches (inspect session))
+          :when (seq tokens)]
     (println "query"  (or (:name rule) (str "<" (:lhs rule) ">")))
     (doseq [token tokens]
       (println "  qualified because")
