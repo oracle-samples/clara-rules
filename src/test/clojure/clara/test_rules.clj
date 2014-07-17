@@ -1270,3 +1270,21 @@
 
     (is (= n
            (count (query session cold-query))))))
+
+(def external-type :temperature)
+
+(def external-constant 20)
+
+(defquery match-external
+  []
+  [external-type [{temp :value}] (< temp external-constant) (= ?t temp)])
+
+(deftest test-match-external-type
+  (let [session (-> (mk-session [match-external] :fact-type-fn :type)
+                    (insert {:type :temperature :value 15 :location "MCI"}
+                            {:type :temperature :value 10 :location "MCI"}
+                            {:type :windspeed :value 5 :location "MCI"}
+                            {:type :temperature :value 80 :location "MCI"}))]
+
+    (is (= #{{:?t 15} {:?t 10}}
+           (set (query session match-external))))))
