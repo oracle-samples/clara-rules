@@ -18,20 +18,25 @@
   "True iff `x` is a rule body separator symbol."
   [x] (and (symbol? x) (= "=>" (name x))))
 
-(defn split-lhs-rhs 
+(defn split-lhs-rhs
  "Given a rule with the =>, splits the left- and right-hand sides."
  [rule-body]
  (let [[lhs [sep rhs]] (split-with #(not (separator? %))  rule-body)]
-   
+
    {:lhs lhs
     :rhs rhs}))
 
 (defn- construct-condition
   "Creates a condition with the given optional result binding when parsing a rule."
   [condition result-binding]
-  (let [type (if (symbol? (first condition)) 
-               (if-let [resolved (resolve (first condition))] 
-                 resolved
+  (let [type (if (symbol? (first condition))
+               (if-let [resolved (resolve (first condition))]
+
+                 ;; If the type resolves to a var, grab its contents for the match.
+                 (if (var? resolved)
+                   (deref resolved)
+                   resolved)
+
                  (first condition)) ; For ClojureScript compatibility, we keep the symbol if we can't resolve it.
                (first condition))
         ;; Args is an optional vector of arguments following the type.
@@ -43,7 +48,7 @@
 
     ;; Include the original metadata in the returned condition so line numbers
     ;; can be preserved when we compile it.
-    (with-meta 
+    (with-meta
       (cond-> {:type type
                :constraints constraints}
               args (assoc :args args)
@@ -53,7 +58,7 @@
         (assoc (meta (first constraints))
           :file *file*)))))
 
-(defn- parse-condition-or-accum 
+(defn- parse-condition-or-accum
   "Parse an expression that could be a condition or an accumulator."
   [condition]
   ;; Grab the binding of the operation result, if present.
@@ -78,7 +83,7 @@
 (defn- parse-expression
   "Convert each expression into a condition structure."
   [expression]
-  (cond 
+  (cond
 
    (contains? ops (first expression))
    (into [(keyword (name (first expression)))] ; Ensure expression operator is a keyword.
@@ -110,7 +115,7 @@
         ;; The . suffix indicates a type constructor, so we qualify the type instead, then
         ;; re-add the . to the resolved type.
         (-> (subs (name sym)
-                  0 
+                  0
                   (dec (count (name sym)))) ; Get the name without the trailing dot.
             (symbol) ; Convert it back to a symbol.
             (resolve) ; Resolve into the type class.
@@ -120,9 +125,9 @@
 
         ;; Qualify a normal clojure symbol.
         (if (and (symbol? sym) ; Only qualify symbols...
-                 (not (env sym)) ; not in env (env contains locals). 
+                 (not (env sym)) ; not in env (env contains locals).
                  (resolve sym) ; that we can resolve
-                 (not (= "clojure.core" 
+                 (not (= "clojure.core"
                          (str (ns-name (:ns (meta (resolve sym))))))) ; Don't qualify clojure.core for portability, since CLJS uses a different namespace.
                  (name sym))
           (symbol (str (ns-name (:ns (meta (resolve sym))))) (name sym))
