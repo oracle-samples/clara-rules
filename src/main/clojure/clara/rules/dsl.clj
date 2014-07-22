@@ -133,12 +133,24 @@
           (symbol (str (ns-name (:ns (meta (resolve sym))))) (name sym))
           sym)))))
 
+(defn- qualify-meta
+  "Qualify metadata associated with the symbol."
+  [env sym]
+  (if (:tag (meta sym))
+    (vary-meta sym update-in [:tag] (fn [tag] (-> (resolve tag)
+                                                 (.getName)
+                                                 (symbol))))
+    sym))
+
 (defn- resolve-vars
   "Resolve vars used in expression. TODO: this should be narrowed to resolve only
    those that aren't in the environment, condition, or right-hand side."
   [form env]
   (walk/postwalk
-   #(maybe-qualify env %)
+   (fn [sym]
+     (->> sym
+          (maybe-qualify env)
+          (qualify-meta env)))
    form))
 
 (defmacro local-syms []
