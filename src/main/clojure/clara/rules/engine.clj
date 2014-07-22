@@ -14,7 +14,7 @@
 (defrecord Accumulator [input-condition initial-value reduce-fn combine-fn convert-return-fn])
 
 ;; A Rete-style token, which contains two items:
-;; * matches, a sequence of [fact, condition] tuples for the facts and corresponding conditions they matched
+;; * matches, a sequence of [fact, node-id] tuples for the facts and corresponding nodes they matched.
 ;; * bindings, a map of keyword-to-values for bound variables.
 (defrecord Token [matches bindings])
 
@@ -296,7 +296,7 @@
      listener
      children
      (for [{:keys [fact bindings] :as element} elements]
-       (->Token [[fact condition]] bindings))))
+       (->Token [[fact (:id node)]] bindings))))
 
   (right-retract [node join-bindings elements memory transport listener]
 
@@ -309,7 +309,7 @@
      listener
      children
      (for [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)]
-       (->Token [[fact condition]] bindings)))))
+       (->Token [[fact (:id node)]] bindings)))))
 
 ;; Record for the join node, a type of beta node in the rete network. This node performs joins
 ;; between left and right activations, creating new tokens when joins match and sending them to
@@ -328,7 +328,7 @@
            token tokens
            :let [fact (:fact element)
                  fact-binding (:bindings element)]]
-       (->Token (conj (:matches token) [fact condition]) (conj fact-binding (:bindings token))))))
+       (->Token (conj (:matches token) [fact id]) (conj fact-binding (:bindings token))))))
 
   (left-retract [node join-bindings tokens memory transport listener]
     (retract-tokens
@@ -340,7 +340,7 @@
            element (mem/get-elements memory node join-bindings)
            :let [fact (:fact element)
                  fact-bindings (:bindings element)]]
-       (->Token (conj (:matches token) [fact condition]) (conj fact-bindings (:bindings token))))))
+       (->Token (conj (:matches token) [fact id]) (conj fact-bindings (:bindings token))))))
 
   (get-join-keys [node] binding-keys)
 
@@ -356,7 +356,7 @@
      children
      (for [token (mem/get-tokens memory node join-bindings)
            {:keys [fact bindings] :as element} elements]
-       (->Token (conj (:matches token) [fact condition]) (conj (:bindings token) bindings)))))
+       (->Token (conj (:matches token) [fact id]) (conj (:bindings token) bindings)))))
 
   (right-retract [node join-bindings elements memory transport listener]
     (retract-tokens
@@ -366,7 +366,7 @@
      children
      (for [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)
            token (mem/get-tokens memory node join-bindings)]
-       (->Token (conj (:matches token) [fact condition]) (conj (:bindings token) bindings))))))
+       (->Token (conj (:matches token) [fact id]) (conj (:bindings token) bindings))))))
 
 ;; The NegationNode is a beta node in the Rete network that simply
 ;; negates the incoming tokens from its ancestors. It sends tokens
@@ -419,7 +419,7 @@
   "Helper function to retract an accumulated value."
   [node accum-condition accumulator result-binding token result fact-bindings transport memory listener]
   (let [converted-result ((:convert-return-fn accumulator) result)
-        new-facts (conj (:matches token) [converted-result accum-condition])
+        new-facts (conj (:matches token) [converted-result (:id node)])
         new-bindings (merge (:bindings token)
                             fact-bindings
                             (when result-binding
@@ -440,7 +440,7 @@
                                 converted-result}))]
 
     (send-tokens transport memory listener (:children node)
-                 [(->Token (conj (:matches token) [converted-result accum-condition]) new-bindings)])))
+                 [(->Token (conj (:matches token) [converted-result (:id node)]) new-bindings)])))
 
 (defn- has-keys?
   "Returns true if the given map has all of the given keys."

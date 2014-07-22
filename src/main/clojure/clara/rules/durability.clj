@@ -1,13 +1,13 @@
 (ns clara.rules.durability
   "Experimental namespace. This may change non-passively without warning.
 
-   Support for persisting Clara sessions to an external store. This has two models: obtaining the full
+   Support for persisting Clara sessions to an external store. This will have two models: obtaining the full
    state of a session, and obtaining a \"diff\" of changes from a previous state.
 
    See the session-state function to retrieve the full state of a session as a data structure that can
    be easily serialized via EDN or Fressian. Sessions can then be recovered with the restore-session-state function.
 
-   TODO: add diff support -- functions for obtaining a diff of state from a previous point, allowing for a write-ahead log."
+   TODO: diff support is pending -- functions for obtaining a diff of state from a previous point, allowing for a write-ahead log."
   (:require [clara.rules :refer :all]
             [clara.rules.listener :as l]
             [clara.rules.engine :as eng]
@@ -16,11 +16,12 @@
             [schema.core :as s]
             [schema.macros :as sm])
 
-  (:import [clara.rules.engine JoinNode RootJoinNode Token AccumulateNode]))
+  (:import [clara.rules.engine JoinNode RootJoinNode Token AccumulateNode ProductionNode]))
 
 
 ;; A schema representing a minimal representation of a rule session's state.
-;; This allows for efficient storage.
+;; This allows for efficient storage, particularly when serialized with Fressian or a similar format
+;; to eliminate redundnacy.
 (def session-state-schema
   {
    ;; Map of matching facts to the number of them that matched.
@@ -30,7 +31,11 @@
    :activations {s/Int [Token]}
 
    ;; Map of accumulator node IDs to accumulated results.
-   :accum-results {s/Int [{:join-bindings {s/Keyword s/Any} :fact-bindings {s/Keyword s/Any} :result s/Any}]}})
+   :accum-results {s/Int [{:join-bindings {s/Keyword s/Any} :fact-bindings {s/Keyword s/Any} :result s/Any}]}
+
+   ;; Map associating node ids and tokens with a vector of facts they had inserted. This is used
+   ;; to track truth maintenance, so if a given token is retracted, we can also retract the inferred items.
+   :insertions {[(s/one s/Int "node-id") (s/one Token "token")] [s/Any]}})
 
 (sm/defn session-state :- session-state-schema
   "Returns the state of a session as an EDN- or Fressian-serializable data structure. The returned
@@ -66,13 +71,16 @@
                             (for [accum-node accumulate-nodes]
                                  [(:id accum-node) (mem/get-accum-reduced-complete memory accum-node)]))
 
-        ]
+        insertions (into {}
+                         (for [[id node] id-to-node
+                               :when (instance? ProductionNode node)
+                               token (mem/get-tokens-all memory node)]
+                           [[(:id node) token] (mem/get-insertions memory node token)] ))]
 
-    ;; TODO: we don't yet handle truth management state, so restored sessions may
-    ;; not see automatic retraction of logically derived facts if their support changes.
     {:fact-counts fact-counts
      :activations (or activations {})
-     :accum-results (or accum-results {})}))
+     :accum-results (or accum-results {})
+     :insertions insertions}))
 
 (defn- restore-activations
   "Restores the activations to the given session."
@@ -112,6 +120,19 @@
 
     (eng/assemble (assoc components :memory (mem/to-persistent! transient-memory)))))
 
+(defn- restore-insertions
+  [session {:keys [insertions] :as session-state}]
+  (let [{:keys [memory rulebase transport] :as components} (eng/components session)
+        id-to-node (:id-to-node rulebase)
+        transient-memory (mem/to-transient memory)]
+
+    ;; Add the results to the accumulator node.
+    (doseq [[[id token] inserted-facts] insertions]
+
+      (mem/add-insertions! transient-memory (id-to-node id) token inserted-facts))
+
+    (eng/assemble (assoc components :memory (mem/to-persistent! transient-memory)))))
+
 (sm/defn restore-session-state
   "Restore the given session to have the provided session state. The given session should be
    a newly-created session that was created with the same parameters as the session that was
@@ -125,8 +146,8 @@
                        i (range count)]
                    fact)]
 
-    ;; TODO: handle truth management state.
     (-> session
         (insert-all fact-seq)
         (restore-activations session-state)
-        (restore-accum-results session-state))))
+        (restore-accum-results session-state)
+        (restore-insertions session-state))))

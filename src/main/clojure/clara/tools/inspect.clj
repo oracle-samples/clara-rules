@@ -7,6 +7,19 @@
             [schema.core :as s]
             [schema.macros :as sm]))
 
+;; A structured explanation of why a rule or query matched.
+;; This is derived from the Rete-style tokens, but this token
+;; is designed to propagate all context needed to easily inspect
+;; the state of rules.
+(sm/defrecord Explanation [matches :- [[(s/one s/Any "fact") (s/one schema/Condition "condition")]] ; Fact, condition tuples
+                           bindings :- {s/Keyword s/Any}]) ; Bound variables
+
+;; Schema of an inspected rule session.
+(def InspectionSchema
+  {:rule-matches {schema/Rule [Explanation]}
+   :query-matches {schema/Query [Explanation]}
+   :condition-matches {schema/Condition [s/Any]}})
+
 (defn- get-condition-matches
   "Returns facts matching each condition"
   [beta-roots memory]
@@ -22,14 +35,25 @@
      {}
      join-nodes)))
 
-(defn inspect
+(defn- to-explanations
+  "Helper function to convert tokens to explanation records."
+  [session tokens]
+  (let [id-to-node (get-in (eng/components session) [:rulebase :id-to-node])]
+       (for [{:keys [matches bindings]} tokens]
+         (->Explanation
+          ;; Convert matches to explanation structure.
+          (for [[fact node-id] matches]
+            [fact (-> node-id (id-to-node) (:condition))])
+          bindings))))
+
+(sm/defn inspect
   "Returns a representation of the given rule session useful to understand the
    state of the underlying rules.
 
    The returned structure includes the following keys:
 
-   * :rule-matches -- a map of rule structures to their matching Rete tokens.
-   * :query-matches -- a map of query structures to their matching Rete tokens.
+   * :rule-matches -- a map of rule structures to their matching explanations.
+   * :query-matches -- a map of query structures to their matching explanations.
    * :condition-matches -- a map of conditions pulled from each rule to facts they match.
 
    Users may inspect the entire structure for troubleshooting or explore it
@@ -45,7 +69,7 @@
    ...
 
    The above segment will return matches for the rule in question."
-  [session]
+  [session] :- InspectionSchema
   (let [{:keys [memory rulebase]} (eng/components session)
         {:keys [productions production-nodes query-nodes]} rulebase
 
@@ -61,20 +85,22 @@
 
     {:rule-matches (into {}
                           (for [[rule rule-node] rule-to-nodes]
-                            [rule (mem/get-tokens-all memory rule-node)]))
+                            [rule (to-explanations session
+                                                   (mem/get-tokens-all memory rule-node))]))
 
      :query-matches (into {}
                           (for [[query query-node] query-to-nodes]
-                            [query (mem/get-tokens-all memory query-node)]))
+                            [query (to-explanations session
+                                                    (mem/get-tokens-all memory query-node))]))
 
      :condition-matches (get-condition-matches beta-tree memory)
      }))
 
-(defn explain-token
+(defn explain-activation
   "Prints a human-readable explanation of the facts and conditions that created the Rete token."
-  ([token] (explain-token token ""))
-  ([token prefix]
-     (doseq [[fact condition] (:matches token)]
+  ([explanation] (explain-activation explanation ""))
+  ([explanation prefix]
+     (doseq [[fact condition] (:matches explanation)]
        (if (:from condition)
          ;; Explain why the accumulator matched.
          (let [{:keys [accumulator from]} condition]
@@ -92,20 +118,20 @@
 (defn explain-activations
   "Prints a human-friend explanation of why rules and queries matched in the given session."
   [session]
-  (doseq [[rule tokens] (:rule-matches (inspect session))
-          :when (seq tokens)]
+  (doseq [[rule explanations] (:rule-matches (inspect session))
+          :when (seq explanations)]
     (println "rule"  (or (:name rule) (str "<" (:lhs rule) ">")))
     (println "  executed")
     (println "   " (:rhs rule))
-    (doseq [token tokens]
+    (doseq [explanation explanations]
       (println "  because")
-      (explain-token token "    "))
+      (explain-activation explanation "    "))
     (println))
 
-  (doseq [[rule tokens] (:query-matches (inspect session))
-          :when (seq tokens)]
+  (doseq [[rule explanations] (:query-matches (inspect session))
+          :when (seq explanations)]
     (println "query"  (or (:name rule) (str "<" (:lhs rule) ">")))
-    (doseq [token tokens]
+    (doseq [explanation explanations]
       (println "  qualified because")
-      (explain-token token "    "))
+      (explain-activation explanation "    "))
     (println)))

@@ -5,7 +5,7 @@
             [clara.rules.testfacts :refer :all]
             [clojure.test :refer :all]
             schema.test)
-  (:import [clara.rules.testfacts Temperature]))
+  (:import [clara.rules.testfacts Temperature Cold]))
 
 (use-fixtures :once schema.test/validate-schemas)
 
@@ -108,3 +108,27 @@
     ;; Accumulator returns the lowest value.
     (is (= #{{:?t (->Temperature 10 "MCI")}}
            (set (query restored-session coldest-query))))))
+
+(deftest test-restore-truth-maintenance
+  (let [cold-rule (dsl/parse-rule [[Temperature (< temperature 20) (= ?temp temperature)]]
+                                  (insert! (->Cold ?temp)))
+
+        cold-query (dsl/parse-query [] [[?cold <- Cold]])
+
+        empty-session (mk-session [cold-rule cold-query])
+
+        session (-> empty-session
+                    (insert (->Temperature 10 "MCI"))
+                    (fire-rules))
+
+        session-state (d/session-state session)
+
+        restored-session (-> empty-session
+                             (restore-session session-state))]
+
+    (is (= [{:?cold (->Cold 10)}]
+           (query restored-session cold-query)))
+
+    ;; Ensure the retraction propagates and removes our inserted item.
+    (is (= []
+           (query (retract restored-session (->Temperature 10 "MCI")) cold-query)))))
