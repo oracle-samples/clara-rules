@@ -1,5 +1,9 @@
 (ns clara.tools.inspect
-  "Tooling to inspect a rule session."
+  "Tooling to inspect a rule session. The two major methods here are:
+
+   * inspect, which returns a data structure describing the session that can be used by tooling.
+   * explain-activations, which uses inspect and prints a human-readable description covering
+     why each rule activation or query match occurred."
   (:require [clara.rules.compiler :as com]
             [clara.rules.engine :as eng]
             [clara.rules.schema :as schema]
@@ -47,7 +51,7 @@
           bindings))))
 
 (sm/defn inspect
-  "Returns a representation of the given rule session useful to understand the
+  " Returns a representation of the given rule session useful to understand the
    state of the underlying rules.
 
    The returned structure includes the following keys:

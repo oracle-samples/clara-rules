@@ -9,13 +9,14 @@
                  [prismatic/schema "0.2.1"]
                  [dorothy "0.0.4"]
                  [hiccup "1.0.4"]]
-  :plugins [[codox "0.6.4"]
+  :plugins [[codox "0.8.10"]
             [lein-cljsbuild "1.0.0-alpha2"]
             [com.cemerick/clojurescript.test "0.2.1"]]
   :codox {:exclude [clara.other-ruleset clara.sample-ruleset clara.test-java
                     clara.test-rules clara.rules.memory clara.test-accumulators
                     clara.rules.testfacts clara.rules.java clara.rules.engine
-                    clara.rules.compiler clara.rules.platform]}
+                    clara.rules.compiler clara.rules.platform
+                    clara.test-durability clara.tools.test-inspect clara.tools.test-tracing]}
   :source-paths ["src/main/clojure"]
   :test-paths ["src/test/clojure"]
   :java-source-paths ["src/main/java"]
