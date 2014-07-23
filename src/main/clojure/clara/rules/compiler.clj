@@ -431,6 +431,52 @@
       ;; Tests are last.
       :test false)))
 
+(defn- gen-compare
+  "Generic compare function for arbitrary Clojure data structures.
+   The only guarantee is the ordering of items will be consistent
+   between invocations."
+  [left right]
+  (cond
+
+   ;; Ignore functions for our comparison purposes,
+   ;; since we won't distinguish rules by them.
+   (and (fn? left) (fn? right))
+   0
+
+   ;; If the types differ, compare based on their names.
+   (not= (type left)
+         (type right))
+   (compare (.getName ^Class (type left))
+            (.getName ^Class (type right)))
+
+   ;; Compare items in a sequence until we find a difference.
+   (sequential? left)
+   (if-let [[left-val right-val] ; Find the first tuple that's different.
+            (->> (map (fn [left-val right-val] [left-val right-val]) left right)
+                 (drop-while (fn [[left-val right-val]] (= 0 (gen-compare left-val right-val))))
+                 first)]
+     (gen-compare left-val right-val)
+
+     ;; All existing items matched, but check for differing lengths.
+     (- (count right) (count left)))
+
+   ;; Covert maps to sequences sorted by keys and compare those sequences.
+   (map? left)
+   (let [kv-sort-fn (fn [[key1 _] [key2 _]] (gen-compare key1 key2))
+         left-kvs (sort kv-sort-fn (seq left))
+         right-kvs (sort kv-sort-fn (seq right))  ]
+
+     (gen-compare left-kvs right-kvs))
+
+   ;; The content is comparable and not a sequence, so simply compare them.
+   (instance? Comparable left)
+   (compare left right)
+
+   ;; Unknown items are just treated as equal for our purposes,
+   ;; since we can't define an ordering.
+   :default 0
+   ))
+
 (sm/defn to-beta-tree :- [schema/BetaNode]
   "Convert a sequence of rules and/or queries into a beta tree. Returns each root."
   [productions :- [schema/Production]]
@@ -467,7 +513,7 @@
         ;; Sort nodes so the same id is assigned consistently,
         ;; then map the to corresponding ids.
         nodes-to-id (zipmap
-                     (sort #(< (hash %1) (hash %2)) nodes)
+                     (sort gen-compare nodes)
                      (range))
 
         ;; Anonymous function to walk the nodes and
