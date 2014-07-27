@@ -1,5 +1,11 @@
 This is a history of changes to clara-rules.
 
+### 0.6.0
+* Several performance optimizations described in [issue 56](https://github.com/rbrush/clara-rules/issues/56) and [this blog post](http://www.toomuchcode.org/blog/2014/06/16/micro-bench-macro-optimize/).
+* Session durability as an experimental feature. See [issue 16](https://github.com/rbrush/clara-rules/issues/16) and [the wiki](https://github.com/rbrush/clara-rules/wiki/Durability).
+* Improved ability to inspect session state and explain why rules and queries were activated. See the [inspection page on the wiki](https://github.com/rbrush/clara-rules/wiki/Inspection) for details.
+* A list of smaller changes can be seen via the [milestone summary](https://github.com/rbrush/clara-rules/issues?milestone=8&page=1&state=closed)
+
 ### 0.5.0
 Contains several bug fixes and some usage enhancements, including:
 
