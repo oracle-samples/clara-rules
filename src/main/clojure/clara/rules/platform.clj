@@ -3,7 +3,7 @@
 
 (defn throw-error
   "Throw an error with the given description string."
-  [description]
+  [^String description]
   (throw (IllegalArgumentException. description)))
 
 (defn tuned-group-by

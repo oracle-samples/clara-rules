@@ -11,9 +11,10 @@
             [clara.rules.schema :as schema]
             [schema.core :as sc]
             [schema.macros :as sm])
+
   (:import [clara.rules.engine ProductionNode QueryNode JoinNode NegationNode TestNode
-                               AccumulateNode AlphaNode LocalTransport LocalSession
-                               Accumulator]))
+                               AccumulateNode AlphaNode LocalTransport LocalSession Accumulator]
+           [java.beans PropertyDescriptor]))
 
 ;; Protocol for loading rules from some arbitrary source.
 (defprotocol IRuleSource
@@ -122,9 +123,9 @@
   [cls]
   (into {}
         ;; Iterate through the bean properties, returning tuples and the corresponding methods.
-        (for [property (seq (.. java.beans.Introspector
-                                (getBeanInfo cls)
-                                (getPropertyDescriptors)))]
+        (for [^PropertyDescriptor property (seq (.. java.beans.Introspector
+                                                    (getBeanInfo cls)
+                                                    (getPropertyDescriptors)))]
 
           [(symbol (string/replace (.. property (getName)) #"_" "-")) ; Replace underscore with idiomatic dash.
            (symbol (str "." (.. property (getReadMethod) (getName))))])))

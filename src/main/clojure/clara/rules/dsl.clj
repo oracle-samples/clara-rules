@@ -118,7 +118,7 @@
                   0
                   (dec (count (name sym)))) ; Get the name without the trailing dot.
             (symbol) ; Convert it back to a symbol.
-            (resolve) ; Resolve into the type class.
+            ^Class (resolve) ; Resolve into the type class.
             (.getName) ; Get the qualified name.
             (str ".") ; Re-add the dot for the constructor, which is now qualified
             (symbol)) ; Convert back into a symbol used at compile time.
@@ -137,7 +137,7 @@
   "Qualify metadata associated with the symbol."
   [env sym]
   (if (:tag (meta sym))
-    (vary-meta sym update-in [:tag] (fn [tag] (-> (resolve tag)
+    (vary-meta sym update-in [:tag] (fn [tag] (-> ^Class (resolve tag)
                                                  (.getName)
                                                  (symbol))))
     sym))
