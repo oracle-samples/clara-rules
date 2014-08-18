@@ -477,28 +477,37 @@
    :default 0
    ))
 
+(defn- get-conds
+  "Returns a sequence of [condition environment] tuples and their corresponding productions."
+  [production]
+
+  (let [lhs-expression (into [:and] (:lhs production)) ; Add implied and.
+        expression  (to-dnf lhs-expression)
+        disjunctions (if (= :or (first expression))
+                       (rest expression)
+                       [expression])]
+
+    (for [disjunction disjunctions
+
+          :let [conditions (if (and (vector? disjunction)
+                                    (= :and (first disjunction)))
+                             (rest disjunction)
+                             [disjunction])
+
+                ;; Sort conditions, see the condition-comp function for the reason.
+                sorted-conditions (sort condition-comp conditions)
+
+                ;; Attach the conditions environment. TODO: narrow environment to those used?
+                conditions-with-env (for [condition sorted-conditions]
+                                      [condition (:env production)])]]
+
+      [conditions-with-env production])))
+
+
 (sm/defn to-beta-tree :- [schema/BetaNode]
   "Convert a sequence of rules and/or queries into a beta tree. Returns each root."
   [productions :- [schema/Production]]
-  (let [conditions (for [production productions
-                         :let [lhs-expression (into [:and] (:lhs production)) ; Add implied and.
-                               expression  (to-dnf lhs-expression)]
-                         disjunction (if (= :or (first expression))
-                                       (rest expression)
-                                       [expression])
-                         :let [conditions (if (and (vector? disjunction)
-                                                   (= :and (first disjunction)))
-                                            (rest disjunction)
-                                            [disjunction])
-
-                               ;; Sort conditions, see the condition-comp function for the reason.
-                               sorted-conditions (sort condition-comp conditions)
-
-                               ;; Attach the conditions environment. TODO: narrow environment to those used?
-                               conditions-with-env (for [condition sorted-conditions]
-                                                     [condition (:env production)])]]
-
-                     [conditions-with-env production])
+  (let [conditions (mapcat get-conds productions)
 
         raw-roots (reduce
                    (fn [beta-roots [conditions production]]
