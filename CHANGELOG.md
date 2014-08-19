@@ -1,5 +1,9 @@
 This is a history of changes to clara-rules.
 
+### 0.6.1
+* Reduce depth of nested function for [issue 64](https://github.com/rbrush/clara-rules/issues/64).
+* Clean up reflection warnings.
+
 ### 0.6.0
 * Several performance optimizations described in [issue 56](https://github.com/rbrush/clara-rules/issues/56) and [this blog post](http://www.toomuchcode.org/blog/2014/06/16/micro-bench-macro-optimize/).
 * Session durability as an experimental feature. See [issue 16](https://github.com/rbrush/clara-rules/issues/16) and [the wiki](https://github.com/rbrush/clara-rules/wiki/Durability).
