@@ -43,6 +43,12 @@
         args (if (vector? (second condition)) (second condition) nil)
         constraints (vec (if args (drop 2 condition) (rest condition)))]
 
+    (when (and (vector? type)
+               (some list? type))
+
+      (throw (IllegalArgumentException. (str "Type " type " is a vector and appears to contain expressions. "
+                                             "Is there an extraneous set of brackets in the condition?"))))
+
     (when (> (count args) 1)
       (throw (IllegalArgumentException. "Only one argument can be passed to a condition.")))
 
