@@ -664,7 +664,18 @@
     (let [query-node (get-in rulebase [:query-nodes query])]
       (when (= nil query-node)
         (platform/throw-error (str "The query " query " is invalid or not included in the rule base.")))
-      (map :bindings (mem/get-tokens (mem/to-transient memory) query-node params))))
+
+      (->> (mem/get-tokens (mem/to-transient memory) query-node params)
+
+           ;; Get the bindings for each token and filter generate symbols.
+           (map (fn [{bindings :bindings}]
+
+                  ;; Filter generated symbols. We check first since this is an uncommon flow.
+                  (if (some #(re-find #"__gen" (name %)) (keys bindings) )
+
+                    (into {} (remove (fn [[k v]] (re-find #"__gen"  (name k)))
+                                     bindings))
+                    bindings))))))
 
   (components [session]
     {:rulebase rulebase

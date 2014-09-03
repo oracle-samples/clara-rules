@@ -478,6 +478,91 @@
    :default 0
    ))
 
+(defn- extract-from-constraint
+  "Process and extract a test expression from the constraint. Returns a pair of [processed-constraint, test-constraint],
+   which can be expanded into correspoding join and test nodes.
+   The test may be nil if no extraction is necessary."
+  [constraint]
+
+  ;; If any expression contains
+  (let [binding-map (atom {})
+        process-form (fn [form]
+                       (if (and (list? form)
+                                (not (#{'= '==} (first form)))
+                                (some (fn [sym] (and (symbol? sym)
+                                                    (.startsWith (name sym) "?")))
+                                      form))
+
+                         (doseq [item (rest form)
+                                 :when (and (symbol? item)
+                                            (not
+                                             (.startsWith (name item) "?")))]
+
+                           (swap! binding-map assoc item (gensym "?__gen__")))
+                         form))]
+
+    ;; Walk the map, identifing bindings we need to extract into tests.
+    (clojure.walk/postwalk process-form constraint)
+
+    (if (not-empty @binding-map)
+
+      ;; Replace the condition with the bindings needed for the test.
+      [(first ;; TODO: support multiple bindings in a condition?
+             (for [[form sym] @binding-map]
+               (list '= sym form)))
+
+       ;; Create a test condition that is the same as the original, but
+       ;; with nested expressions replaced by the binding map.
+       (clojure.walk/postwalk (fn [form]
+                                (if-let [sym (get @binding-map form)]
+                                  sym
+                                  form))
+                              constraint)]
+
+      ;; No test bindings found, so simply keep the constraint as is.
+      [constraint nil])))
+
+(defn- extract-tests
+  "Pre-process the sequence of conditions, and returns a sequence of conditions that has
+   constraints that must be expanded into tests properly expanded.
+
+   For example, consider the following conditions
+
+  [Temperature (= ?t1 temperature)]
+  [Temperature (< ?t1 temperature)]
+
+
+  The second temperature is doing a comparison, so we can't use our hash-based index to
+  unify these items. Therefore we extract the logic into a separate test, so the above
+  conditions are transformed into this:
+
+
+  [Temperature (= ?t1 temperature)]
+  [Temperature (= ?__gen__1234 temperature)]
+  [:test (< ?t2 ?__gen__1234)]
+
+  The comparison is transformed into binding to a generate bind variable,
+  which is then available in the test node for comparison with other bindings."
+  [conditions]
+  ;; Look at the constraints under each condition. If the constraint does a comparison with an
+  ;; item in an ancestor, do two things: modify the constraint to bind its internal items to a new
+  ;; generated symbol, and add a test that does the expected check.
+
+  (for [{:keys [type constraints] :as condition} conditions
+        :let [extracted (map extract-from-constraint constraints)
+              processed-constraints (map first extracted)
+              test-constraints (->> (map second extracted)
+                                    (remove nil?))]
+
+        expanded (if (empty? test-constraints)
+                   [condition]
+                   ;; There were test constraints created, so the processed constraints
+                   ;; and generated test condition.
+                   [(assoc condition :constraints processed-constraints)
+                    {:constraints test-constraints}  ])]
+
+    expanded))
+
 (defn- get-conds
   "Returns a sequence of [condition environment] tuples and their corresponding productions."
   [production]
@@ -488,12 +573,17 @@
                        (rest expression)
                        [expression])]
 
+    ;; Now we've split the production into one ore more disjunctions that
+    ;; can be processed independently. Commonality between disjunctions willl
+    ;; be merged when building the Rete network.
     (for [disjunction disjunctions
 
           :let [conditions (if (and (vector? disjunction)
                                     (= :and (first disjunction)))
                              (rest disjunction)
                              [disjunction])
+
+                conditions (extract-tests conditions)
 
                 ;; Sort conditions, see the condition-comp function for the reason.
                 sorted-conditions (sort condition-comp conditions)
