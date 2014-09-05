@@ -1,5 +1,9 @@
 This is a history of changes to clara-rules.
 
+### 0.6.2
+* Properly handle retractions in the presence of negation nodes; see [issue 67](https://github.com/rbrush/clara-rules/issues/67).
+* Report error if the fact type in a rule appears to be malformed; see [issue 65](https://github.com/rbrush/clara-rules/issues/65).
+
 ### 0.6.1
 * Reduce depth of nested function for [issue 64](https://github.com/rbrush/clara-rules/issues/64).
 * Clean up reflection warnings.
