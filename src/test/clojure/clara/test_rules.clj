@@ -589,6 +589,20 @@
           (fire-rules (retract session (->Temperature 10 "MCI")))
           cold-query)))))
 
+(deftest test-insert-retract-join ;; Test for issue #67
+  (let [cold-not-windy-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]
+                                                  [:not [WindSpeed]]])
+
+        session (-> (mk-session [cold-not-windy-query])
+                    (insert (->WindSpeed 30 "MCI"))
+                    (retract (->WindSpeed 30 "MCI"))
+                    (fire-rules))]
+
+    (is (= [{:?t 10}]
+           (-> session
+               (insert (->Temperature 10 "MCI"))
+               (fire-rules)
+               (query cold-not-windy-query))))))
 
 (deftest test-unconditional-insert
   (let [rule-output (atom nil)

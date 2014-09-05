@@ -394,7 +394,7 @@
     (retract-tokens transport memory listener children (mem/get-tokens memory node join-bindings)))
 
   (right-retract [node join-bindings elements memory transport listener]
-    (mem/remove-elements! memory node elements join-bindings) ;; FIXME: elements must be zero to retract.
+    (mem/remove-elements! memory node join-bindings elements)
     (send-tokens transport memory listener children (mem/get-tokens memory node join-bindings))))
 
 ;; The test node represents a Rete extension in which
