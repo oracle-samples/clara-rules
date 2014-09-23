@@ -22,7 +22,8 @@
 (def InspectionSchema
   {:rule-matches {schema/Rule [Explanation]}
    :query-matches {schema/Query [Explanation]}
-   :condition-matches {schema/Condition [s/Any]}})
+   :condition-matches {schema/Condition [s/Any]}
+   :insertions {schema/Rule [{:explanation Explanation :fact s/Any}]}})
 
 (defn- get-condition-matches
   "Returns facts matching each condition"
@@ -38,6 +39,17 @@
                   concat (map :fact (mem/get-elements-all memory node))))
      {}
      join-nodes)))
+
+
+(defn- to-explanation
+  "Helper function to convert a token to explanation records."
+  [session {:keys [matches bindings] :as token}]
+  (let [id-to-node (get-in (eng/components session) [:rulebase :id-to-node])]
+         (->Explanation
+          ;; Convert matches to explanation structure.
+          (for [[fact node-id] matches]
+            [fact (-> node-id (id-to-node) (:condition))])
+          bindings)))
 
 (defn- to-explanations
   "Helper function to convert tokens to explanation records."
@@ -59,6 +71,8 @@
    * :rule-matches -- a map of rule structures to their matching explanations.
    * :query-matches -- a map of query structures to their matching explanations.
    * :condition-matches -- a map of conditions pulled from each rule to facts they match.
+   * :insertions -- a map of rules to a sequence of {:explanation E, :fact F} records
+     to allow inspection of why a given fact was inserted.
 
    Users may inspect the entire structure for troubleshooting or explore it
    for specific cases. For instance, the following code snippet could look
@@ -98,7 +112,13 @@
                                                     (mem/get-tokens-all memory query-node))]))
 
      :condition-matches (get-condition-matches beta-tree memory)
-     }))
+
+     :insertions (into {}
+                       (for [[rule rule-node] rule-to-nodes]
+                         [rule
+                          (for [token (mem/get-tokens-all memory rule-node)
+                                insertion (mem/get-insertions memory rule-node token)]
+                            {:explanation (to-explanation session token) :fact insertion})]))}))
 
 (defn explain-activation
   "Prints a human-readable explanation of the facts and conditions that created the Rete token."
