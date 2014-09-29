@@ -381,6 +381,38 @@
 
     (is (true? @fired?))))
 
+(deftest test-accumulator-with-test-join
+  "Tests an accumulator that does a join based on an arbitrary predicate."
+  (let [colder-than-mci-query (dsl/parse-query []
+                                               [(Temperature (= "MCI" location) (= ?temp temperature))
+                                                [?colder-temps <- (acc/all)
+                                                 :from [Temperature (= ?loc location) (> ?temp temperature)]]])
+
+        session (-> (mk-session [colder-than-mci-query] :cache false)
+                    (insert (->Temperature 15 "MCI"))
+                    (insert (->Temperature 10 "ORD"))
+                    (insert (->Temperature 5 "LGA"))
+                    (insert (->Temperature 30 "SFO")))
+
+        session-retracted (retract session (->WindSpeed 30 "MCI"))]
+
+    ;; schema.core/with-fn-validation
+
+    (clojure.pprint/pprint  (com/to-beta-tree [colder-than-mci-query]))
+
+
+
+    (clojure.pprint/pprint (query session colder-than-mci-query))
+
+    ;; Only the value that joined to WindSpeed should be visible.
+    (comment    (is (= #{{:?t (->Temperature 10 "MCI") :?loc "MCI"}}
+                       (set (query session coldest-query))))
+
+                (is (empty? (query session-retracted coldest-query)))))
+
+
+  )
+
 (deftest test-simple-negation
   (let [not-cold-query (dsl/parse-query [] [[:not [Temperature (< temperature 20)]]])
 
@@ -1309,12 +1341,14 @@
 
                                                   [Temperature (< temperature 20)
                                                                (= ?t2 temperature)
-                                                               (< ?t1 temperature)]])
+                                                   (< ?t1 temperature)]])
 
         session  (-> (mk-session [distinct-temps-query])
                      (insert (->Temperature 15 "MCI"))
                      (insert (->Temperature 10 "MCI"))
                      (insert (->Temperature 80 "MCI")))]
+
+    (clojure.pprint/pprint (com/to-beta-tree [distinct-temps-query]))
 
     ;; Finds two temperatures such that t1 is less than t2.
     (is (= #{ {:?t1 10, :?t2 15}}

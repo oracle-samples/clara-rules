@@ -570,6 +570,129 @@
         (send-accumulated node accum-condition accumulator result-binding token retracted bindings transport memory listener)))))
 
 
+;; A specialization of the AccumulateNode that supports additional tests
+;; that have to occur on the beta side of the network to unify items.
+(defrecord AccumulateWithBetaPredicateNode [id accum-condition accumulator unification-predicate
+                                            result-binding children binding-keys]
+  ILeftActivate
+  (left-activate [node join-bindings tokens memory transport listener]
+    (let [previous-results (mem/get-accum-reduced-all memory node join-bindings)]
+      (mem/add-tokens! memory node join-bindings tokens)
+
+      (doseq [token tokens]
+
+        (cond
+
+         ;; If there are previously accumulated results to propagate, simply use them.
+         (seq previous-results)
+         (doseq [[fact-bindings previous] previous-results]
+           (send-accumulated node accum-condition accumulator result-binding token previous fact-bindings transport memory listener))
+
+         ;; There are no previously accumulated results, but we still may need to propagate things
+         ;; such as a sum of zero items.
+         ;; If all variables in the accumulated item are bound and an initial
+         ;; value is provided, we can propagate the initial value as the accumulated item.
+
+         (and (has-keys? (:bindings token)
+                         binding-keys) ; All bindings are in place.
+              (:initial-value accumulator)) ; An initial value exists that we can propagate.
+         (let [fact-bindings (select-keys (:bindings token) binding-keys)
+               previous (:initial-value accumulator)]
+
+           ;; Send the created accumulated item to the children.
+           (send-accumulated node accum-condition accumulator result-binding token previous fact-bindings transport memory listener)
+
+           (l/add-accum-reduced! listener node join-bindings previous fact-bindings)
+
+           ;; Add it to the working memory.
+           (mem/add-accum-reduced! memory node join-bindings previous fact-bindings))
+
+         ;; Propagate nothing if the above conditions don't apply.
+         :default nil))))
+
+  (left-retract [node join-bindings tokens memory transport listener]
+    (let [previous-results (mem/get-accum-reduced-all memory node join-bindings)]
+      (doseq [token (mem/remove-tokens! memory node join-bindings tokens)
+              [fact-bindings previous] previous-results]
+        (retract-accumulated node accum-condition accumulator result-binding token previous fact-bindings transport memory listener))))
+
+  (get-join-keys [node] binding-keys)
+
+  (description [node] (str "AccumulateNode -- " accumulator))
+
+  IAccumRightActivate
+  (pre-reduce [node elements]
+    ;; Return a map of bindings to the pre-reduced value.
+    (for [[bindings element-group] (platform/tuned-group-by :bindings elements)]
+      [bindings
+       (r/reduce (:reduce-fn accumulator)
+                 (:initial-value accumulator)
+                 (r/map :fact element-group))]))
+
+  (right-activate-reduced [node join-bindings reduced-seq  memory transport listener]
+    ;; Combine previously reduced items together, join to matching tokens,
+    ;; and emit child tokens.
+    (doseq [:let [matched-tokens (mem/get-tokens memory node join-bindings)]
+            [bindings reduced] reduced-seq
+            :let [previous (mem/get-accum-reduced memory node join-bindings bindings)]]
+
+      ;; If the accumulation result was previously calculated, retract it
+      ;; from the children.
+      (when previous
+
+        (doseq [token (mem/get-tokens memory node join-bindings)]
+          (retract-accumulated node accum-condition accumulator result-binding token previous bindings transport memory listener)))
+
+      ;; Combine the newly reduced values with any previous items.
+      (let [combined (if previous
+                       ((:combine-fn accumulator) previous reduced)
+                       reduced)]
+
+        (l/add-accum-reduced! listener node join-bindings combined bindings)
+
+        (mem/add-accum-reduced! memory node join-bindings combined bindings)
+        (doseq [token matched-tokens]
+          (send-accumulated node accum-condition accumulator result-binding token combined bindings transport memory listener)))))
+
+  IRightActivate
+  (right-activate [node join-bindings elements memory transport listener]
+
+    ;; Simple right-activate implementation simple defers to
+    ;; accumulator-specific logic.
+    (right-activate-reduced
+     node
+     join-bindings
+     (pre-reduce node elements)
+     memory
+     transport
+     listener))
+
+  (right-retract [node join-bindings elements memory transport listener]
+
+    (doseq [:let [matched-tokens (mem/get-tokens memory node join-bindings)]
+            {:keys [fact bindings] :as element} elements
+            :let [previous (mem/get-accum-reduced memory node join-bindings bindings)]
+
+            ;; No need to retract anything if there was no previous item.
+            :when previous
+
+            ;; Get all of the previously matched tokens so we can retract and re-send them.
+            token matched-tokens
+
+            ;; Compute the new version with the retracted information.
+            :let [retracted ((:retract-fn accumulator) previous fact)]]
+
+      ;; Add our newly retracted information to our node.
+      (mem/add-accum-reduced! memory node join-bindings retracted bindings)
+
+      ;; Retract the previous token.
+      (retract-accumulated node accum-condition accumulator result-binding token previous bindings transport memory listener)
+
+      ;; Send a new accumulated token with our new, retracted information.
+      (when retracted
+        (send-accumulated node accum-condition accumulator result-binding token retracted bindings transport memory listener)))))
+
+
 (defn variables-as-keywords
   "Returns symbols in the given s-expression that start with '?' as keywords"
   [expression]

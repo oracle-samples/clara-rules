@@ -260,6 +260,40 @@
     `(fn [~destructured-env]
        ~accum)))
 
+(defn compile-unification-predicate
+  "Compiles to a predicate function that ensures the given items can be unified. Returns a ready-to-eval
+   function that accepts a token, a fact, and an environment, and returns truthy if the given fact satisfies
+   the criteria."
+  [{:keys [type constraints args] :as unification-condition} env]
+  (let [accessors (get-fields type)
+
+        binding-keys (variables-as-keywords constraints)
+
+        destructured-env (if (> (count env) 0)
+                           {:keys (mapv #(symbol (name %)) (keys env))}
+                           '?__env__)
+
+        destructured-fact (first args)
+
+        fact-assignments (if destructured-fact
+                           ;; Simply destructure the fact if arguments are provided.
+                           [destructured-fact '?__fact__]
+                           ;; No argument provided, so use our default destructuring logic.
+                           (concat '(this ?__fact__)
+                                   (mapcat (fn [[name accessor]]
+                                             [name (list accessor '?__fact__)])
+                                           accessors)))
+
+        token-assignments (mapcat #(list (symbol (name %)) (list 'get-in '?__token__ [:bindings %])) binding-keys)
+
+        assignments (concat
+                     fact-assignments
+                     token-assignments)]
+
+    `(fn [~'?__token__ ~(add-meta '?__fact__ type) ~destructured-env]
+      (let [~@assignments]
+        (and ~@constraints)))))
+
 (defn- expr-type [expression]
   (if (map? expression)
     :condition
@@ -336,7 +370,25 @@
           (let [disjunctions (mapcat rest (filter #(#{:or} (expr-type %)) children))]
             (into [:or] (concat disjunctions conjunctions))))))))
 
+(defn- non-equality-unification? [expression]
+  "Returns true if the given expression does a non-equality unification against a variable,
+   indicating it can't be solved by simple unification."
+  (let [found-complex (atom false)
+        process-form (fn [form]
+                       (when (and (list? form)
+                                  (not (#{'= '==} (first form)))
+                                  (some (fn [sym] (and (symbol? sym)
+                                                      (.startsWith (name sym) "?")))
+                                        form))
 
+                         (reset! found-complex true))
+
+                       form)]
+
+    ;; Walk the expression to find use of a symbol that can't be solved by equality-based unificaiton.
+    (doall (clojure.walk/postwalk process-form expression))
+
+    @found-complex))
 
 (defn- add-to-beta-tree
   "Adds a sequence of conditions and the corresponding production to the beta tree."
@@ -356,6 +408,21 @@
                    accumulator :accumulator
                    (:type condition) :join
                    :else :test)
+
+        ;; Get the non-equality unifications so we can handle them.
+        non-equality-unifications (if (and (= :accumulator node-type)
+                                           (some non-equality-unification? (:constraints condition)))
+
+                                    (assoc condition :constraints  (filterv non-equality-unification? (:constraints condition)) )
+
+                                    nil)
+
+        ;; Remove instances of non-equality constraints from accumulator conditions
+        condition (if (= :accumulator node-type)
+                    (assoc condition :constraints (into [] (remove non-equality-unification? (:constraints condition))))
+
+                    condition)
+
 
         ;; For the sibling beta nodes, find a match for the candidate.
         matching-node (first (for [beta-node beta-nodes
@@ -397,7 +464,9 @@
 
            accumulator (assoc :accumulator accumulator)
 
-           result-binding (assoc :result-binding result-binding)))
+           result-binding (assoc :result-binding result-binding)
+
+           non-equality-unifications (assoc :non-equality-unifications non-equality-unifications)))
 
         ;; There are no more conditions, so add our query or rule.
         (if matching-node
@@ -743,16 +812,34 @@
             (when (not (instance? Accumulator compiled-accum))
               (throw (IllegalArgumentException. (str (:accumulator beta-node) " is not a valid accumulator."))))
 
-            (eng/->AccumulateNode
-              id
-              ;; Create an accumulator structure for use when examining the node or the tokens
-              ;; it produces.
-              {:accumulator (:accumulator beta-node)
-               :from condition}
-              compiled-accum
-              (:result-binding beta-node)
-              (compile-beta-tree children all-bindings)
-              join-bindings))
+            ;; If a non-equality unification is in place, compile the predicate and use
+            ;; the specialized accumulate node.
+
+            (if (:non-equality-unifications beta-node)
+
+              (eng/->AccumulateWithBetaPredicateNode
+               id
+               ;; Create an accumulator structure for use when examining the node or the tokens
+               ;; it produces.
+               {:accumulator (:accumulator beta-node)
+                :from condition}
+               compiled-accum
+               (eval (compile-unification-predicate  (:non-equality-unifications beta-node) (:env beta-node)))
+               (:result-binding beta-node)
+               (compile-beta-tree children all-bindings)
+               join-bindings)
+
+              ;; All unification is based on equality, so just use the simple accumulate node.
+              (eng/->AccumulateNode
+               id
+               ;; Create an accumulator structure for use when examining the node or the tokens
+               ;; it produces.
+               {:accumulator (:accumulator beta-node)
+                :from condition}
+               compiled-accum
+               (:result-binding beta-node)
+               (compile-beta-tree children all-bindings)
+               join-bindings)))
 
           :production
           (eng/->ProductionNode
