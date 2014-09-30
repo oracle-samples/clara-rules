@@ -571,15 +571,17 @@
 
 (defn- do-accumulate
   "Runs the actual accumulation."
-  [accumulator filter-pred token candidate-facts]
-  (let [filtered-facts (filter #(filter-pred token % {}) candidate-facts)] ;; TODO: and env
+  [accumulator join-filter-fn token candidate-facts]
+  (let [filtered-facts (filter #(join-filter-fn token % {}) candidate-facts)] ;; TODO: and env
     (r/reduce (:reduce-fn accumulator)
               (:initial-value accumulator)
               filtered-facts)))
 
 ;; A specialization of the AccumulateNode that supports additional tests
-;; that have to occur on the beta side of the network to unify items.
-(defrecord AccumulateWithBetaPredicateNode [id accum-condition accumulator unification-predicate
+;; that have to occur on the beta side of the network. The key difference between this and the simple
+;; accumulate node is the join-filter-fn, which accepts a token and a fact and filters out facts that
+;; are not consistent with the given token.
+(defrecord AccumulateWithJoinFilterNode [id accum-condition accumulator join-filter-fn
                                             result-binding children binding-keys]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport listener]
@@ -597,7 +599,7 @@
          (doseq [[fact-bindings candidate-facts] grouped-candidate-facts
 
                  ;; Filter to items that match the incoming token, then apply the accumulator.
-                 :let [accum-result (do-accumulate accumulator unification-predicate token candidate-facts)]]
+                 :let [accum-result (do-accumulate accumulator join-filter-fn token candidate-facts)]]
 
            (send-accumulated node accum-condition accumulator result-binding token accum-result fact-bindings transport memory listener))
 
@@ -629,7 +631,7 @@
     (let [grouped-candidate-facts (mem/get-accum-reduced-all memory node join-bindings)]
       (doseq [token (mem/remove-tokens! memory node join-bindings tokens)
               [fact-bindings candidate-facts] grouped-candidate-facts
-              :let [accum-result (do-accumulate accumulator unification-predicate token candidate-facts)]]
+              :let [accum-result (do-accumulate accumulator join-filter-fn token candidate-facts)]]
 
         (retract-accumulated node accum-condition accumulator result-binding token accum-result fact-bindings transport memory listener))))
 
@@ -655,7 +657,7 @@
       (when previous-candidates
 
         (doseq [token (mem/get-tokens memory node join-bindings)
-                :let [previous-accum-result (do-accumulate accumulator unification-predicate token previous-candidates)]]
+                :let [previous-accum-result (do-accumulate accumulator join-filter-fn token previous-candidates)]]
 
           (retract-accumulated node accum-condition accumulator result-binding token previous-accum-result bindings transport memory listener)))
 
@@ -666,7 +668,7 @@
 
         (mem/add-accum-reduced! memory node join-bindings combined-candidates bindings)
         (doseq [token matched-tokens
-                :let [accum-result (do-accumulate accumulator unification-predicate token combined-candidates)]]
+                :let [accum-result (do-accumulate accumulator join-filter-fn token combined-candidates)]]
 
           (send-accumulated node accum-condition accumulator result-binding token accum-result bindings transport memory listener)))))
 
@@ -697,9 +699,9 @@
             token matched-tokens
 
             ;; Compute the new version with the retracted information.
-            :let [previous-result (do-accumulate accumulator unification-predicate token previous-candidates)
+            :let [previous-result (do-accumulate accumulator join-filter-fn token previous-candidates)
                   remove-set #{fact}
-                  new-result (do-accumulate accumulator unification-predicate token (mem/remove-first-of-each remove-set previous-candidates))]]
+                  new-result (do-accumulate accumulator join-filter-fn token (mem/remove-first-of-each remove-set previous-candidates))]]
 
       ;; Add our newly retracted information to our node.
       (mem/add-accum-reduced! memory node join-bindings new-result bindings)

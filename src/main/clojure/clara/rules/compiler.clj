@@ -260,7 +260,7 @@
     `(fn [~destructured-env]
        ~accum)))
 
-(defn compile-unification-predicate
+(defn compile-join-filter
   "Compiles to a predicate function that ensures the given items can be unified. Returns a ready-to-eval
    function that accepts a token, a fact, and an environment, and returns truthy if the given fact satisfies
    the criteria."
@@ -410,7 +410,7 @@
                    :else :test)
 
         ;; Get the non-equality unifications so we can handle them.
-        non-equality-unifications (if (and (= :accumulator node-type)
+        join-filter-expressions (if (and (= :accumulator node-type)
                                            (some non-equality-unification? (:constraints condition)))
 
                                     (assoc condition :constraints  (filterv non-equality-unification? (:constraints condition)) )
@@ -466,7 +466,7 @@
 
            result-binding (assoc :result-binding result-binding)
 
-           non-equality-unifications (assoc :non-equality-unifications non-equality-unifications)))
+           join-filter-expressions (assoc :join-filter-expressions join-filter-expressions)))
 
         ;; There are no more conditions, so add our query or rule.
         (if matching-node
@@ -815,16 +815,16 @@
             ;; If a non-equality unification is in place, compile the predicate and use
             ;; the specialized accumulate node.
 
-            (if (:non-equality-unifications beta-node)
+            (if (:join-filter-expressions beta-node)
 
-              (eng/->AccumulateWithBetaPredicateNode
+              (eng/->AccumulateWithJoinFilterNode
                id
                ;; Create an accumulator structure for use when examining the node or the tokens
                ;; it produces.
                {:accumulator (:accumulator beta-node)
                 :from condition}
                compiled-accum
-               (eval (compile-unification-predicate  (:non-equality-unifications beta-node) (:env beta-node)))
+               (eval (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node)))
                (:result-binding beta-node)
                (compile-beta-tree children all-bindings)
                join-bindings)
