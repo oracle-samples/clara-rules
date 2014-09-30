@@ -86,7 +86,7 @@
   (to-persistent! [memory]))
 
 
-(defn- remove-first-of-each
+(defn remove-first-of-each
   "Remove the first instance of each item in the given set that
    appears in the collection."
   [set coll]

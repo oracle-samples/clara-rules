@@ -101,6 +101,7 @@
   {:node-type (s/eq :accumulator)
    :id s/Num
    :condition LeafCondition
+   (s/optional-key :join-filter-expressions) LeafCondition
    :accumulator s/Any
    (s/optional-key :env) {s/Keyword s/Any}
    :join-bindings #{s/Keyword}
@@ -144,4 +145,3 @@
    (s/optional-key :env) {s/Keyword s/Any}
    ;; IDs of the beta nodes that are the children.
    :beta-children [s/Num]})
-

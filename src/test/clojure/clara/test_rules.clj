@@ -381,6 +381,75 @@
 
     (is (true? @fired?))))
 
+(deftest test-accumulator-with-test-join
+  "Tests an accumulator that does a join based on an arbitrary predicate."
+  (let [colder-than-mci-query (dsl/parse-query []
+                                               [(Temperature (= "MCI" location) (= ?mci-temp temperature))
+                                                [?colder-temps <- (acc/all)
+                                                 :from [Temperature (< temperature  ?mci-temp)]]])
+
+        session (mk-session [colder-than-mci-query] :cache false)
+
+        ;; Checks the result of the session for different permutations of input.
+        check-result (fn [session]
+                       (is (= {:?mci-temp 15
+                               :?colder-temps #{(->Temperature 10 "ORD")
+                                                (->Temperature 5 "LGA")}}
+
+                              ;; Convert temps to a set, since ordering isn't guaranteed.
+                              (update-in
+                               (first (query session colder-than-mci-query))
+                               [:?colder-temps]
+                               set))))]
+
+    ;; Simple insertion of facts at once.
+    (check-result (-> session
+                      (insert (->Temperature 15 "MCI")
+                              (->Temperature 10 "ORD")
+                              (->Temperature 5 "LGA")
+                              (->Temperature 30 "SFO"))
+                      (fire-rules)))
+
+
+    ;; Insert facts separately to ensure they are combined.
+    (check-result (-> session
+                      (insert (->Temperature 15 "MCI")
+                              (->Temperature 5 "LGA")
+                              (->Temperature 30 "SFO"))
+                      (insert (->Temperature 10 "ORD"))
+                      (fire-rules)))
+
+    ;; Insert MCI location last to test left activation with token arriving
+    ;; after the initial accumulation
+    (check-result (-> session
+                      (insert (->Temperature 10 "ORD")
+                              (->Temperature 5 "LGA")
+                              (->Temperature 30 "SFO"))
+                      (insert (->Temperature 15 "MCI"))
+                      (fire-rules)))
+
+    ;; Test retraction of previously accumulated fact.
+    (check-result (-> session
+                      (insert (->Temperature 15 "MCI")
+                              (->Temperature 10 "ORD")
+                              (->Temperature 5 "LGA")
+                              (->Temperature 30 "SFO")
+                              (->Temperature 0 "IAD"))
+                      (retract (->Temperature 0 "IAD"))
+                      (fire-rules)))
+
+    ;; Test retraction and re-insertion of token.
+    (check-result (-> session
+                      (insert (->Temperature 10 "ORD")
+                              (->Temperature 5 "LGA")
+                              (->Temperature 30 "SFO"))
+                      (insert (->Temperature 15 "MCI"))
+                      (retract (->Temperature 15 "MCI"))
+                      (insert (->Temperature 15 "MCI"))
+                      (fire-rules)))
+
+    ))
+
 (deftest test-simple-negation
   (let [not-cold-query (dsl/parse-query [] [[:not [Temperature (< temperature 20)]]])
 
@@ -1302,3 +1371,20 @@
 
     (is (= #{{:?t 15} {:?t 10}}
            (set (query session match-external))))))
+
+(deftest test-extract-simple-test
+  (let [distinct-temps-query (dsl/parse-query [] [[Temperature (< temperature 20)
+                                                               (= ?t1 temperature)]
+
+                                                  [Temperature (< temperature 20)
+                                                               (= ?t2 temperature)
+                                                   (< ?t1 temperature)]])
+
+        session  (-> (mk-session [distinct-temps-query])
+                     (insert (->Temperature 15 "MCI"))
+                     (insert (->Temperature 10 "MCI"))
+                     (insert (->Temperature 80 "MCI")))]
+
+    ;; Finds two temperatures such that t1 is less than t2.
+    (is (= #{ {:?t1 10, :?t2 15}}
+           (set (query session distinct-temps-query))))))

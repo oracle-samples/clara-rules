@@ -260,6 +260,40 @@
     `(fn [~destructured-env]
        ~accum)))
 
+(defn compile-join-filter
+  "Compiles to a predicate function that ensures the given items can be unified. Returns a ready-to-eval
+   function that accepts a token, a fact, and an environment, and returns truthy if the given fact satisfies
+   the criteria."
+  [{:keys [type constraints args] :as unification-condition} env]
+  (let [accessors (get-fields type)
+
+        binding-keys (variables-as-keywords constraints)
+
+        destructured-env (if (> (count env) 0)
+                           {:keys (mapv #(symbol (name %)) (keys env))}
+                           '?__env__)
+
+        destructured-fact (first args)
+
+        fact-assignments (if destructured-fact
+                           ;; Simply destructure the fact if arguments are provided.
+                           [destructured-fact '?__fact__]
+                           ;; No argument provided, so use our default destructuring logic.
+                           (concat '(this ?__fact__)
+                                   (mapcat (fn [[name accessor]]
+                                             [name (list accessor '?__fact__)])
+                                           accessors)))
+
+        token-assignments (mapcat #(list (symbol (name %)) (list 'get-in '?__token__ [:bindings %])) binding-keys)
+
+        assignments (concat
+                     fact-assignments
+                     token-assignments)]
+
+    `(fn [~'?__token__ ~(add-meta '?__fact__ type) ~destructured-env]
+      (let [~@assignments]
+        (and ~@constraints)))))
+
 (defn- expr-type [expression]
   (if (map? expression)
     :condition
@@ -336,7 +370,25 @@
           (let [disjunctions (mapcat rest (filter #(#{:or} (expr-type %)) children))]
             (into [:or] (concat disjunctions conjunctions))))))))
 
+(defn- non-equality-unification? [expression]
+  "Returns true if the given expression does a non-equality unification against a variable,
+   indicating it can't be solved by simple unification."
+  (let [found-complex (atom false)
+        process-form (fn [form]
+                       (when (and (list? form)
+                                  (not (#{'= '==} (first form)))
+                                  (some (fn [sym] (and (symbol? sym)
+                                                      (.startsWith (name sym) "?")))
+                                        form))
 
+                         (reset! found-complex true))
+
+                       form)]
+
+    ;; Walk the expression to find use of a symbol that can't be solved by equality-based unificaiton.
+    (doall (clojure.walk/postwalk process-form expression))
+
+    @found-complex))
 
 (defn- add-to-beta-tree
   "Adds a sequence of conditions and the corresponding production to the beta tree."
@@ -356,6 +408,21 @@
                    accumulator :accumulator
                    (:type condition) :join
                    :else :test)
+
+        ;; Get the non-equality unifications so we can handle them.
+        join-filter-expressions (if (and (= :accumulator node-type)
+                                           (some non-equality-unification? (:constraints condition)))
+
+                                    (assoc condition :constraints  (filterv non-equality-unification? (:constraints condition)) )
+
+                                    nil)
+
+        ;; Remove instances of non-equality constraints from accumulator conditions
+        condition (if (= :accumulator node-type)
+                    (assoc condition :constraints (into [] (remove non-equality-unification? (:constraints condition))))
+
+                    condition)
+
 
         ;; For the sibling beta nodes, find a match for the candidate.
         matching-node (first (for [beta-node beta-nodes
@@ -397,7 +464,9 @@
 
            accumulator (assoc :accumulator accumulator)
 
-           result-binding (assoc :result-binding result-binding)))
+           result-binding (assoc :result-binding result-binding)
+
+           join-filter-expressions (assoc :join-filter-expressions join-filter-expressions)))
 
         ;; There are no more conditions, so add our query or rule.
         (if matching-node
@@ -478,6 +547,91 @@
    :default 0
    ))
 
+(defn- extract-from-constraint
+  "Process and extract a test expression from the constraint. Returns a pair of [processed-constraint, test-constraint],
+   which can be expanded into correspoding join and test nodes.
+   The test may be nil if no extraction is necessary."
+  [constraint]
+
+  ;; If any expression contains
+  (let [binding-map (atom {})
+        process-form (fn [form]
+                       (if (and (list? form)
+                                (not (#{'= '==} (first form)))
+                                (some (fn [sym] (and (symbol? sym)
+                                                    (.startsWith (name sym) "?")))
+                                      form))
+
+                         (doseq [item (rest form)
+                                 :when (and (symbol? item)
+                                            (not
+                                             (.startsWith (name item) "?")))]
+
+                           (swap! binding-map assoc item (gensym "?__gen__")))
+                         form))]
+
+    ;; Walk the map, identifing bindings we need to extract into tests.
+    (clojure.walk/postwalk process-form constraint)
+
+    (if (not-empty @binding-map)
+
+      ;; Replace the condition with the bindings needed for the test.
+      [(first ;; TODO: support multiple bindings in a condition?
+             (for [[form sym] @binding-map]
+               (list '= sym form)))
+
+       ;; Create a test condition that is the same as the original, but
+       ;; with nested expressions replaced by the binding map.
+       (clojure.walk/postwalk (fn [form]
+                                (if-let [sym (get @binding-map form)]
+                                  sym
+                                  form))
+                              constraint)]
+
+      ;; No test bindings found, so simply keep the constraint as is.
+      [constraint nil])))
+
+(defn- extract-tests
+  "Pre-process the sequence of conditions, and returns a sequence of conditions that has
+   constraints that must be expanded into tests properly expanded.
+
+   For example, consider the following conditions
+
+  [Temperature (= ?t1 temperature)]
+  [Temperature (< ?t1 temperature)]
+
+
+  The second temperature is doing a comparison, so we can't use our hash-based index to
+  unify these items. Therefore we extract the logic into a separate test, so the above
+  conditions are transformed into this:
+
+
+  [Temperature (= ?t1 temperature)]
+  [Temperature (= ?__gen__1234 temperature)]
+  [:test (< ?t2 ?__gen__1234)]
+
+  The comparison is transformed into binding to a generate bind variable,
+  which is then available in the test node for comparison with other bindings."
+  [conditions]
+  ;; Look at the constraints under each condition. If the constraint does a comparison with an
+  ;; item in an ancestor, do two things: modify the constraint to bind its internal items to a new
+  ;; generated symbol, and add a test that does the expected check.
+
+  (for [{:keys [type constraints] :as condition} conditions
+        :let [extracted (map extract-from-constraint constraints)
+              processed-constraints (map first extracted)
+              test-constraints (->> (map second extracted)
+                                    (remove nil?))]
+
+        expanded (if (empty? test-constraints)
+                   [condition]
+                   ;; There were test constraints created, so the processed constraints
+                   ;; and generated test condition.
+                   [(assoc condition :constraints processed-constraints)
+                    {:constraints test-constraints}  ])]
+
+    expanded))
+
 (defn- get-conds
   "Returns a sequence of [condition environment] tuples and their corresponding productions."
   [production]
@@ -488,12 +642,17 @@
                        (rest expression)
                        [expression])]
 
+    ;; Now we've split the production into one ore more disjunctions that
+    ;; can be processed independently. Commonality between disjunctions willl
+    ;; be merged when building the Rete network.
     (for [disjunction disjunctions
 
           :let [conditions (if (and (vector? disjunction)
                                     (= :and (first disjunction)))
                              (rest disjunction)
                              [disjunction])
+
+                conditions (extract-tests conditions)
 
                 ;; Sort conditions, see the condition-comp function for the reason.
                 sorted-conditions (sort condition-comp conditions)
@@ -653,16 +812,34 @@
             (when (not (instance? Accumulator compiled-accum))
               (throw (IllegalArgumentException. (str (:accumulator beta-node) " is not a valid accumulator."))))
 
-            (eng/->AccumulateNode
-              id
-              ;; Create an accumulator structure for use when examining the node or the tokens
-              ;; it produces.
-              {:accumulator (:accumulator beta-node)
-               :from condition}
-              compiled-accum
-              (:result-binding beta-node)
-              (compile-beta-tree children all-bindings)
-              join-bindings))
+            ;; If a non-equality unification is in place, compile the predicate and use
+            ;; the specialized accumulate node.
+
+            (if (:join-filter-expressions beta-node)
+
+              (eng/->AccumulateWithJoinFilterNode
+               id
+               ;; Create an accumulator structure for use when examining the node or the tokens
+               ;; it produces.
+               {:accumulator (:accumulator beta-node)
+                :from condition}
+               compiled-accum
+               (eval (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node)))
+               (:result-binding beta-node)
+               (compile-beta-tree children all-bindings)
+               join-bindings)
+
+              ;; All unification is based on equality, so just use the simple accumulate node.
+              (eng/->AccumulateNode
+               id
+               ;; Create an accumulator structure for use when examining the node or the tokens
+               ;; it produces.
+               {:accumulator (:accumulator beta-node)
+                :from condition}
+               compiled-accum
+               (:result-binding beta-node)
+               (compile-beta-tree children all-bindings)
+               join-bindings)))
 
           :production
           (eng/->ProductionNode
