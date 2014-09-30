@@ -384,34 +384,71 @@
 (deftest test-accumulator-with-test-join
   "Tests an accumulator that does a join based on an arbitrary predicate."
   (let [colder-than-mci-query (dsl/parse-query []
-                                               [(Temperature (= "MCI" location) (= ?temp temperature))
+                                               [(Temperature (= "MCI" location) (= ?mci-temp temperature))
                                                 [?colder-temps <- (acc/all)
-                                                 :from [Temperature (= ?loc location) (> ?temp temperature)]]])
+                                                 :from [Temperature (< temperature  ?mci-temp)]]])
 
-        session (-> (mk-session [colder-than-mci-query] :cache false)
-                    (insert (->Temperature 15 "MCI"))
-                    (insert (->Temperature 10 "ORD"))
-                    (insert (->Temperature 5 "LGA"))
-                    (insert (->Temperature 30 "SFO")))
+        session (mk-session [colder-than-mci-query] :cache false)
 
-        session-retracted (retract session (->WindSpeed 30 "MCI"))]
+        ;; Checks the result of the session for different permutations of input.
+        check-result (fn [session]
+                       (is (= {:?mci-temp 15
+                               :?colder-temps #{(->Temperature 10 "ORD")
+                                                (->Temperature 5 "LGA")}}
 
-    ;; schema.core/with-fn-validation
+                              ;; Convert temps to a set, since ordering isn't guaranteed.
+                              (update-in
+                               (first (query session colder-than-mci-query))
+                               [:?colder-temps]
+                               set))))]
 
-    (clojure.pprint/pprint  (com/to-beta-tree [colder-than-mci-query]))
+    ;; Simple insertion of facts at once.
+    (check-result (-> session
+                      (insert (->Temperature 15 "MCI")
+                              (->Temperature 10 "ORD")
+                              (->Temperature 5 "LGA")
+                              (->Temperature 30 "SFO"))
+                      (fire-rules)))
 
 
+    ;; Insert facts separately to ensure they are combined.
+    (check-result (-> session
+                      (insert (->Temperature 15 "MCI")
+                              (->Temperature 5 "LGA")
+                              (->Temperature 30 "SFO"))
+                      (insert (->Temperature 10 "ORD"))
+                      (fire-rules)))
 
-    (clojure.pprint/pprint (query session colder-than-mci-query))
+    ;; Insert MCI location last to test left activation with token arriving
+    ;; after the initial accumulation
+    (check-result (-> session
+                      (insert (->Temperature 10 "ORD")
+                              (->Temperature 5 "LGA")
+                              (->Temperature 30 "SFO"))
+                      (insert (->Temperature 15 "MCI"))
+                      (fire-rules)))
 
-    ;; Only the value that joined to WindSpeed should be visible.
-    (comment    (is (= #{{:?t (->Temperature 10 "MCI") :?loc "MCI"}}
-                       (set (query session coldest-query))))
+    ;; Test retraction of previously accumulated fact.
+    (check-result (-> session
+                      (insert (->Temperature 15 "MCI")
+                              (->Temperature 10 "ORD")
+                              (->Temperature 5 "LGA")
+                              (->Temperature 30 "SFO")
+                              (->Temperature 0 "IAD"))
+                      (retract (->Temperature 0 "IAD"))
+                      (fire-rules)))
 
-                (is (empty? (query session-retracted coldest-query)))))
+    ;; Test retraction and re-insertion of token.
+    (check-result (-> session
+                      (insert (->Temperature 10 "ORD")
+                              (->Temperature 5 "LGA")
+                              (->Temperature 30 "SFO"))
+                      (insert (->Temperature 15 "MCI"))
+                      (retract (->Temperature 15 "MCI"))
+                      (insert (->Temperature 15 "MCI"))
+                      (fire-rules)))
 
-
-  )
+    ))
 
 (deftest test-simple-negation
   (let [not-cold-query (dsl/parse-query [] [[:not [Temperature (< temperature 20)]]])
@@ -1347,8 +1384,6 @@
                      (insert (->Temperature 15 "MCI"))
                      (insert (->Temperature 10 "MCI"))
                      (insert (->Temperature 80 "MCI")))]
-
-    (clojure.pprint/pprint (com/to-beta-tree [distinct-temps-query]))
 
     ;; Finds two temperatures such that t1 is less than t2.
     (is (= #{ {:?t1 10, :?t2 15}}
