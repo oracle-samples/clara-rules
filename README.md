@@ -11,7 +11,6 @@ Objectives include:
 * Working memory facts are typically Clojure records or Java objects following the Java Bean conventions. 
 * Support the major advantages of existing rules systems, such as explainability of why a rule fired and automatic truth maintenance.
 * Collections of facts can be reasoned with using accumulators similar to Jess or Drools. These accumulators leverage the reducers API and are transparently parallelized.
-* The working memory is independent of the logic flow, and can be replaced with a distributed processing system. A [prototype that uses Storm](https://github.com/rbrush/clara-storm) to apply rules to a stream of incoming events already exists. Leveraging other processing infrastructures is possible.
 
 ## Example
 
@@ -67,12 +66,13 @@ or to your Maven POM:
 </dependency>
 ```
 
-## Learn more
+## Resources
 
 * The [introduction page](https://github.com/rbrush/clara-rules/wiki/Introduction) provides an overview of the project.
 * The [developer guide](https://github.com/rbrush/clara-rules/wiki/Guide).
 * The [architecture overview](https://github.com/rbrush/clara-rules/wiki/Architecture) goes into how Clara works.
 * See the [clara-examples project](https://github.com/rbrush/clara-examples) examples page for some examples.
+* Questions or suggestions for Clara can be posted on the [Clara Rules Google Group](https://groups.google.com/forum/?hl=en#!forum/clara-rules).
 
 ## License
 
