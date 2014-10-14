@@ -31,7 +31,7 @@ Here's a simple example. The [clara-examples project](https://github.com/rbrush/
   (println "High support requested!"))
 
 (defrule notify-client-rep
-  "Find the client represntative and send a notification of a support request."
+  "Find the client representative and send a notification of a support request."
   [SupportRequest (= ?client client)]
   [ClientRepresentative (= ?client client) (= ?name name)] ; Join via the ?client binding.
   =>
