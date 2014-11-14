@@ -178,10 +178,11 @@
         rule {:lhs (list 'quote
                          (mapv #(resolve-vars % (destructure-syms %))
                                conditions))
-              :rhs (with-meta
-                     (resolve-vars (list 'quote rhs)
-                                   (map :fact-binding conditions))
-                     (assoc (meta rhs) :file *file*))}
+              :rhs (list 'quote
+                         (with-meta (resolve-vars rhs
+                                                  (map :fact-binding conditions))
+
+                           (assoc (meta rhs) :file *file*)))}
 
         symbols (set (filter symbol? (flatten (concat lhs rhs))))
         matching-env (into {} (for [sym (keys env)
