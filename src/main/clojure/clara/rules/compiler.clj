@@ -942,6 +942,14 @@
 ;; Cache of sessions for fast reloading.
 (def ^:private session-cache (atom {}))
 
+(defn clear-session-cache!
+  "Clears the cache of reusable Clara sessions, so any subsequent sessions
+   will be re-compiled from the rule definitions. This is intended for use
+   by tooling or specialized needs; most users can simply specify the :cache false
+   option when creating sessions."
+  []
+  (reset! session-cache {}))
+
 (sm/defn mk-session*
   "Compile the rules into a rete network and return the given session."
   [productions :- [schema/Production]
