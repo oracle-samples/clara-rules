@@ -85,21 +85,27 @@
   ;; Converts the transient memory to persistent form.
   (to-persistent! [memory]))
 
-
 (defn remove-first-of-each
   "Remove the first instance of each item in the given set that
    appears in the collection."
   [set coll]
   (lazy-seq
-   (when-let [s (seq coll)]
-     (let [f (first s)
-           r (rest s)]
-       (if (set f)
-         (if (empty? set)
-           r ; No more items to remove, so return the rest of the list.
-           (remove-first-of-each (disj set f) r)) ; More items to remove, so recur with a smaller set.
 
-         (cons f (remove-first-of-each set r))))))) ; We did not match this item, so simply recur.
+   (loop [f (first coll)
+          r (rest coll)
+          to-remove set]
+
+     (when f
+       (if (to-remove f)
+
+         ;; The first item is to be removed, so do so and recur with rest of the items
+         ;; and it removed from our to-remove set.
+         (recur (first r)
+                (rest r)
+                (disj to-remove f))
+
+         ;; The first item didn't need to be removed, so continue with our lazy sequence.
+         (cons f (remove-first-of-each to-remove r)))))))
 
 (declare ->PersistentLocalMemory)
 
