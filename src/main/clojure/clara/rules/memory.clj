@@ -87,25 +87,29 @@
 
 (defn remove-first-of-each
   "Remove the first instance of each item in the given set that
-   appears in the collection."
+  appears in the collection. This function does so eagerly since
+  the working memories with large numbers of insertions and retractions
+  can lazy sequences to become deeply nested."
   [set coll]
-  (lazy-seq
+  (loop [f (first coll)
+         r (rest coll)
+         to-remove set
+         result (transient [])]
 
-   (loop [f (first coll)
-          r (rest coll)
-          to-remove set]
+    (if f
+      (if (to-remove f)
 
-     (when f
-       (if (to-remove f)
+        (recur (first r)
+               (rest r)
+               (disj to-remove f)
+               result)
 
-         ;; The first item is to be removed, so do so and recur with rest of the items
-         ;; and it removed from our to-remove set.
-         (recur (first r)
-                (rest r)
-                (disj to-remove f))
+        (recur (first r)
+               (rest r)
+               to-remove
+               (conj! result f)))
 
-         ;; The first item didn't need to be removed, so continue with our lazy sequence.
-         (cons f (remove-first-of-each to-remove r)))))))
+      (persistent! result))))
 
 (declare ->PersistentLocalMemory)
 
