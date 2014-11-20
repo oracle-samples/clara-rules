@@ -560,7 +560,7 @@
                                 (not (#{'= '==} (first form)))
                                 (some (fn [sym] (and (symbol? sym)
                                                     (.startsWith (name sym) "?")))
-                                      form))
+                                      (flatten form)))
 
                          (doseq [item (rest form)
                                  :when (and (symbol? item)
@@ -571,14 +571,14 @@
                          form))]
 
     ;; Walk the map, identifing bindings we need to extract into tests.
-    (clojure.walk/postwalk process-form constraint)
+    (clojure.walk/prewalk process-form constraint)
 
     (if (not-empty @binding-map)
 
       ;; Replace the condition with the bindings needed for the test.
       [(first ;; TODO: support multiple bindings in a condition?
-             (for [[form sym] @binding-map]
-               (list '= sym form)))
+        (for [[form sym] @binding-map]
+          (list '= sym form)))
 
        ;; Create a test condition that is the same as the original, but
        ;; with nested expressions replaced by the binding map.

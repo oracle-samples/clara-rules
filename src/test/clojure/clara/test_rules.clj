@@ -1388,3 +1388,20 @@
     ;; Finds two temperatures such that t1 is less than t2.
     (is (= #{ {:?t1 10, :?t2 15}}
            (set (query session distinct-temps-query))))))
+
+(deftest test-extract-nested-test
+  (let [distinct-temps-query (dsl/parse-query [] [[Temperature (< temperature 20)
+                                                               (= ?t1 temperature)]
+
+                                                  [Temperature (< temperature 20)
+                                                               (= ?t2 temperature)
+                                                   (< (- ?t1 0) temperature)]])
+
+        session  (-> (mk-session [distinct-temps-query])
+                     (insert (->Temperature 15 "MCI"))
+                     (insert (->Temperature 10 "MCI"))
+                     (insert (->Temperature 80 "MCI")))]
+
+    ;; Finds two temperatures such that t1 is less than t2.
+    (is (= #{ {:?t1 10, :?t2 15}}
+           (set (query session distinct-temps-query))))))
