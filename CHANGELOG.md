@@ -1,5 +1,10 @@
 This is a history of changes to clara-rules.
 
+### 0.7.0
+* Allow bound variables to be used by arbitrary functions in subsequent conditions. See [issue 66](https://github.com/rbrush/clara-rules/issues/66)
+* Add metadata to rule's right-hand side so we see line numbers in compilation errors and call stacks. See [issue 69](https://github.com/rbrush/clara-rules/issues/69)
+* Improved memory consumption in cases where rules may be retracted and re-added frequently.
+
 ### 0.6.2
 * Properly handle retractions in the presence of negation nodes; see [issue 67](https://github.com/rbrush/clara-rules/issues/67).
 * Report error if the fact type in a rule appears to be malformed; see [issue 65](https://github.com/rbrush/clara-rules/issues/65).
