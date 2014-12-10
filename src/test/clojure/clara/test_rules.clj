@@ -1405,3 +1405,43 @@
     ;; Finds two temperatures such that t1 is less than t2.
     (is (= #{ {:?t1 10, :?t2 15}}
            (set (query session distinct-temps-query))))))
+
+
+;; External structure to ensure that salience works with defrule as well.
+(def salience-rule-output (atom []))
+
+(defrule salience-rule4
+  {:salience -50}
+  [Temperature]
+  =>
+  (swap! salience-rule-output conj -50))
+
+(deftest test-salience
+
+  (let [rule1 (assoc
+                  (dsl/parse-rule [[Temperature]]
+                                  (swap! salience-rule-output conj 100))
+                :props {:salience 100})
+
+        rule2 (assoc
+                  (dsl/parse-rule [[Temperature ]]
+                                  (swap! salience-rule-output conj 50))
+                :props {:salience 50})
+
+        rule3 (assoc
+                  (dsl/parse-rule [[Temperature ]]
+                                  (swap! salience-rule-output conj 0))
+                :props {:salience 0})]
+
+
+    ;; Ensure the rule output reflects the salience-defined order.
+    ;; independently of the order of the rules.
+    (dotimes [n 10]
+
+      (reset! salience-rule-output [])
+
+      (-> (mk-session (shuffle [rule1 rule3 rule2 salience-rule4]) :cache false)
+          (insert (->Temperature 10 "MCI"))
+          (fire-rules))
+
+      (is (= [100 50 0 -50] @salience-rule-output)))))

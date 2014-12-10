@@ -156,6 +156,10 @@
      cache. Defaults to Clojures type function.
    * :cache, indicating whether the session creation can be cached, effectively memoizing mk-session.
      Defaults to true. Callers may wish to set this to false when needing to dynamically reload rules.
+   * :activation-group-fn, a function applied to Activation objects and returns the group they should be activated with.
+     It defaults to checking the :salience property on the rule definition itself, or 0 if none exists.
+   * :activation-group-sort-fn, a comparator function used to sort the values returned by the above :activation-group-fn.
+     defaults to >, so rules with a higher salience are executed first.
 
    This is not supported in ClojureScript, since it requires eval to dynamically build a session. ClojureScript
    users must use pre-defined rulesessions using defsession."

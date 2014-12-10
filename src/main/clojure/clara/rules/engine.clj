@@ -838,9 +838,8 @@
    :memory An implementation of the clara.rules.memory/IMemoryReader protocol
    :transport An implementation of the clara.rules.engine/ITransport protocol
    :listeners A vector of listeners implementing the clara.rules.listener/IPersistentListener protocol
-   :get-alphas-fn The function used to
+   :get-alphas-fn The function used to return the alpha nodes for a fact of the given type."
 
-     "
   [{:keys [rulebase memory transport listeners get-alphas-fn]}]
   (LocalSession. rulebase
                  memory
@@ -852,8 +851,8 @@
 
 (defn local-memory
   "Returns a local, in-process working memory."
-  [rulebase transport]
-  (let [memory (mem/to-transient (mem/local-memory rulebase))]
+  [rulebase transport activation-group-sort-fn activation-group-fn]
+  (let [memory (mem/to-transient (mem/local-memory rulebase activation-group-sort-fn activation-group-fn))]
     (doseq [beta-node (:beta-roots rulebase)]
       (left-activate beta-node {} [empty-token] memory transport l/default-listener))
     (mem/to-persistent! memory)))

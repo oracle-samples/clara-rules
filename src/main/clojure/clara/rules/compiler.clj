@@ -966,6 +966,17 @@
         ;; The ancestors for a logical type uses Clojure's ancestors function unless overridden.
         ancestors-fn (get options :ancestors-fn ancestors)
 
+        ;; Default sort by higher to lower salience.
+        activation-group-sort-fn (get options :activation-group-sort-fn >)
+
+        ;; Activation groups use salience, with zero
+        ;; as the default value.
+        activation-group-fn (get options
+                                 :activation-group-fn
+                                 (fn [activation]
+                                   (or (some-> activation :node :production :props :salience)
+                                       0)))
+
         ;; Create a function that groups a sequence of facts by the collection
         ;; of alpha nodes they target.
         ;; We cache an alpha-map for facts of a given type to avoid computing
@@ -973,11 +984,10 @@
         get-alphas-fn (create-get-alphas-fn fact-type-fn ancestors-fn rulebase)]
 
     (eng/assemble {:rulebase rulebase
-                   :memory (eng/local-memory rulebase transport)
+                   :memory (eng/local-memory rulebase transport activation-group-sort-fn activation-group-fn)
                    :transport transport
                    :listeners (get options :listeners  [])
-                   :get-alphas-fn get-alphas-fn
-                   })))
+                   :get-alphas-fn get-alphas-fn})))
 
 (defn mk-session
   "Creates a new session using the given rule source. Thew resulting session

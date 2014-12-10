@@ -1,5 +1,7 @@
 (ns clara.rules.memory
-  "Specification and default implementation of working memory"
+  "Specification and default implementation of working memory.
+
+  This is the ClojureScript version, which currently does not support salience."
   (:require [clojure.core.reducers :as r]
             [clojure.set :as s]))
 
@@ -116,13 +118,11 @@
 ;;; Transient local memory implementation. Typically only persistent memory will be visible externally.
 
 (deftype TransientLocalMemory [rulebase
-                               activation-group-sort-fn
-                               activation-group-fn
                                ^:unsynchronized-mutable alpha-memory
                                ^:unsynchronized-mutable beta-memory
                                ^:unsynchronized-mutable accum-memory
                                ^:unsynchronized-mutable production-memory
-                               ^java.util.TreeMap activation-map]
+                               ^:unsynchronized-mutable activations]
 
   IMemoryReader
   (get-rulebase [memory] rulebase)
@@ -166,7 +166,7 @@
      []))
 
   (get-activations [memory]
-    (apply concat (vals activation-map)))
+    activations)
 
   ITransientMemory
   (add-elements! [memory node join-bindings elements]
@@ -252,49 +252,36 @@
       results))
 
   (add-activations! [memory new-activations]
-    (doseq [activation new-activations]
-      (let [activation-group (activation-group-fn activation)
-            previous (.get activation-map activation-group)]
-        (.put activation-map activation-group (cons activation previous)))))
+    (set! activations
+          (into activations new-activations)))
 
   (pop-activation! [memory]
-    (when (not (.isEmpty activation-map))
-      (let [^java.util.Map$Entry entry (.firstEntry activation-map)
-            key (.getKey entry)
-            value (.getValue entry)
-            remaining (rest value)]
+    (let [activation (first activations)
+          remaining (rest activations)]
 
-        (if (empty? remaining)
-          (.remove activation-map key)
-          (.put activation-map key remaining))
+      (set! activations remaining)
 
-        (first value))))
+      activation))
 
   (remove-activations! [memory to-remove]
-    (let [remove-groups (group-by activation-group-fn to-remove)]
-      (doseq [[remove-key remove-activations] remove-groups]
-        (.put activation-map
-              remove-key
-              (remove-first-of-each (set remove-activations)
-                                    (.get activation-map remove-key))))))
+    (let [filtered-activations (remove-first-of-each (set to-remove)
+                                                     activations)]
+
+      (set! activations filtered-activations)))
 
   (clear-activations! [memory]
-    (.clear activation-map))
+    (set! activations []))
 
   (to-persistent! [memory]
 
     (->PersistentLocalMemory rulebase
-                             activation-group-sort-fn
-                             activation-group-fn
                              (persistent! alpha-memory)
                              (persistent! beta-memory)
                              (persistent! accum-memory)
                              (persistent! production-memory)
-                             (apply concat (vals activation-map)))))
+                             activations)))
 
 (defrecord PersistentLocalMemory [rulebase
-                                  activation-group-sort-fn
-                                  activation-group-fn
                                   alpha-memory
                                   beta-memory
                                   accum-memory
@@ -347,30 +334,16 @@
   IPersistentMemory
   (to-transient [memory]
     (TransientLocalMemory. rulebase
-                           activation-group-sort-fn
-                           activation-group-fn
                            (transient alpha-memory)
                            (transient beta-memory)
                            (transient accum-memory)
                            (transient production-memory)
-                           (reduce (fn [^java.util.TreeMap treemap item]
-                                     (let [activation-group (activation-group-fn item)
-                                           previous (.get treemap activation-group)]
-                                       (.put treemap activation-group
-                                             (cons item previous) ))
-                                     treemap)
-                                   (java.util.TreeMap. activation-group-sort-fn)
-                                   activations))))
+                           activations)))
 
 (defn local-memory
   "Creates an persistent local memory for the given rule base."
   [rulebase activation-group-sort-fn activation-group-fn]
+  ;; Clara's ClojureScript implementation does not yet support salience-style
+  ;; settings, so we ignore these for now.
 
-  (->PersistentLocalMemory rulebase
-                           activation-group-sort-fn
-                           activation-group-fn
-                           {}
-                           {}
-                           {}
-                           {}
-                           []))
+  (->PersistentLocalMemory rulebase {} {} {} {} []))

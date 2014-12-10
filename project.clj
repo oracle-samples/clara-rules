@@ -34,7 +34,7 @@
               :test-commands {"unit-tests" ["phantomjs" :runner
                                             "window.literal_js_was_evaluated=true"
                                             "target/cljs/testable.js"]}
-              :crossovers [clara.rules.memory clara.rules.engine clara.rules.accumulators clara.rules.listener]
+              :crossovers [clara.rules.engine clara.rules.accumulators clara.rules.listener]
               :crossover-path "target/crossovers/clojurescript"
               :crossover-jar true}
 
