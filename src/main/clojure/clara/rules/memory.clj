@@ -70,14 +70,14 @@
   (remove-insertions! [memory node token])
 
   ;; Add a sequence of activations.
-  (add-activations! [memory activations])
+  (add-activations! [memory production activations])
 
   ;; Pop an activation from the working memory. Returns nil if no
   ;; activations are pending.
   (pop-activation! [memory])
 
   ;; Remove the given activations from the working memory.
-  (remove-activations! [memory activations])
+  (remove-activations! [memory production activations])
 
   ;; Clear all activations from the working memory
   (clear-activations! [memory])
@@ -251,11 +251,13 @@
 
       results))
 
-  (add-activations! [memory new-activations]
-    (doseq [activation new-activations]
-      (let [activation-group (activation-group-fn activation)
-            previous (.get activation-map activation-group)]
-        (.put activation-map activation-group (cons activation previous)))))
+  (add-activations! [memory production new-activations]
+    (let [activation-group (activation-group-fn production)
+          previous (.get activation-map activation-group)]
+      (.put activation-map activation-group
+            (if previous
+              (into previous new-activations)
+              new-activations))))
 
   (pop-activation! [memory]
     (when (not (.isEmpty activation-map))
@@ -270,13 +272,12 @@
 
         (first value))))
 
-  (remove-activations! [memory to-remove]
-    (let [remove-groups (group-by activation-group-fn to-remove)]
-      (doseq [[remove-key remove-activations] remove-groups]
-        (.put activation-map
-              remove-key
-              (remove-first-of-each (set remove-activations)
-                                    (.get activation-map remove-key))))))
+  (remove-activations! [memory production to-remove]
+    (let [activation-group (activation-group-fn production)]
+      (.put activation-map
+            activation-group
+            (remove-first-of-each (set to-remove)
+                                  (.get activation-map activation-group)))))
 
   (clear-activations! [memory]
     (.clear activation-map))
@@ -290,7 +291,9 @@
                              (persistent! beta-memory)
                              (persistent! accum-memory)
                              (persistent! production-memory)
-                             (apply concat (vals activation-map)))))
+                             (into {}
+                                   (for [[key val] activation-map]
+                                     [key val])))))
 
 (defrecord PersistentLocalMemory [rulebase
                                   activation-group-sort-fn
@@ -299,7 +302,7 @@
                                   beta-memory
                                   accum-memory
                                   production-memory
-                                  activations]
+                                  activation-map]
   IMemoryReader
   (get-rulebase [memory] rulebase)
 
@@ -342,7 +345,7 @@
      []))
 
   (get-activations [memory]
-    activations)
+    (apply concat (vals activation-map)))
 
   IPersistentMemory
   (to-transient [memory]
@@ -353,14 +356,16 @@
                            (transient beta-memory)
                            (transient accum-memory)
                            (transient production-memory)
-                           (reduce (fn [^java.util.TreeMap treemap item]
-                                     (let [activation-group (activation-group-fn item)
-                                           previous (.get treemap activation-group)]
-                                       (.put treemap activation-group
-                                             (cons item previous) ))
-                                     treemap)
-                                   (java.util.TreeMap. activation-group-sort-fn)
-                                   activations))))
+                           (reduce
+                            (fn [^java.util.TreeMap treemap [activation-group activations]]
+                              (let [previous (.get treemap activation-group)]
+                                (.put treemap activation-group
+                                      (if previous
+                                        (into previous activations)
+                                        activations)))
+                              treemap)
+                            (java.util.TreeMap. ^java.util.Comparator activation-group-sort-fn)
+                            activation-map))))
 
 (defn local-memory
   "Creates an persistent local memory for the given rule base."

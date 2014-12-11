@@ -72,14 +72,14 @@
   (remove-insertions! [memory node token])
 
   ;; Add a sequence of activations.
-  (add-activations! [memory activations])
+  (add-activations! [memory production activations])
 
   ;; Pop an activation from the working memory. Returns nil if no
   ;; activations are pending.
   (pop-activation! [memory])
 
   ;; Remove the given activations from the working memory.
-  (remove-activations! [memory activations])
+  (remove-activations! [memory production activations])
 
   ;; Clear all activations from the working memory
   (clear-activations! [memory])
@@ -251,7 +251,7 @@
 
       results))
 
-  (add-activations! [memory new-activations]
+  (add-activations! [memory production new-activations]
     (set! activations
           (into activations new-activations)))
 
@@ -263,7 +263,7 @@
 
       activation))
 
-  (remove-activations! [memory to-remove]
+  (remove-activations! [memory production to-remove]
     (let [filtered-activations (remove-first-of-each (set to-remove)
                                                      activations)]
 

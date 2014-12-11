@@ -198,7 +198,7 @@
         (l/add-activations! listener node activations)
 
         ;; The production matched, so add the tokens to the activation list.
-        (mem/add-activations! memory activations))))
+        (mem/add-activations! memory production activations))))
 
   (left-retract [node join-bindings tokens memory transport listener]
 
@@ -212,7 +212,7 @@
                         (->Activation node token))]
 
       (l/remove-activations! listener node activations)
-      (mem/remove-activations! memory activations))
+      (mem/remove-activations! memory production activations))
 
     ;; Retract any insertions that occurred due to the retracted token.
     (let [insertions (mem/remove-insertions! memory node tokens)]

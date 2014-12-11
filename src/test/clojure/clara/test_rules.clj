@@ -1433,7 +1433,6 @@
                                   (swap! salience-rule-output conj 0))
                 :props {:salience 0})]
 
-
     ;; Ensure the rule output reflects the salience-defined order.
     ;; independently of the order of the rules.
     (dotimes [n 10]

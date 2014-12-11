@@ -103,7 +103,9 @@
                    (l/delegating-listener listeners)
                    l/default-listener)]
 
-    (eng/LocalSession. rulebase (eng/local-memory rulebase transport) transport listener get-alphas-fn)))
+    ;; ClojureScript implementation doesn't support salience yet, so
+    ;; no activation group functions are used.
+    (eng/LocalSession. rulebase (eng/local-memory rulebase transport nil nil) transport listener get-alphas-fn)))
 
 
 (defn accumulate

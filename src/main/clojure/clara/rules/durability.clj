@@ -92,14 +92,18 @@
                                    token tokens]
                                (eng/->Activation (id-to-node node-id) token))
 
-        ;; Add persisted activations to the working memory...
-        memory-with-activations (doto (mem/to-transient memory)
-                                      (mem/clear-activations!)
-                                      (mem/add-activations! restored-activations))
-        ]
+        grouped-by-production (group-by (fn [activation]
+                                          (-> activation :node :production)) restored-activations)
+
+        transient-memory (doto (mem/to-transient memory)
+                           (mem/clear-activations!))]
+
+    (doseq [[production activations] grouped-by-production]
+
+      (mem/add-activations! transient-memory production activations))
 
     ;; Create a new session with the given activations.
-    (eng/assemble (assoc components :memory (mem/to-persistent! memory-with-activations)))))
+    (eng/assemble (assoc components :memory (mem/to-persistent! transient-memory)))))
 
 (defn- restore-accum-results
   [session {:keys [accum-results] :as session-state}]

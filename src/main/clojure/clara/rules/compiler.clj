@@ -973,8 +973,8 @@
         ;; as the default value.
         activation-group-fn (get options
                                  :activation-group-fn
-                                 (fn [activation]
-                                   (or (some-> activation :node :production :props :salience)
+                                 (fn [production]
+                                   (or (some-> production :props :salience)
                                        0)))
 
         ;; Create a function that groups a sequence of facts by the collection
