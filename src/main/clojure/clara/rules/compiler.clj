@@ -521,14 +521,23 @@
 
    ;; Compare items in a sequence until we find a difference.
    (sequential? left)
-   (if-let [[left-val right-val] ; Find the first tuple that's different.
-            (->> (map (fn [left-val right-val] [left-val right-val]) left right)
-                 (drop-while (fn [[left-val right-val]] (= 0 (gen-compare left-val right-val))))
-                 first)]
-     (gen-compare left-val right-val)
+   (loop [left-seq left
+          right-seq right]
 
-     ;; All existing items matched, but check for differing lengths.
-     (- (count right) (count left)))
+     (if (and (seq left-seq) (seq right-seq))
+
+       ;; Both sequences have content, so compare them and recur if necessary.
+       (let [result (gen-compare (first left-seq) (first right-seq)) ]
+         (if (not= 0 result)
+           result
+           (recur (rest left-seq) (rest right-seq))))
+
+       ;; At least one sequence is empty.
+       (cond
+
+        (seq left-seq) 1
+        (seq right-seq) -1
+        :default 0)))
 
    ;; Covert maps to sequences sorted by keys and compare those sequences.
    (map? left)
