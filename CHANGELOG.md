@@ -1,5 +1,11 @@
 This is a history of changes to clara-rules.
 
+### 0.8.0
+* Support for salience. See [issue 25](https://github.com/rbrush/clara-rules/issues/25).
+* Rule compilation is significantly faster. See [issue 71](https://github.com/rbrush/clara-rules/issues/71).
+* Handle use cases where there are a large number of retracted facts. See [issue 74](https://github.com/rbrush/clara-rules/pull/74).
+* Add insert-all! and insert-all-unconditional!. See [issue 75](https://github.com/rbrush/clara-rules/issues/75).
+
 ### 0.7.0
 * Allow bound variables to be used by arbitrary functions in subsequent conditions. See [issue 66](https://github.com/rbrush/clara-rules/issues/66)
 * Add metadata to rule's right-hand side so we see line numbers in compilation errors and call stacks. See [issue 69](https://github.com/rbrush/clara-rules/issues/69)
