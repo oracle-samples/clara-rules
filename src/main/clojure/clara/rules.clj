@@ -86,6 +86,14 @@
   [& facts]
   (insert-facts! facts false))
 
+(defn insert-all!
+  "Behaves the same as insert!, but accepts a sequence of facts to be inserted. This can be simpler and more efficient for
+   rules needing to insert multiple facts.
+
+   See the doc in insert! for details on insert behavior.."
+  [facts]
+  (insert-facts! facts false))
+
 (defn insert-unconditional!
   "To be executed within a rule's right-hand side, this inserts a new fact or facts into working memory.
 
@@ -94,6 +102,13 @@
    function as described above, but this function is available for use cases that don't wish to use
    Clara's truth maintenance."
   [& facts]
+  (insert-facts! facts true))
+
+(defn insert-all-unconditional!
+  "Behaves the same as insert-unconditional!, but accepts a sequence of facts to be inserted rather than individual facts.
+
+   See the doc in insert-unconditional! for details on uncondotional insert behavior."
+  [facts]
   (insert-facts! facts true))
 
 (defn retract!

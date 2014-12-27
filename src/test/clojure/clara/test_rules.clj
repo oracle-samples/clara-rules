@@ -636,6 +636,23 @@
     (is (= #{{:?c 10}}
            (set (query session cold-query))))))
 
+(deftest test-simple-insert-all
+
+  (let [rule-output (atom nil)
+        ;; Insert a new fact and ensure it exists.
+        cold-lousy-rule (dsl/parse-rule [[Temperature (< temperature 20) (= ?t temperature)]]
+                                  (insert-all! [(->Cold ?t) (->LousyWeather)]))
+
+        cold-lousy-query (dsl/parse-query [] [[Cold (= ?c temperature)]
+                                        [LousyWeather]])
+
+        session (-> (mk-session [cold-lousy-rule cold-lousy-query])
+                    (insert (->Temperature 10 "MCI"))
+                    (fire-rules))]
+
+    (is (= #{{:?c 10}}
+           (set (query session cold-lousy-query))))))
+
 
 (deftest test-insert-and-retract
   (let [rule-output (atom nil)
@@ -695,6 +712,37 @@
                  (retract session (->Temperature 10 "MCI"))
                  cold-query))))))
 
+(deftest test-unconditional-insert-all
+  (let [rule-output (atom nil)
+        ;; Insert a new fact and ensure it exists.
+        cold-lousy-rule (dsl/parse-rule [[Temperature (< temperature 20) (= ?t temperature)]]
+                                  (insert-all-unconditional! [(->Cold ?t) (->LousyWeather)]))
+
+        cold-query (dsl/parse-query [] [[Cold (= ?c temperature)]])
+
+        lousy-query (dsl/parse-query [] [[?l <- LousyWeather]])
+
+        session (-> (mk-session [cold-lousy-rule cold-query lousy-query])
+                    (insert (->Temperature 10 "MCI"))
+                    (fire-rules))]
+
+    (is (= #{{:?c 10}}
+           (set (query session cold-query))))
+
+    (is (= #{{:?l (->LousyWeather)}}
+           (set (query session lousy-query))))
+
+    ;; The derived fact should continue to exist after a retraction
+    ;; since we used an unconditional insert.
+    (is (= #{{:?c 10}}
+           (set (query
+                 (retract session (->Temperature 10 "MCI"))
+                 cold-query))))
+
+    (is (= #{{:?l (->LousyWeather)}}
+           (set (query
+                 (retract session (->Temperature 10 "MCI"))
+                 lousy-query))))))
 
 (deftest test-insert-and-retract-multi-input
   (let [rule-output (atom nil)
