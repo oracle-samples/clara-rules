@@ -89,7 +89,7 @@
   "Remove the first instance of each item in the given set that
   appears in the collection. This function does so eagerly since
   the working memories with large numbers of insertions and retractions
-  can lazy sequences to become deeply nested."
+  can cause lazy sequences to become deeply nested."
   [set coll]
   (loop [f (first coll)
          r (rest coll)
@@ -231,7 +231,7 @@
       (set! production-memory
             (assoc! production-memory
                     (:id node)
-                    (assoc token-facts-map token (concat previous-facts facts))))))
+                    (assoc token-facts-map token (into previous-facts facts))))))
 
   (remove-insertions! [memory node tokens]
 
