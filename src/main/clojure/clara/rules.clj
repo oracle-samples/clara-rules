@@ -164,7 +164,7 @@
 
    If no sources are provided, it will attempt to load rules from the caller's namespace.
 
-   The caller may also specify keyword-style options at the end of the parameters. Currently two
+   The caller may also specify keyword-style options at the end of the parameters. Currently four
    options are supported:
 
    * :fact-type-fn, which must have a value of a function used to determine the logical type of a given
