@@ -1436,6 +1436,30 @@
                              fire-rules)
                          cold-query))))))
 
+(deftest test-many-retract-accumulated-for-same-accumulate-with-join-filter-node
+  (let [n 6000
+
+        count-cold-temps (dsl/parse-rule [[Cold (= ?cold-temp temperature)]
+                                          [?temp-count <- (acc/count) :from [Temperature (some? temperature) (<= temperature ?cold-temp)]]]
+                                         (insert! ^{:type :temp-counter} {:count ?temp-count}))
+        cold-temp-count-query (dsl/parse-query [] [[:temp-counter [{:keys [count]}] (= ?count count)]])
+        
+
+        session  (reduce insert
+                         (mk-session [count-cold-temps
+                                      cold-temp-count-query])
+                         ;; Insert all temperatures one at a time to ensure the
+                         ;; accumulate node will continuously re-accumulate via
+                         ;; `right-activate-reduced` to expose any StackOverflowError
+                         ;; potential of stacking lazy evaluations in working memory.
+                         (for [t (range n)] (->Temperature (- t) "MCI")))
+        session (-> session
+                    (insert (->Cold 30))
+                    fire-rules)]
+
+    ;; All temperatures are under the Cold temperature threshold.
+    (is (= #{{:?count 6000}} (set (query session cold-temp-count-query))))))
+
 (def external-type :temperature)
 
 (def external-constant 20)

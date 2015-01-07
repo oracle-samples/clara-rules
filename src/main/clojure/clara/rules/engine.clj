@@ -647,7 +647,8 @@
     (for [[bindings element-group] (platform/tuned-group-by :bindings elements)]
       [bindings (map :fact element-group)]))
 
-  (right-activate-reduced [node join-bindings binding-candidates-seq  memory transport listener]
+  (right-activate-reduced [node join-bindings binding-candidates-seq memory transport listener]
+    
     ;; Combine previously reduced items together, join to matching tokens,
     ;; and emit child tokens.
     (doseq [:let [matched-tokens (mem/get-tokens memory node join-bindings)]
@@ -662,7 +663,7 @@
           (retract-accumulated node accum-condition accumulator result-binding token previous-accum-result bindings transport memory listener)))
 
       ;; Combine the newly reduced values with any previous items.
-      (let [combined-candidates (concat previous-candidates candidates)]
+      (let [combined-candidates (into previous-candidates candidates)]
 
         (l/add-accum-reduced! listener node join-bindings combined-candidates bindings)
 
