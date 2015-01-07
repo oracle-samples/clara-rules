@@ -1,5 +1,8 @@
 This is a history of changes to clara-rules.
 
+### 0.8.1
+* Fix stack overflow under workloads with many indivdually inserted facts. See [issue 76](https://github.com/rbrush/clara-rules/pull/76).
+
 ### 0.8.0
 * Support for salience. See [issue 25](https://github.com/rbrush/clara-rules/issues/25).
 * Rule compilation is significantly faster. See [issue 71](https://github.com/rbrush/clara-rules/issues/71).
