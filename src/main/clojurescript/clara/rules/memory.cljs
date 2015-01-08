@@ -1,7 +1,5 @@
 (ns clara.rules.memory
-  "Specification and default implementation of working memory.
-
-  This is the ClojureScript version, which currently does not support salience."
+  "Specification and default implementation of working memory"
   (:require [clojure.core.reducers :as r]
             [clojure.set :as s]))
 
@@ -91,7 +89,7 @@
   "Remove the first instance of each item in the given set that
   appears in the collection. This function does so eagerly since
   the working memories with large numbers of insertions and retractions
-  can lazy sequences to become deeply nested."
+  can cause lazy sequences to become deeply nested."
   [set coll]
   (loop [f (first coll)
          r (rest coll)
@@ -118,11 +116,13 @@
 ;;; Transient local memory implementation. Typically only persistent memory will be visible externally.
 
 (deftype TransientLocalMemory [rulebase
+                               activation-group-sort-fn
+                               activation-group-fn
                                ^:unsynchronized-mutable alpha-memory
                                ^:unsynchronized-mutable beta-memory
                                ^:unsynchronized-mutable accum-memory
                                ^:unsynchronized-mutable production-memory
-                               ^:unsynchronized-mutable activations]
+                               ^:unsynchronized-mutable activation-map]
 
   IMemoryReader
   (get-rulebase [memory] rulebase)
@@ -166,7 +166,7 @@
      []))
 
   (get-activations [memory]
-    activations)
+    (apply concat (vals activation-map)))
 
   ITransientMemory
   (add-elements! [memory node join-bindings elements]
@@ -231,7 +231,7 @@
       (set! production-memory
             (assoc! production-memory
                     (:id node)
-                    (assoc token-facts-map token (concat previous-facts facts))))))
+                    (assoc token-facts-map token (into previous-facts facts))))))
 
   (remove-insertions! [memory node tokens]
 
@@ -252,41 +252,60 @@
       results))
 
   (add-activations! [memory production new-activations]
-    (set! activations
-          (into activations new-activations)))
+    (let [activation-group (activation-group-fn production)
+          previous (get activation-map activation-group)]
+
+      (set! activation-map
+            (assoc activation-map
+              activation-group
+              (if previous
+                (into previous new-activations)
+                new-activations)))))
 
   (pop-activation! [memory]
-    (let [activation (first activations)
-          remaining (rest activations)]
+    (when (not (empty? activation-map))
+      (let [[key value] (first activation-map)
+            remaining (rest value)]
 
-      (set! activations remaining)
+        (set! activation-map
+              (if (empty? remaining)
+                (dissoc activation-map key)
+                (assoc activation-map key remaining)))
 
-      activation))
+        (first value))))
 
   (remove-activations! [memory production to-remove]
-    (let [filtered-activations (remove-first-of-each (set to-remove)
-                                                     activations)]
-
-      (set! activations filtered-activations)))
+    (let [activation-group (activation-group-fn production)]
+      (set! activation-map
+            (assoc activation-map
+              activation-group
+              (remove-first-of-each (set to-remove)
+                                    (get activation-map activation-group))))))
 
   (clear-activations! [memory]
-    (set! activations []))
+    (set! activation-map (sorted-map-by activation-group-sort-fn)))
 
   (to-persistent! [memory]
 
     (->PersistentLocalMemory rulebase
+                             activation-group-sort-fn
+                             activation-group-fn
                              (persistent! alpha-memory)
                              (persistent! beta-memory)
                              (persistent! accum-memory)
                              (persistent! production-memory)
-                             activations)))
+                             (into {}
+                                   (for [[key val] activation-map]
+                                     [key val])))))
 
 (defrecord PersistentLocalMemory [rulebase
+                                  activation-group-sort-fn
+                                  activation-group-fn
                                   alpha-memory
                                   beta-memory
                                   accum-memory
                                   production-memory
-                                  activations]
+                                  activation-map]
   IMemoryReader
   (get-rulebase [memory] rulebase)
 
@@ -329,21 +348,36 @@
      []))
 
   (get-activations [memory]
-    activations)
+    (apply concat (vals activation-map)))
 
   IPersistentMemory
   (to-transient [memory]
     (TransientLocalMemory. rulebase
+                           activation-group-sort-fn
+                           activation-group-fn
                            (transient alpha-memory)
                            (transient beta-memory)
                            (transient accum-memory)
                            (transient production-memory)
-                           activations)))
+                           (reduce
+                            (fn [treemap [activation-group activations]]
+                              (let [previous (get treemap activation-group)]
+                                (assoc treemap activation-group
+                                      (if previous
+                                        (into previous activations)
+                                        activations))))
+                            (sorted-map-by activation-group-sort-fn)
+                            activation-map))))
 
 (defn local-memory
   "Creates an persistent local memory for the given rule base."
   [rulebase activation-group-sort-fn activation-group-fn]
-  ;; Clara's ClojureScript implementation does not yet support salience-style
-  ;; settings, so we ignore these for now.
 
-  (->PersistentLocalMemory rulebase {} {} {} {} []))
+  (->PersistentLocalMemory rulebase
+                           activation-group-sort-fn
+                           activation-group-fn
+                           {}
+                           {}
+                           {}
+                           {}
+                           {}))

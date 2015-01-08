@@ -99,13 +99,24 @@
         ;; them for every fact entered.
         get-alphas-fn (create-get-alphas-fn fact-type-fn rulebase)
 
+        ;; Default sort by higher to lower salience.
+        activation-group-sort-fn (get options :activation-group-sort-fn >)
+
+        ;; Activation groups use salience, with zero
+        ;; as the default value.
+        activation-group-fn (get options
+                                 :activation-group-fn
+                                 (fn [production]
+                                   (or (some-> production :props :salience)
+                                       0)))
+
         listener (if-let [listeners (:listeners options)]
                    (l/delegating-listener listeners)
                    l/default-listener)]
 
     ;; ClojureScript implementation doesn't support salience yet, so
     ;; no activation group functions are used.
-    (eng/LocalSession. rulebase (eng/local-memory rulebase transport nil nil) transport listener get-alphas-fn)))
+    (eng/LocalSession. rulebase (eng/local-memory rulebase transport activation-group-sort-fn activation-group-fn) transport listener get-alphas-fn)))
 
 
 (defn accumulate
