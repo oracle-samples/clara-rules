@@ -1,4 +1,4 @@
-(defproject org.toomuchcode/clara-rules "0.9.0-SNAPSHOT"
+(defproject org.toomuchcode/clara-rules "0.8.2-SNAPSHOT"
   :description "Clara Rules Engine"
   :url "http://rbrush.github.io/clara-rules/"
   :license {:name "Eclipse Public License"
@@ -20,7 +20,7 @@
   :source-paths ["src/main/clojure"]
   :test-paths ["src/test/clojure"]
   :java-source-paths ["src/main/java"]
-;;  :hooks [leiningen.cljsbuild]
+  :hooks [leiningen.cljsbuild]
   :cljsbuild {:builds [{:source-paths ["src/main/clojurescript"]
                         :jar true
                         :compiler {:pretty-print true
