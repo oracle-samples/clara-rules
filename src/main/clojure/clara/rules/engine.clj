@@ -169,12 +169,45 @@
   (alpha-activate [node facts memory transport listener])
   (alpha-retract [node facts memory transport listener]))
 
-
 ;; Active session during rule execution.
 (def ^:dynamic *current-session* nil)
 
 ;; The token that triggered a rule to fire.
 (def ^:dynamic *rule-context* nil)
+
+(defn- flush-updates
+  "Flush pending updates in the current session."
+  [current-session]
+
+  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} current-session
+        facts @(:pending-facts current-session)]
+
+    ;; Remove the facts here so they are re-inserted if we flush recursively.
+    (reset! (:pending-facts current-session) [])
+
+    (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
+            root alpha-roots]
+
+      (alpha-activate root fact-group transient-memory transport listener))))
+
+(defn insert-facts!
+  "Perform the actual fact insertion, optionally making them unconditional."
+  [facts unconditional]
+  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} *current-session*
+        {:keys [node token]} *rule-context*]
+
+    ;; Update the insertion count.
+    (swap! insertions + (count facts))
+
+    ;; Track this insertion in our transient memory so logical retractions will remove it.
+    (if unconditional
+      (l/insert-facts! listener facts)
+      (do
+        (mem/add-insertions! transient-memory node token facts)
+        (l/insert-facts-logical! listener node token facts)
+        ))
+
+    (swap! (:pending-facts *current-session*) into facts)))
 
 ;; Record for the production node in the Rete network.
 (defrecord ProductionNode [id production rhs]
@@ -216,6 +249,11 @@
 
     ;; Retract any insertions that occurred due to the retracted token.
     (let [insertions (mem/remove-insertions! memory node tokens)]
+
+      (when *current-session*
+
+        (flush-updates *current-session*))
+
       (doseq [[cls fact-group] (group-by type insertions)
               root (get-in (mem/get-rulebase memory) [:alpha-roots cls])]
         (alpha-retract root fact-group memory transport listener))))
@@ -648,7 +686,7 @@
       [bindings (map :fact element-group)]))
 
   (right-activate-reduced [node join-bindings binding-candidates-seq memory transport listener]
-    
+
     ;; Combine previously reduced items together, join to matching tokens,
     ;; and emit child tokens.
     (doseq [:let [matched-tokens (mem/get-tokens memory node join-bindings)]
@@ -738,19 +776,42 @@
                                :transport transport
                                :insertions (atom 0)
                                :get-alphas-fn get-alphas-fn
+                               :pending-facts (atom [])
                                :listener listener}]
 
     ;; Continue popping and running activations while they exist.
-    (loop [activation (mem/pop-activation! transient-memory)]
+    (loop [activation (mem/pop-activation! transient-memory)
+           last-group nil
+           ]
 
-      (when activation
+      (if activation
 
-        (let [{:keys [node token]} activation]
+        (let [{:keys [node token]} activation
+              activation-group ((.-activation-group-fn transient-memory) (:production node))]
 
-            (binding [*rule-context* {:token token :node node}]
-              ((:rhs node) token (:env (:production node))))
+          ;; Flush updates after an activation group has completed.
+          (when (and last-group
+                     (not= activation-group last-group ))
+            (flush-updates *current-session*))
 
-          (recur (mem/pop-activation! transient-memory)))))))
+          (binding [*rule-context* {:token token :node node}]
+
+            ((:rhs node) token (:env (:production node)))
+
+            ;; Explicitly flush updates if we are in a no-loop rule, so the no-loop
+            ;; will be in context for child rules.
+            (when (get-in node [:production :props :no-loop])
+              (flush-updates *current-session*)))
+
+          (recur (mem/pop-activation! transient-memory)
+                 activation-group))
+
+        ;; No activations remaining, so flush outstanding updates and check if more are created.
+        (do
+          (flush-updates *current-session*)
+
+          (when-let [activation (mem/pop-activation! transient-memory)]
+            (recur activation nil)))))))
 
 (deftype LocalSession [rulebase memory transport listener get-alphas-fn]
   ISession

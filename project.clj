@@ -20,17 +20,17 @@
   :source-paths ["src/main/clojure"]
   :test-paths ["src/test/clojure"]
   :java-source-paths ["src/main/java"]
-  :hooks [leiningen.cljsbuild]
+;;  :hooks [leiningen.cljsbuild]
   :cljsbuild {:builds [{:source-paths ["src/main/clojurescript"]
                         :jar true
                         :compiler {:pretty-print true
                                    :output-to "target/js/clara.js"
-                                   :optimizations :advanced}}
+                                   :optimizations :whitespace}}
 
                        ;; Build for unit tests.
                        {:source-paths ["src/main/clojurescript" "src/test/clojurescript"]
                         :compiler {:output-to "target/cljs/testable.js"
-                                   :optimizations :advanced}}]
+                                   :optimizations :whitespace}}]
               :test-commands {"unit-tests" ["phantomjs" :runner
                                             "window.literal_js_was_evaluated=true"
                                             "target/cljs/testable.js"]}

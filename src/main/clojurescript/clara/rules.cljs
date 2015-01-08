@@ -174,26 +174,6 @@
   [session query & params]
   (eng/query session query (apply hash-map params)))
 
-(defn- insert-facts!
-  "Perform the actual fact insertion, optionally making them unconditional."
-  [facts unconditional]
-  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} eng/*current-session*
-        {:keys [node token]} eng/*rule-context*]
-
-    ;; Update the insertion count.
-    (swap! insertions + (count facts))
-
-    (l/insert-facts! listener facts)
-
-    (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
-            root alpha-roots]
-
-      ;; Track this insertion in our transient memory so logical retractions will remove it.
-      (when (not unconditional)
-        (mem/add-insertions! transient-memory node token facts))
-
-      (eng/alpha-activate root fact-group transient-memory transport listener))))
-
 (defn insert!
   "To be executed within a rule's right-hand side, this inserts a new fact or facts into working memory.
 
@@ -208,7 +188,7 @@
    retract their conclusions. This way we can ensure that information inferred by rules is always
    in a consistent state."
   [& facts]
-  (insert-facts! facts false))
+  (eng/insert-facts! facts false))
 
 (defn insert-unconditional!
   "To be executed within a rule's right-hand side, this inserts a new fact or facts into working memory.
@@ -218,7 +198,7 @@
    function as described above, but this function is available for use cases that don't wish to use
    Clara's truth maintenance."
   [& facts]
-  (insert-facts! facts true))
+  (eng/insert-facts! facts true))
 
 (defn retract!
   "To be executed within a rule's right-hand side, this retracts a fact or facts from the working memory.
