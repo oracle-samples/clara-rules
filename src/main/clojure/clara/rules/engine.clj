@@ -779,39 +779,41 @@
                                :pending-facts (atom [])
                                :listener listener}]
 
-    ;; Continue popping and running activations while they exist.
-    (loop [activation (mem/pop-activation! transient-memory)
-           last-group nil
-           ]
+    (let [activation-group-fn (.-activation-group-fn ^clara.rules.memory.TransientLocalMemory transient-memory)]
 
-      (if activation
+      ;; Continue popping and running activations while they exist.
+      (loop [activation (mem/pop-activation! transient-memory)
+             last-group nil]
 
-        (let [{:keys [node token]} activation
-              activation-group ((.-activation-group-fn transient-memory) (:production node))]
+        (if activation
 
-          ;; Flush updates after an activation group has completed.
-          (when (and last-group
-                     (not= activation-group last-group ))
-            (flush-updates *current-session*))
+          (let [{:keys [node token]} activation
+                activation-group (activation-group-fn (:production node) )]
 
-          (binding [*rule-context* {:token token :node node}]
+            ;; Flush updates after an activation group has completed.
+            (when (and last-group
+                       (not= activation-group last-group ))
+              (flush-updates *current-session*))
 
-            ((:rhs node) token (:env (:production node)))
+            (binding [*rule-context* {:token token :node node}]
 
-            ;; Explicitly flush updates if we are in a no-loop rule, so the no-loop
-            ;; will be in context for child rules.
-            (when (get-in node [:production :props :no-loop])
-              (flush-updates *current-session*)))
+              ;; Fire the rule itself.
+              ((:rhs node) token (:env (:production node)))
 
-          (recur (mem/pop-activation! transient-memory)
-                 activation-group))
+              ;; Explicitly flush updates if we are in a no-loop rule, so the no-loop
+              ;; will be in context for child rules.
+              (when (some-> node :production :props :no-loop)
+                (flush-updates *current-session*)))
 
-        ;; No activations remaining, so flush outstanding updates and check if more are created.
-        (do
-          (flush-updates *current-session*)
+            (recur (mem/pop-activation! transient-memory)
+                   activation-group))
 
-          (when-let [activation (mem/pop-activation! transient-memory)]
-            (recur activation nil)))))))
+          ;; No activations remaining, so flush outstanding updates and check if more are created.
+          (do
+            (flush-updates *current-session*)
+
+            (when-let [activation (mem/pop-activation! transient-memory)]
+              (recur activation nil))))))))
 
 (deftype LocalSession [rulebase memory transport listener get-alphas-fn]
   ISession
