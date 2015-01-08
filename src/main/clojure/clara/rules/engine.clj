@@ -169,6 +169,9 @@
   (alpha-activate [node facts memory transport listener])
   (alpha-retract [node facts memory transport listener]))
 
+;; Record indicating pending insertion or removal of a sequence of facts.
+(defrecord PendingUpdate [type facts])
+
 ;; Active session during rule execution.
 (def ^:dynamic *current-session* nil)
 
@@ -180,15 +183,19 @@
   [current-session]
 
   (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} current-session
-        facts @(:pending-facts current-session)]
+        pending-updates @(:pending-updates current-session)]
 
     ;; Remove the facts here so they are re-inserted if we flush recursively.
-    (reset! (:pending-facts current-session) [])
+    (reset! (:pending-updates current-session) [])
 
-    (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
+    (doseq [partition (partition-by :type pending-updates)
+            :let [facts (mapcat :facts partition)]
+            [alpha-roots fact-group] (get-alphas-fn facts)
             root alpha-roots]
 
-      (alpha-activate root fact-group transient-memory transport listener))))
+      (if (= :insert (:type (first partition)))
+        (alpha-activate root fact-group transient-memory transport listener)
+        (alpha-retract root fact-group transient-memory transport listener)))))
 
 (defn insert-facts!
   "Perform the actual fact insertion, optionally making them unconditional."
@@ -207,7 +214,12 @@
         (l/insert-facts-logical! listener node token facts)
         ))
 
-    (swap! (:pending-facts *current-session*) into facts)))
+    (swap! (:pending-updates *current-session*) into [(->PendingUpdate :insert facts)])))
+
+(defn retract-facts!
+  "Perform the fact retraction."
+  [facts]
+  (swap! (:pending-updates *current-session*) into [(->PendingUpdate :retract facts)]))
 
 ;; Record for the production node in the Rete network.
 (defrecord ProductionNode [id production rhs]
@@ -250,13 +262,16 @@
     ;; Retract any insertions that occurred due to the retracted token.
     (let [insertions (mem/remove-insertions! memory node tokens)]
 
-      (when *current-session*
+      ;; If there is current session with rules firing, add these items to the queue
+      ;; to be retracted so they occur in the same order as facts being inserted.
 
-        (flush-updates *current-session*))
+      ;; If there is no current session with rules firing, we can simply retract these now.
 
-      (doseq [[cls fact-group] (group-by type insertions)
-              root (get-in (mem/get-rulebase memory) [:alpha-roots cls])]
-        (alpha-retract root fact-group memory transport listener))))
+      (if *current-session*
+        (retract-facts! insertions)
+        (doseq [[cls fact-group] (group-by type insertions)
+                root (get-in (mem/get-rulebase memory) [:alpha-roots cls])]
+          (alpha-retract root fact-group memory transport listener)))))
 
   (get-join-keys [node] [])
 
@@ -776,7 +791,7 @@
                                :transport transport
                                :insertions (atom 0)
                                :get-alphas-fn get-alphas-fn
-                               :pending-facts (atom [])
+                               :pending-updates (atom [])
                                :listener listener}]
 
     (let [activation-group-fn (.-activation-group-fn ^clara.rules.memory.TransientLocalMemory transient-memory)]

@@ -8,6 +8,7 @@
             [clara.rules.compiler :as com]
             [clara.rules.accumulators :as acc]
             [clara.rules.dsl :as dsl]
+            [clara.tools.tracing :as t]
             [clojure.set :as s]
             [clojure.edn :as edn]
             [clojure.walk :as walk]
@@ -1347,8 +1348,8 @@
 ;; Tests to insure an item inserted and retracted during a rule fire sequence
 ;; is properly removed.
 (deftest test-retract-inserted-during-rule
-  (let [history (dsl/parse-rule [[?t <- (acc/distinct) :from [Temperature]]]
-                                (insert! (->TemperatureHistory ?t)))
+  (let [history (dsl/parse-rule [[?temps <- (acc/distinct) :from [Temperature]]]
+                                (insert! (->TemperatureHistory ?temps)))
 
         temp-query (dsl/parse-query [] [[?t <- TemperatureHistory]])
 
@@ -1360,10 +1361,17 @@
 
         ;; The bug this is testing dependend on rule order, so we test
         ;; multiple orders.
-        session1 (-> (mk-session [create-data temp-query history])
-                     (fire-rules))
+        session1  (-> (mk-session [create-data temp-query history])
+                      (t/with-tracing)
+                      (fire-rules))
 
         session2 (-> (mk-session [history create-data temp-query])
+                     (fire-rules))
+
+        session3 (-> (mk-session [history temp-query create-data])
+                     (fire-rules))
+
+        session4 (-> (mk-session [temp-query create-data history])
                      (fire-rules))]
 
     ;; We should match an empty list to start.
@@ -1371,7 +1379,9 @@
                                          (->Temperature 25 "MCI")
                                          (->Temperature 30 "SFO")})}]
            (query session1 temp-query)
-           (query session2 temp-query)))))
+           (query session2 temp-query)
+           (query session3 temp-query)
+           (query session4 temp-query)))))
 
 (deftest test-query-for-many-added-elements
   (let [n 6000
@@ -1443,7 +1453,7 @@
                                           [?temp-count <- (acc/count) :from [Temperature (some? temperature) (<= temperature ?cold-temp)]]]
                                          (insert! ^{:type :temp-counter} {:count ?temp-count}))
         cold-temp-count-query (dsl/parse-query [] [[:temp-counter [{:keys [count]}] (= ?count count)]])
-        
+
 
         session  (reduce insert
                          (mk-session [count-cold-temps
