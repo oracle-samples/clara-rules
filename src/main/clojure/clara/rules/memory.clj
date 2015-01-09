@@ -76,6 +76,9 @@
   ;; activations are pending.
   (pop-activation! [memory])
 
+  ;; Returns the group of the next activation, or nil if none are pending.
+  (next-activation-group [memory])
+
   ;; Remove the given activations from the working memory.
   (remove-activations! [memory production activations])
 
@@ -271,6 +274,11 @@
           (.put activation-map key remaining))
 
         (first value))))
+
+  (next-activation-group [memory]
+    (when (not (.isEmpty activation-map))
+      (let [^java.util.Map$Entry entry (.firstEntry activation-map)]
+        (.getKey entry))))
 
   (remove-activations! [memory production to-remove]
     (let [activation-group (activation-group-fn production)]

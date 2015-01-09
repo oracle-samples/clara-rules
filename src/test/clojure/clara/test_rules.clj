@@ -1383,6 +1383,45 @@
            (query session3 temp-query)
            (query session4 temp-query)))))
 
+
+(deftest test-retract-inserted-during-rule-with-salience
+  (let [history (dsl/parse-rule [[?temps <- (acc/distinct) :from [Temperature]]]
+                                (insert! (->TemperatureHistory ?temps))
+                                {:salience -10})
+
+        temp-query (dsl/parse-query [] [[?t <- TemperatureHistory]])
+
+        ;; Rule only for creating data when fired to expose this bug.
+        create-data (dsl/parse-rule []
+                                    (insert! (->Temperature 20 "MCI")
+                                             (->Temperature 25 "MCI")
+                                             (->Temperature 30 "SFO")))
+
+        ;; The bug this is testing dependend on rule order, so we test
+        ;; multiple orders.
+        session1  (-> (mk-session [create-data temp-query history])
+                      (t/with-tracing)
+                      (fire-rules))
+
+        session2 (-> (mk-session [history create-data temp-query])
+                                    (fire-rules))
+
+        session3 (-> (mk-session [history temp-query create-data])
+                                    (fire-rules))
+
+        session4 (-> (mk-session [temp-query create-data history])
+                                    (fire-rules))]
+
+
+    ;; We should match an empty list to start.
+    (is (= [{:?t (->TemperatureHistory #{(->Temperature 20 "MCI")
+                                         (->Temperature 25 "MCI")
+                                         (->Temperature 30 "SFO")})}]
+           (query session1 temp-query)
+           (query session2 temp-query)
+           (query session3 temp-query)
+           (query session4 temp-query)))))
+
 (deftest test-query-for-many-added-elements
   (let [n 6000
         temp-query (dsl/parse-query [] [[Temperature (= ?t temperature)]])

@@ -76,6 +76,9 @@
   ;; activations are pending.
   (pop-activation! [memory])
 
+  ;; Returns the group of the next activation, or nil if none are pending.
+  (next-activation-group [memory])
+
   ;; Remove the given activations from the working memory.
   (remove-activations! [memory production activations])
 
@@ -273,6 +276,11 @@
                 (assoc activation-map key remaining)))
 
         (first value))))
+
+  ;; Returns the group of the next activation, or nil if none are pending.
+  (next-activation-group [memory]
+    (let [[key val] (first activation-map)]
+      key))
 
   (remove-activations! [memory production to-remove]
     (let [activation-group (activation-group-fn production)]

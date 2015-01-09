@@ -794,21 +794,20 @@
                                :pending-updates (atom [])
                                :listener listener}]
 
-    (let [activation-group-fn (.-activation-group-fn ^clara.rules.memory.TransientLocalMemory transient-memory)]
+    (loop [next-group (mem/next-activation-group transient-memory)
+           last-group nil]
 
-      ;; Continue popping and running activations while they exist.
-      (loop [activation (mem/pop-activation! transient-memory)
-             last-group nil]
+      (if next-group
 
-        (if activation
+        (if (and last-group (not= last-group next-group))
 
-          (let [{:keys [node token]} activation
-                activation-group (activation-group-fn (:production node) )]
+          ;; We have changed groups, so flush the updates from the previous
+          ;; group before continuing.
+          (do
+            (flush-updates *current-session*)
+            (recur (mem/next-activation-group transient-memory) next-group))
 
-            ;; Flush updates after an activation group has completed.
-            (when (and last-group
-                       (not= activation-group last-group ))
-              (flush-updates *current-session*))
+          (when-let [{:keys [node token]} (mem/pop-activation! transient-memory)]
 
             (binding [*rule-context* {:token token :node node}]
 
@@ -820,15 +819,15 @@
               (when (some-> node :production :props :no-loop)
                 (flush-updates *current-session*)))
 
-            (recur (mem/pop-activation! transient-memory)
-                   activation-group))
+            (recur (mem/next-activation-group transient-memory) next-group)))
 
-          ;; No activations remaining, so flush outstanding updates and check if more are created.
-          (do
-            (flush-updates *current-session*)
+        (do
+          (flush-updates *current-session*)
 
-            (when-let [activation (mem/pop-activation! transient-memory)]
-              (recur activation nil))))))))
+          ;; See if any new activations were creatd
+          (when-let [following-group (mem/next-activation-group transient-memory)]
+            (recur following-group next-group)))))))
+
 
 (deftype LocalSession [rulebase memory transport listener get-alphas-fn]
   ISession
