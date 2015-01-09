@@ -94,25 +94,35 @@
   the working memories with large numbers of insertions and retractions
   can cause lazy sequences to become deeply nested."
   [set coll]
-  (loop [f (first coll)
-         r (rest coll)
-         to-remove set
-         result (transient [])]
+  (if (= 1 (count set))
 
-    (if f
-      (if (to-remove f)
+    ;; Optimization for special case of one item to remove,
+    ;; which occurs frequently.
+    (let [item-to-remove (first set)]
+      (into (take-while #(not= item-to-remove %) coll)
+            (rest (drop-while #(not= item-to-remove %) coll))))
 
-        (recur (first r)
-               (rest r)
-               (disj to-remove f)
-               result)
+    (loop [f (first coll)
+           r (rest coll)
+           to-remove (if (set? set)
+                       set
+                       (clojure.core/set set))
+           result (transient [])]
 
-        (recur (first r)
-               (rest r)
-               to-remove
-               (conj! result f)))
+      (if f
+        (if (to-remove f)
 
-      (persistent! result))))
+          (recur (first r)
+                 (rest r)
+                 (disj to-remove f)
+                 result)
+
+          (recur (first r)
+                 (rest r)
+                 to-remove
+                 (conj! result f)))
+
+        (persistent! result)))))
 
 (declare ->PersistentLocalMemory)
 
@@ -284,7 +294,7 @@
     (let [activation-group (activation-group-fn production)]
       (.put activation-map
             activation-group
-            (remove-first-of-each (set to-remove)
+            (remove-first-of-each to-remove
                                   (.get activation-map activation-group)))))
 
   (clear-activations! [memory]
