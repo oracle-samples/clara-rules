@@ -1,5 +1,9 @@
 This is a history of changes to clara-rules.
 
+### 0.8.2
+* Batch up inserts done by rules and apply them as a group. See [issue 58](https://github.com/rbrush/clara-rules/issues/58).
+* Optimize some internal functions based on real-world profiling.
+
 ### 0.8.1
 * Fix stack overflow under workloads with many indivdually inserted facts. See [issue 76](https://github.com/rbrush/clara-rules/pull/76).
 
