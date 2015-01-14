@@ -10,13 +10,13 @@
   (to-transient [memory]))
 
 (defprotocol IMemoryReader
-  ;; Returns the rulebase associated with the given memor.
+  ;; Returns the rulebase associated with the given memory.
   (get-rulebase [memory])
 
   ;; Returns the elements assoicated with the given node.
   (get-elements [memory node bindings])
 
-  ;; Returns all elements associated with the given node, regarldess of bindings.
+  ;; Returns all elements associated with the given node, regardless of bindings.
   (get-elements-all [memory node])
 
   ;; Returns the tokens associated with the given node.
@@ -157,7 +157,7 @@
     (vals (get beta-memory (:id node) {})))
 
   (get-accum-reduced [memory node join-bindings fact-bindings]
-    (get-in accum-memory [(:id node) join-bindings fact-bindings]))
+    (get-in accum-memory [(:id node) join-bindings fact-bindings] ::no-accum-reduced))
 
   (get-accum-reduced-all [memory node join-bindings]
     (get
@@ -342,7 +342,10 @@
     (flatten (vals (get beta-memory (:id node) {}))))
 
   (get-accum-reduced [memory node join-bindings fact-bindings]
-    (get-in accum-memory [(:id node) join-bindings fact-bindings]))
+    ;; nil is a valid previously reduced value that can be found in the map.
+    ;; Return ::no-accum-reduced instead of nil when there is no previously
+    ;; reduced value in memory.
+    (get-in accum-memory [(:id node) join-bindings fact-bindings] ::no-accum-reduced))
 
   (get-accum-reduced-all [memory node join-bindings]
     (get

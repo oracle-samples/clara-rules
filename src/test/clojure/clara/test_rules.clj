@@ -1509,6 +1509,128 @@
     ;; All temperatures are under the Cold temperature threshold.
     (is (= #{{:?count 6000}} (set (query session cold-temp-count-query))))))
 
+(def maybe-nil-min-temp (accumulate
+                         :reduce-fn (fn [value item]
+                                      (let [t (:temperature item)]
+                                        ;; When no :temperature return `value`.
+                                        ;; Note: `value` could be nil.
+                                        (if (and t 
+                                                 (or (= value nil)
+                                                     (< t (:temperature value))))
+                                          item
+                                          value)))))
+
+(deftest test-nil-accum-reduced-has-tokens-retracted-when-new-item-inserted
+  ;;
+  ;; Using a simple AccumulateNode.
+  ;;
+  (let [coldest-temp-rule (dsl/parse-rule [[?coldest <- maybe-nil-min-temp :from [Temperature]]]
+                                          
+                                          (insert! (->Cold (:temperature ?coldest))))
+        
+        coldest-temp-query (dsl/parse-query [] [[?cold <- Cold]])
+        
+        temp-nil (->Temperature nil "MCI")
+        temp-10 (->Temperature 10 "MCI")
+        
+        session (mk-session [coldest-temp-rule coldest-temp-query])
+        insert-nil-first-session (-> session
+                                     (insert temp-nil)
+                                     (insert temp-10)
+                                     fire-rules)
+        insert-nil-second-session (-> session
+                                      (insert temp-10)
+                                      (insert temp-nil)
+                                      fire-rules)]
+
+    (is (= (count (query insert-nil-first-session coldest-temp-query))
+           (count (query insert-nil-second-session coldest-temp-query)))
+        "Failed expected counts when flipping insertion order for AccumulateNode.")
+
+    (is (= #{{:?cold (->Cold 10)}}
+           (set (query insert-nil-first-session coldest-temp-query))
+           (set (query insert-nil-second-session coldest-temp-query)))
+        "Failed expected query results when flipping insertion order for AccumulateNode.")
+
+    ;;
+    ;; Using a special AccumulateWithJoinNode.
+    ;;    
+    (let [coldest-temp-rule (dsl/parse-rule [[:max-threshold [{:keys [temperature]}]
+                                              (= ?max-temp temperature)]
+
+                                             ;; Note a non-equality based unification.
+                                             ;; Gets max temp under a given max threshold.
+                                             [?coldest <- maybe-nil-min-temp :from [Temperature
+                                                                                    ;; Gracefully handle nil.
+                                                                                    (< (or temperature 0)
+                                                                                       ?max-temp)]]]
+                                          
+                                            (insert! (->Cold (:temperature ?coldest))))
+        
+        session (mk-session [coldest-temp-rule coldest-temp-query])
+        insert-nil-first-session (-> session
+                                     (insert (with-meta {:temperature 15} {:type :max-threshold}))
+                                     (insert temp-nil)
+                                     (insert temp-10)
+                                     fire-rules)
+        insert-nil-second-session (-> session
+                                      (insert (with-meta {:temperature 15} {:type :max-threshold}))
+                                      (insert temp-10)
+                                      (insert temp-nil)
+                                      fire-rules)]
+      
+    (is (= (count (query insert-nil-first-session coldest-temp-query))
+           (count (query insert-nil-second-session coldest-temp-query)))
+        "Failed expected counts when flipping insertion order for AccumulateWithJoinNode.")
+
+    (is (= #{{:?cold (->Cold 10)}}
+           (set (query insert-nil-first-session coldest-temp-query))
+           (set (query insert-nil-second-session coldest-temp-query)))
+        "Failed expected query results when flipping insertion order for AccumulateWithJoinNode."))))
+
+(deftest test-nil-accum-reduced-has-tokens-retracted-when-item-retracted
+  ;;
+  ;; Using a simple AccumulateNode.
+  ;;
+  (let [coldest-temp-rule (dsl/parse-rule [[?coldest <- maybe-nil-min-temp :from [Temperature]]]
+
+                                          (insert! (->Cold (:temperature ?coldest))))
+
+        coldest-temp-query (dsl/parse-query [] [[?cold <- Cold]])
+
+        nil-temp (->Temperature nil "MCI")
+        session (-> (mk-session [coldest-temp-rule coldest-temp-query])
+                    (insert nil-temp)
+                    (retract nil-temp)
+                    fire-rules)]
+    
+    (is (empty? (set (query session coldest-temp-query)))
+        "Failed expected empty query results for AccumulateNode.")
+
+    ;;
+    ;; Using a special AccumulateWithJoinNode.
+    ;;
+    (let [coldest-temp-rule (dsl/parse-rule [[:max-threshold [{:keys [temperature]}]
+                                              (= ?max-temp temperature)]
+
+                                             ;; Note a non-equality based unification.
+                                             ;; Gets max temp under a given max threshold.
+                                             [?coldest <- maybe-nil-min-temp :from [Temperature
+                                                                                    ;; Gracefully handle nil.
+                                                                                    (< (or temperature 0)
+                                                                                       ?max-temp)]]]
+                                            
+                                            (insert! (->Cold (:temperature ?coldest))))
+
+          session (-> (mk-session [coldest-temp-rule coldest-temp-query])
+                      (insert (with-meta {:temperature 10} {:type :max-threshold}))
+                      (insert nil-temp)
+                      (retract nil-temp)
+                      fire-rules)]
+      
+      (is (empty? (set (query session coldest-temp-query)))
+          "Failed expected empty query results for AccumulateWithJoinNode."))))
+
 (def external-type :temperature)
 
 (def external-constant 20)
