@@ -451,12 +451,22 @@
         (if matching-node
           (assoc matching-node
             :children
-            (add-to-beta-tree (:children matching-node) more (s/union bindings cond-bindings) production))
+            (add-to-beta-tree (:children matching-node)
+                              more
+                              (cond-> (s/union bindings cond-bindings)
+                                      result-binding (conj result-binding)
+                                      (:fact-binding condition) (conj (:fact-binding condition)))
+                              production))
 
           (cond->
            {:node-type node-type
             :condition condition
-            :children (add-to-beta-tree [] more (s/union bindings cond-bindings) production)
+            :children (add-to-beta-tree []
+                                        more
+                                        (cond-> (s/union bindings cond-bindings)
+                                                result-binding (conj result-binding)
+                                                (:fact-binding condition) (conj (:fact-binding condition)))
+                                        production)
             :env (or env {})}
 
            ;; Add the join bindings to join, accumulator or negation nodes.

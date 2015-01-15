@@ -139,6 +139,33 @@
     (fire-rules session)
     (is (= nil @rule-output))))
 
+(deftest test-join-with-fact-binding
+  (let [rule-output (atom nil)
+        same-wind-and-temp (dsl/parse-rule [[?t <- Temperature]
+                                            [?w <- WindSpeed (= ?t windspeed)]]
+                                           (reset! rule-output ?w))
+
+        session (mk-session [same-wind-and-temp])]
+
+    ;; The bound item in windspeed does not match the temperature,
+    ;; so this should have no result.
+    (-> session
+        (insert (->Temperature 10  "MCI"))
+        (insert (->WindSpeed (->Temperature 20 "MCI") "MCI"))
+        (fire-rules))
+
+    (is (= nil @rule-output))
+
+    (reset! rule-output nil)
+
+    (-> session
+        (insert (->Temperature 10  "MCI"))
+        (insert (->WindSpeed (->Temperature 10 "MCI") "MCI"))
+        (fire-rules))
+
+    (is (= (->WindSpeed (->Temperature 10 "MCI") "MCI")
+           @rule-output))))
+
 (deftest test-simple-query
   (let [cold-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]])
 
@@ -1514,7 +1541,7 @@
                                       (let [t (:temperature item)]
                                         ;; When no :temperature return `value`.
                                         ;; Note: `value` could be nil.
-                                        (if (and t 
+                                        (if (and t
                                                  (or (= value nil)
                                                      (< t (:temperature value))))
                                           item
@@ -1525,14 +1552,14 @@
   ;; Using a simple AccumulateNode.
   ;;
   (let [coldest-temp-rule (dsl/parse-rule [[?coldest <- maybe-nil-min-temp :from [Temperature]]]
-                                          
+
                                           (insert! (->Cold (:temperature ?coldest))))
-        
+
         coldest-temp-query (dsl/parse-query [] [[?cold <- Cold]])
-        
+
         temp-nil (->Temperature nil "MCI")
         temp-10 (->Temperature 10 "MCI")
-        
+
         session (mk-session [coldest-temp-rule coldest-temp-query])
         insert-nil-first-session (-> session
                                      (insert temp-nil)
@@ -1554,7 +1581,7 @@
 
     ;;
     ;; Using a special AccumulateWithJoinNode.
-    ;;    
+    ;;
     (let [coldest-temp-rule (dsl/parse-rule [[:max-threshold [{:keys [temperature]}]
                                               (= ?max-temp temperature)]
 
@@ -1564,9 +1591,9 @@
                                                                                     ;; Gracefully handle nil.
                                                                                     (< (or temperature 0)
                                                                                        ?max-temp)]]]
-                                          
+
                                             (insert! (->Cold (:temperature ?coldest))))
-        
+
         session (mk-session [coldest-temp-rule coldest-temp-query])
         insert-nil-first-session (-> session
                                      (insert (with-meta {:temperature 15} {:type :max-threshold}))
@@ -1578,7 +1605,7 @@
                                       (insert temp-10)
                                       (insert temp-nil)
                                       fire-rules)]
-      
+
     (is (= (count (query insert-nil-first-session coldest-temp-query))
            (count (query insert-nil-second-session coldest-temp-query)))
         "Failed expected counts when flipping insertion order for AccumulateWithJoinNode.")
@@ -1603,7 +1630,7 @@
                     (insert nil-temp)
                     (retract nil-temp)
                     fire-rules)]
-    
+
     (is (empty? (set (query session coldest-temp-query)))
         "Failed expected empty query results for AccumulateNode.")
 
@@ -1619,7 +1646,7 @@
                                                                                     ;; Gracefully handle nil.
                                                                                     (< (or temperature 0)
                                                                                        ?max-temp)]]]
-                                            
+
                                             (insert! (->Cold (:temperature ?coldest))))
 
           session (-> (mk-session [coldest-temp-rule coldest-temp-query])
@@ -1627,7 +1654,7 @@
                       (insert nil-temp)
                       (retract nil-temp)
                       fire-rules)]
-      
+
       (is (empty? (set (query session coldest-temp-query)))
           "Failed expected empty query results for AccumulateWithJoinNode."))))
 
