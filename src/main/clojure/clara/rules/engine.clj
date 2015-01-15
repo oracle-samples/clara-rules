@@ -568,13 +568,13 @@
 
       ;; If the accumulation result was previously calculated, retract it
       ;; from the children.
-      (when previous
+      (when (not= :clara.rules.memory/no-accum-reduced previous)
 
         (doseq [token (mem/get-tokens memory node join-bindings)]
           (retract-accumulated node accum-condition accumulator result-binding token previous bindings transport memory listener)))
 
       ;; Combine the newly reduced values with any previous items.
-      (let [combined (if previous
+      (let [combined (if (not= :clara.rules.memory/no-accum-reduced previous)
                        ((:combine-fn accumulator) previous reduced)
                        reduced)]
 
@@ -604,7 +604,7 @@
             :let [previous (mem/get-accum-reduced memory node join-bindings bindings)]
 
             ;; No need to retract anything if there was no previous item.
-            :when previous
+            :when (not= :clara.rules.memory/no-accum-reduced previous)
 
             ;; Get all of the previously matched tokens so we can retract and re-send them.
             token matched-tokens
@@ -706,9 +706,11 @@
     ;; and emit child tokens.
     (doseq [:let [matched-tokens (mem/get-tokens memory node join-bindings)]
             [bindings candidates] binding-candidates-seq
-            :let [previous-candidates (mem/get-accum-reduced memory node join-bindings bindings)]]
+            :let [previous-candidates (mem/get-accum-reduced memory node join-bindings bindings)
+                  previously-reduced? (not= :clara.rules.memory/no-accum-reduced previous-candidates)
+                  previous-candidates (when previously-reduced? previous-candidates)]]
 
-      (when previous-candidates
+      (when previously-reduced?
 
         (doseq [token (mem/get-tokens memory node join-bindings)
                 :let [previous-accum-result (do-accumulate accumulator join-filter-fn token previous-candidates)]]
@@ -747,7 +749,7 @@
             :let [previous-candidates (mem/get-accum-reduced memory node join-bindings bindings)]
 
             ;; No need to retract anything if there was no previous item.
-            :when previous-candidates
+            :when (not= :clara.rules.memory/no-accum-reduced previous-candidates)
 
             ;; Get all of the previously matched tokens so we can retract and re-send them.
             token matched-tokens
