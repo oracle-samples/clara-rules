@@ -166,6 +166,14 @@
     (is (= (->WindSpeed (->Temperature 10 "MCI") "MCI")
            @rule-output))))
 
+(deftest test-invalid-result-binding
+  (let [rule-output (atom nil)
+        same-wind-and-temp (dsl/parse-rule [[?t <- (acc/min :temperature :returns-fact true) :from [Temperature]]
+                                            [?w <- WindSpeed (= ?t windspeed)]]
+                                           (reset! rule-output ?w))]
+
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"accumulator" (mk-session [same-wind-and-temp])))))
+
 (deftest test-simple-query
   (let [cold-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]])
 

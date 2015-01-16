@@ -443,6 +443,13 @@
                           {:node-type :query
                            :query production})]
 
+    (when (some #{result-binding} bindings)
+      (throw (ex-info (str "Using accumulator result bindings in other expressions in a rule"
+                           " left-hand side is currently not supported. Binding: "
+                           result-binding
+                           " in production " (or (:name production) production) )
+                      {:condition condition})))
+
     (vec
      (conj
       other-nodes
