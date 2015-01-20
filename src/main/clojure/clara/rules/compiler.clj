@@ -413,7 +413,7 @@
         join-filter-expressions (if (and (= :accumulator node-type)
                                            (some non-equality-unification? (:constraints condition)))
 
-                                    (assoc condition :constraints  (filterv non-equality-unification? (:constraints condition)) )
+                                    (assoc condition :constraints (filterv non-equality-unification? (:constraints condition)))
 
                                     nil)
 
@@ -653,7 +653,8 @@
                    [condition]
                    ;; There were test constraints created, so the processed constraints
                    ;; and generated test condition.
-                   [(assoc condition :constraints processed-constraints)
+                   [(assoc condition :constraints processed-constraints
+                           :original-constraints constraints)
                     {:constraints test-constraints}  ])]
 
     expanded))
@@ -848,7 +849,9 @@
                ;; Create an accumulator structure for use when examining the node or the tokens
                ;; it produces.
                {:accumulator (:accumulator beta-node)
-                :from condition}
+                ;; Include the original filter expressions in the constraints for inspection tooling.
+                :from (update-in condition [:constraints]
+                                 into (-> beta-node :join-filter-expressions :constraints))}
                compiled-accum
                (eval (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node)))
                (:result-binding beta-node)

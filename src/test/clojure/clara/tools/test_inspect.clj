@@ -54,3 +54,73 @@
     ;; Ensure the first condition in the rule matches the expected facts.
     (is (= [(->Temperature 15 "MCI") (->Temperature 10 "MCI")]
            (get-in rule-dump [:condition-matches  (first (:lhs cold-rule))])))))
+
+
+(deftest test-accum-inspect
+  (let [lowest-temp (accumulate
+                     :reduce-fn (fn [value item]
+                                  (if (or (= value nil)
+                                          (< (:temperature item) (:temperature value) ))
+                                    item
+                                    value)))
+        coldest-query (dsl/parse-query [] [[?t <- lowest-temp from [Temperature]]])
+
+        session (-> (mk-session [coldest-query])
+                    (insert (->Temperature 15 "MCI"))
+                    (insert (->Temperature 10 "MCI"))
+                    (insert (->Temperature 80 "MCI")))]
+
+    (let [accum-condition (-> coldest-query :lhs  first (select-keys [:accumulator :from]))
+          query-explanations (-> (inspect session) (:query-matches) (get coldest-query) )]
+
+      (is (= [(map->Explanation {:matches [[(->Temperature 10 "MCI") accum-condition]]
+                                 :bindings {:?t (->Temperature 10 "MCI")}})]
+             query-explanations)))))
+
+
+(deftest test-accum-join-inspect
+  (let [lowest-temp (accumulate
+                     :reduce-fn (fn [value item]
+                                  (if (or (= value nil)
+                                          (< (:temperature item) (:temperature value) ))
+                                    item
+                                    value)))
+
+        ;; Get the coldest temperature at MCI that is warmer than the temperature in STL.
+        colder-query (dsl/parse-query [] [[Temperature (= "STL" location) (= ?stl-temperature temperature)]
+                                          [?t <- lowest-temp from [Temperature (> temperature ?stl-temperature)
+                                                                               (= "MCI location")]]])
+
+        session (-> (mk-session [colder-query] :cache false)
+                    (insert (->Temperature 15 "MCI"))
+                    (insert (->Temperature 10 "MCI"))
+                    (insert (->Temperature 20 "STL"))
+                    (insert (->Temperature 80 "MCI"))
+                    (insert (->Temperature 25 "MCI")))]
+
+    (let [matches (-> (inspect session) (:query-matches) (get colder-query) first :matches)]
+      (doseq [[fact node-data] matches]
+
+        ;; The accumulator condition should have two constraints.
+        (when (:accumulator node-data)
+          (is (= 2 (-> node-data :from :constraints (count)))))))))
+
+(deftest test-extract-test-inspect
+  (let [distinct-temps-query (dsl/parse-query [] [[Temperature (< temperature 20)
+                                                               (= ?t1 temperature)]
+
+                                                  [Temperature (< temperature 20)
+                                                               (= ?t2 temperature)
+                                                               (< ?t1 temperature)]])
+
+        session  (-> (mk-session [distinct-temps-query] :cache false)
+                     (insert (->Temperature 15 "MCI"))
+                     (insert (->Temperature 10 "MCI"))
+                     (insert (->Temperature 80 "MCI")))]
+
+    ;; Ensure that no returned contraint includes a generated variable name.
+    (doseq [{:keys [matches bindings]} (-> (inspect session) :query-matches (get distinct-temps-query))
+            [fact {:keys [ type constraints]}] matches
+            term (flatten constraints)]
+      (is (not (and (symbol? term)
+                    (.startsWith (name term) "?__gen" )))))))

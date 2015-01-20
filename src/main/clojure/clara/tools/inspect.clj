@@ -40,27 +40,25 @@
      {}
      join-nodes)))
 
-
-(defn- to-explanation
-  "Helper function to convert a token to explanation records."
-  [session {:keys [matches bindings] :as token}]
-  (let [id-to-node (get-in (eng/components session) [:rulebase :id-to-node])]
-         (->Explanation
-          ;; Convert matches to explanation structure.
-          (for [[fact node-id] matches]
-            [fact (-> node-id (id-to-node) (:condition))])
-          bindings)))
-
 (defn- to-explanations
   "Helper function to convert tokens to explanation records."
   [session tokens]
   (let [id-to-node (get-in (eng/components session) [:rulebase :id-to-node])]
-       (for [{:keys [matches bindings]} tokens]
-         (->Explanation
-          ;; Convert matches to explanation structure.
-          (for [[fact node-id] matches]
-            [fact (-> node-id (id-to-node) (:condition))])
-          bindings))))
+
+    (for [{:keys [matches bindings]} tokens]
+      (->Explanation
+       ;; Convert matches to explanation structure.
+       (for [[fact node-id] matches
+             :let [node (id-to-node node-id)
+                   condition (if (:accum-condition node)
+                               (:accum-condition node)
+                               {:type (:type (:condition node))
+                                :constraints (or (:original-constraints (:condition node))
+                                                 (:constraints (:condition node)))})]]
+         [fact condition])
+
+       ;; Remove generated bindings from user-facing explanation.
+       (into {} (remove (fn [[k v]] (.startsWith (name k) "?__gen__")) bindings))))))
 
 (sm/defn inspect
   " Returns a representation of the given rule session useful to understand the
@@ -118,9 +116,9 @@
                          [rule
                           (for [token (mem/get-tokens-all memory rule-node)
                                 insertion (mem/get-insertions memory rule-node token)]
-                            {:explanation (to-explanation session token) :fact insertion})]))}))
+                            {:explanation (first (to-explanations session [token])) :fact insertion})]))}))
 
-(defn explain-activation
+(defn- explain-activation
   "Prints a human-readable explanation of the facts and conditions that created the Rete token."
   ([explanation] (explain-activation explanation ""))
   ([explanation prefix]
@@ -140,22 +138,35 @@
            (println prefix "  where" constraints))))))
 
 (defn explain-activations
-  "Prints a human-friend explanation of why rules and queries matched in the given session."
-  [session]
-  (doseq [[rule explanations] (:rule-matches (inspect session))
-          :when (seq explanations)]
-    (println "rule"  (or (:name rule) (str "<" (:lhs rule) ">")))
-    (println "  executed")
-    (println "   " (:rhs rule))
-    (doseq [explanation explanations]
-      (println "  because")
-      (explain-activation explanation "    "))
-    (println))
+  "Prints a human-friend explanation of why rules and queries matched in the given session.
+  A caller my optionally pass a :rule-filter-fn, which is a predicate
 
-  (doseq [[rule explanations] (:query-matches (inspect session))
-          :when (seq explanations)]
-    (println "query"  (or (:name rule) (str "<" (:lhs rule) ">")))
-    (doseq [explanation explanations]
-      (println "  qualified because")
-      (explain-activation explanation "    "))
-    (println)))
+  (clara.tools.inspect/explain-activations session
+         :rule-filter-fn (fn [rule] (re-find my-rule-regex (:name rule))))"
+
+  [session & {:keys [rule-filter-fn] :as options}]
+  (let [filter-fn (or rule-filter-fn (constantly true))]
+
+    (doseq [[rule explanations] (:rule-matches (inspect session))
+            :when (filter-fn rule)
+            :when (seq explanations)]
+      (println "rule"  (or (:name rule) (str "<" (:lhs rule) ">")))
+      (println "  executed")
+      (println "   " (:rhs rule))
+      (doseq [explanation explanations]
+        (println "  with bindings")
+        (println "    " (:bindings explanation))
+        (println "  because")
+        (explain-activation explanation "    "))
+      (println))
+
+    (doseq [[rule explanations] (:query-matches (inspect session))
+            :when (filter-fn rule)
+            :when (seq explanations)]
+      (println "query"  (or (:name rule) (str "<" (:lhs rule) ">")))
+      (doseq [explanation explanations]
+        (println "  with bindings")
+        (println "    " (:bindings explanation))
+        (println "  qualified because")
+        (explain-activation explanation "    "))
+      (println))))

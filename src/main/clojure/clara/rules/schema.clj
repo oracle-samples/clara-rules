@@ -25,6 +25,8 @@
 (def FactCondition
   {:type s/Any ;(s/either s/Keyword (s/pred symbol?))
    :constraints [(s/pred list? "s-expression")]
+   ;; Original constraints preserved for tooling in case a transformation was applied to the condition.
+   (s/optional-key :original-constraints) [(s/pred list? "s-expression")]
    (s/optional-key :fact-binding) s/Keyword
    (s/optional-key :args) s/Any
    })
