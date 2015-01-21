@@ -1,5 +1,10 @@
 This is a history of changes to clara-rules.
 
+### 0.8.3
+* Fix for truth maintenance when an accumulator produces a nil value. See [issue 79](https://github.com/rbrush/clara-rules/pull/79).
+* Use bound facts in unification. See [issue 80](https://github.com/rbrush/clara-rules/issues/80).
+* Improve inspection and explainability support in the clara.tools.inspect namespace.
+
 ### 0.8.2
 * Batch up inserts done by rules and apply them as a group. See [issue 58](https://github.com/rbrush/clara-rules/issues/58).
 * Optimize some internal functions based on real-world profiling.
