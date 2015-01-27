@@ -101,7 +101,7 @@
 
     (if constructor-info
       (into {}
-            (for [{field :name} (first (:method-params constructor-info))]
+            (for [field (first (:method-params constructor-info))]
               [field (keyword (name field))]))
       [])))
 
