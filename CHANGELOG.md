@@ -1,5 +1,8 @@
 This is a history of changes to clara-rules.
 
+### 0.8.4
+* Ensure all truth maintenance updates are flushed. See [issue 83](https://github.com/rbrush/clara-rules/issues/83).
+
 ### 0.8.3
 * Fix for truth maintenance when an accumulator produces a nil value. See [issue 79](https://github.com/rbrush/clara-rules/pull/79).
 * Use bound facts in unification. See [issue 80](https://github.com/rbrush/clara-rules/issues/80).
@@ -49,21 +52,21 @@ This is a major refactoring of the Clara engine, turning all rule and Rete netwo
 
 * [Rules as Data Support](http://www.toomuchcode.org/blog/2014/01/19/rules-as-data/)
 * [ClojureScript Rete network on the server side](https://github.com/rbrush/clara-rules/issues/34)
-	
+
 ### 0.3.0
 * [ClojureScript support](https://github.com/rbrush/clara-rules/issues/4)
 * [No-loop option for rules](https://github.com/rbrush/clara-rules/issues/23)
-* [Improved variable binding](https://github.com/rbrush/clara-rules/pull/26)	
-	
+* [Improved variable binding](https://github.com/rbrush/clara-rules/pull/26)
+
 ### 0.2.2
-* [Accumulators should always fire if all variables can be bound](https://github.com/rbrush/clara-rules/issues/22)	
-	
+* [Accumulators should always fire if all variables can be bound](https://github.com/rbrush/clara-rules/issues/22)
+
 ### 0.2.1
 A fix release with some internal optimizations, including the following:
-	
+
 * [Use activation list for rules](https://github.com/rbrush/clara-rules/issues/19)
-* [Support symbols with "-" in them](https://github.com/rbrush/clara-rules/issues/20)	
-	
+* [Support symbols with "-" in them](https://github.com/rbrush/clara-rules/issues/20)
+
 ### 0.2.0
 * [Remove need for == macro](https://github.com/rbrush/clara-rules/pull/18)
 * [Support for arbitrary Clojure maps](https://github.com/rbrush/clara-rules/issues/6)

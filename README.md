@@ -1,6 +1,6 @@
 # clara
 
-Clara is a forward-chaining rules engine written in Clojure with Java interoperability. 
+Clara is a forward-chaining rules engine written in Clojure with Java interoperability.
 
 The expression of arbitrary, frequently changing business logic is a major source of complexity. Clara aims to rein in this complexity by untangling business logic, expressing it as composable rules while leveraging the advantages of the Clojure and Java ecosystems. Clara should be usable as a Clojure library to simplify our logic or as an alternative to other Java-based rules engines like Drools.
 
@@ -8,7 +8,7 @@ Objectives include:
 
 * Embrace immutability. The rule engine's working memory is a persistent Clojure data structure that can participate in transactions. All changes produce a new working memory that shares state with the previous.
 * Rule constraints and actions are Clojure s-expressions.
-* Working memory facts are typically Clojure records or Java objects following the Java Bean conventions. 
+* Working memory facts are typically Clojure records or Java objects following the Java Bean conventions.
 * Support the major advantages of existing rules systems, such as explainability of why a rule fired and automatic truth maintenance.
 * Collections of facts can be reasoned with using accumulators similar to Jess or Drools. These accumulators leverage the reducers API and are transparently parallelized.
 
@@ -53,7 +53,7 @@ Here's a simple example. The [clara-examples project](https://github.com/rbrush/
 Add the following to your project.clj:
 
 ```clj
-[org.toomuchcode/clara-rules "0.8.3"]
+[org.toomuchcode/clara-rules "0.8.4"]
 ```
 
 or to your Maven POM:
@@ -62,7 +62,7 @@ or to your Maven POM:
 <dependency>
   <groupId>org.toomuchcode</groupId>
   <artifactId>clara-rules</artifactId>
-  <version>0.8.3</version>
+  <version>0.8.4</version>
 </dependency>
 ```
 
@@ -79,5 +79,3 @@ or to your Maven POM:
 Copyright © 2014 Ryan Brush
 
 Distributed under the Eclipse Public License, the same as Clojure.
-
-
