@@ -507,6 +507,37 @@
     (is (= #{{}}
            (set (query session-retracted not-cold-query))))))
 
+(deftest negation-truth-maintenance
+  (let [make-hot (dsl/parse-rule [[WindSpeed]] ; Hack to only insert item on rule activation.
+                                 (insert! (->Temperature 100 "MCI")))
+
+        not-hot (dsl/parse-rule [[:not [Temperature (> temperature 80)]]]
+                                (insert! (->Cold 0)))
+
+        cold-query (dsl/parse-query [] [[?c <- Cold]])
+
+        session (-> (mk-session [make-hot not-hot cold-query] :cache false)
+                    (fire-rules))]
+
+    ;; The cold fact should exist because nothing matched the negation.
+    (is (= [{:?c (->Cold 0)}] (query session cold-query)))
+
+    ;; The cold fact should be retracted because inserting this
+    ;; triggers an insert that matches the negation.
+    (is (empty? (-> session
+                    (insert (->WindSpeed 100 "MCI"))
+                    (fire-rules)
+                    (query cold-query))))
+
+    ;; The cold fact should exist again because we are indirectly retracting
+    ;; the fact that matched the negation originially
+    (is (= [{:?c (->Cold 0)}]
+           (-> session
+               (insert (->WindSpeed 100 "MCI"))
+               (fire-rules)
+               (retract (->WindSpeed 100 "MCI"))
+               (fire-rules)
+               (query cold-query))))))
 
 (deftest test-negation-with-other-conditions
   (let [windy-but-not-cold-query (dsl/parse-query [] [[WindSpeed (> windspeed 30) (= ?w windspeed)]

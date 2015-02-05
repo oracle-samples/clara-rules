@@ -179,7 +179,8 @@
 (def ^:dynamic *rule-context* nil)
 
 (defn- flush-updates
-  "Flush pending updates in the current session."
+  "Flush pending updates in the current session. Returns true if there were some items to flush,
+  false otherwise"
   [current-session]
 
   (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} current-session
@@ -195,7 +196,9 @@
 
       (if (= :insert (:type (first partition)))
         (alpha-activate root fact-group transient-memory transport listener)
-        (alpha-retract root fact-group transient-memory transport listener)))))
+        (alpha-retract root fact-group transient-memory transport listener)))
+
+    (not (empty? pending-updates))))
 
 (defn insert-facts!
   "Perform the actual fact insertion, optionally making them unconditional."
@@ -809,26 +812,28 @@
             (flush-updates *current-session*)
             (recur (mem/next-activation-group transient-memory) next-group))
 
-          (when-let [{:keys [node token]} (mem/pop-activation! transient-memory)]
+          (do
 
-            (binding [*rule-context* {:token token :node node}]
+            ;; If there are activations, fire them.
+            (when-let [{:keys [node token]} (mem/pop-activation! transient-memory)]
 
-              ;; Fire the rule itself.
-              ((:rhs node) token (:env (:production node)))
+              (binding [*rule-context* {:token token :node node}]
 
-              ;; Explicitly flush updates if we are in a no-loop rule, so the no-loop
-              ;; will be in context for child rules.
-              (when (some-> node :production :props :no-loop)
-                (flush-updates *current-session*)))
+                ;; Fire the rule itself.
+                ((:rhs node) token (:env (:production node)))
+
+                ;; Explicitly flush updates if we are in a no-loop rule, so the no-loop
+                ;; will be in context for child rules.
+                (when (some-> node :production :props :no-loop)
+                  (flush-updates *current-session*))))
 
             (recur (mem/next-activation-group transient-memory) next-group)))
 
-        (do
-          (flush-updates *current-session*)
-
-          ;; See if any new activations were creatd
-          (when-let [following-group (mem/next-activation-group transient-memory)]
-            (recur following-group next-group)))))))
+        ;; There were no items to be activated, so flush any pending
+        ;; updates and recur with a potential new activation group
+        ;; since a flushed item may have triggered one.
+        (when (flush-updates *current-session*)
+          (recur (mem/next-activation-group transient-memory) next-group))))))
 
 
 (deftype LocalSession [rulebase memory transport listener get-alphas-fn]
