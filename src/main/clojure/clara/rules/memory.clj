@@ -89,40 +89,63 @@
   (to-persistent! [memory]))
 
 (defn remove-first-of-each
-  "Remove the first instance of each item in the given set that
-  appears in the collection. This function does so eagerly since
+  "Remove the first instance of each item in the given remove-seq that
+  appears in the collection.  This also tracks which items were found
+  and removed.  Returns a tuple of the form:
+  [items-removed coll-with-items-removed]
+  This function does so eagerly since
   the working memories with large numbers of insertions and retractions
   can cause lazy sequences to become deeply nested."
-  [set coll]
-  (if (= 1 (count set))
+  [remove-seq coll]
+  (cond
+
+    ;; There is nothing to remove.
+    (empty? remove-seq) [[] coll]
 
     ;; Optimization for special case of one item to remove,
     ;; which occurs frequently.
-    (let [item-to-remove (first set)]
-      (into (take-while #(not= item-to-remove %) coll)
-            (rest (drop-while #(not= item-to-remove %) coll))))
+    (= 1 (count remove-seq))
 
-    (loop [f (first coll)
-           r (rest coll)
-           to-remove (if (set? set)
-                       set
-                       (clojure.core/set set))
-           result (transient [])]
+    (let [item-to-remove (first remove-seq)
+          [before-it [it & after-it]] (split-with #(not= item-to-remove %) coll)
+          removed (if it [it] [])]
+      [removed (into before-it after-it)])
 
-      (if f
-        (if (to-remove f)
+    ;; Otherwise, perform a linear search for items to remove.
+    :else (loop [f (first coll)
+                 r (rest coll)
+                 [remove-seq items-removed result] [remove-seq (transient []) (transient [])]]
 
-          (recur (first r)
-                 (rest r)
-                 (disj to-remove f)
-                 result)
+            (if f
+              (recur (first r)
+                     (rest r)
 
-          (recur (first r)
-                 (rest r)
-                 to-remove
-                 (conj! result f)))
+                     ;; Determine if f matches any of the items to remove.
+                     (loop [to-remove (first remove-seq)
+                            remove-seq (rest remove-seq)
+                            ;; Remember what is left to remove for later.
+                            left-to-remove (transient [])]
 
-        (persistent! result)))))
+                       ;; Try to find if f matches anything to-remove.
+                       (if to-remove
+                         (if (= to-remove f)
+
+                           ;; Found a match, so the search is done.
+                           [(persistent! (reduce conj! left-to-remove remove-seq))
+                            (conj! items-removed to-remove)
+                            result]
+
+                           ;; Keep searching for a match.
+                           (recur (first remove-seq)
+                                  (rest remove-seq)
+                                  (conj! left-to-remove to-remove)))
+
+                         ;; No matches found.
+                         [(persistent! left-to-remove)
+                          items-removed
+                          (conj! result f)])))
+
+              [(persistent! items-removed) (persistent! result)]))))
 
 (declare ->PersistentLocalMemory)
 
@@ -194,16 +217,15 @@
   (remove-elements! [memory node join-bindings elements]
     (let [binding-element-map (get alpha-memory (:id node) {})
           previous-elements (get binding-element-map join-bindings [])
-          element-set (set elements)
-          filtered-elements (remove-first-of-each element-set previous-elements)]
+          [removed-elements filtered-elements] (remove-first-of-each elements previous-elements)]
 
       (set! alpha-memory
             (assoc! alpha-memory
                     (:id node)
                     (assoc binding-element-map join-bindings filtered-elements)))
 
-      ;; return the removed elements.
-      (s/intersection element-set (set previous-elements))))
+      ;; Return the removed elements.
+      removed-elements))
 
   (add-tokens! [memory node join-bindings tokens]
     (let [binding-token-map (get beta-memory (:id node) {})
@@ -217,17 +239,16 @@
   (remove-tokens! [memory node join-bindings tokens]
     (let [binding-token-map (get beta-memory (:id node) {})
           previous-tokens (get binding-token-map join-bindings [])
-          token-set (set tokens)
-          filtered-tokens (remove-first-of-each token-set previous-tokens)]
+          [removed-tokens filtered-tokens] (remove-first-of-each tokens previous-tokens)]
 
       (set! beta-memory
             (assoc! beta-memory
                     (:id node)
                     (assoc binding-token-map join-bindings filtered-tokens)))
 
-      ;; return the removed elements.
-      (s/intersection token-set (set previous-tokens))))
-
+      ;; Return the removed tokens.
+      removed-tokens))
+  
   (add-accum-reduced! [memory node join-bindings accum-result fact-bindings]
 
     (set! accum-memory
@@ -294,8 +315,8 @@
     (let [activation-group (activation-group-fn production)]
       (.put activation-map
             activation-group
-            (remove-first-of-each to-remove
-                                  (.get activation-map activation-group)))))
+            (second (remove-first-of-each to-remove
+                                          (.get activation-map activation-group))))))
 
   (clear-activations! [memory]
     (.clear activation-map))

@@ -759,8 +759,7 @@
 
             ;; Compute the new version with the retracted information.
             :let [previous-result (do-accumulate accumulator join-filter-fn token previous-candidates)
-                  remove-set #{fact}
-                  new-result (do-accumulate accumulator join-filter-fn token (mem/remove-first-of-each remove-set previous-candidates))]]
+                  new-result (do-accumulate accumulator join-filter-fn token (second (mem/remove-first-of-each [fact] previous-candidates)))]]
 
       ;; Add our newly retracted information to our node.
       (mem/add-accum-reduced! memory node join-bindings new-result bindings)
