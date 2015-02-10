@@ -563,7 +563,6 @@
 
     (is (empty? cold-result))))
 
-
 (deftest test-negated-conjunction
   (let [not-cold-and-windy (dsl/parse-query [] [[:not [:and
                                                        [WindSpeed (> windspeed 30)]
@@ -602,6 +601,71 @@
     (is (= #{{}}
            (set (query session-retracted not-cold-or-windy))))))
 
+(deftest test-negation-with-complex-retractions
+  (let [;; Non-blocked rule, where "blocked" means there is a
+        ;; negated condition "guard".
+        first-to-second (dsl/parse-rule [[First]]
+
+                                        (insert! (->Second)))
+
+        ;; Single blocked rule.
+        blocked-first-to-fourth-third (dsl/parse-rule [[:not [Second]]
+                                                       [First]]
+                                                      
+                                                      (insert! (->Fourth)
+                                                               (->Third)))
+
+        ;; Double blocked rule.
+        double-blocked-fourth (dsl/parse-query [] [[:not [Second]]
+                                                   [:not [Third]]
+                                                   [?fourth <- Fourth]])
+
+        ;; Just to ensure the query can be matched sometimes.
+        session-with-results (-> (mk-session [first-to-second
+                                              blocked-first-to-fourth-third
+                                              double-blocked-fourth]
+                                             :cache false)
+                                 (insert (->Fourth))
+                                 fire-rules)
+        
+        ;; Let the rules engine perform rule activations in any order.
+        session-no-salience (-> (mk-session [first-to-second
+                                             blocked-first-to-fourth-third
+                                             double-blocked-fourth]
+                                            :cache false)
+                                (insert (->First))
+                                (insert (->Fourth))
+                                fire-rules)
+
+        ;; The simplest path is to evaluate the rule activations starting with
+        ;; non-blocked -> blocked -> double blocked.
+        session-best-order-salience (-> (mk-session [(assoc first-to-second :props {:salience 2})
+                                                     (assoc blocked-first-to-fourth-third :props {:salience 1})
+                                                     double-blocked-fourth]
+                                                    :cache false)
+                                        (insert (->First))
+                                        (insert (->Fourth))
+                                        fire-rules)
+
+        ;; The most taxing path on the TMS is to evaluate the rule activations starting with
+        ;; double blocked -> blocked -> non-blocked.
+        session-worst-order-salience (-> (mk-session [(assoc first-to-second :props {:salience -2})
+                                                      (assoc blocked-first-to-fourth-third :props {:salience -1})
+                                                      double-blocked-fourth]
+                                                     :cache false)
+                                         (insert (->First))
+                                         (insert (->Fourth))
+                                         fire-rules)]
+
+    (is (= #{{:?fourth (->Fourth)}}
+           (set (query session-with-results double-blocked-fourth))))
+    
+    ;; All of these should return the same thing - :salience shouldn't
+    ;; affect outcomes for logical inserts.
+    
+    (is (empty? (query session-no-salience double-blocked-fourth)))
+    (is (empty? (query session-best-order-salience double-blocked-fourth)))
+    (is (empty? (query session-worst-order-salience double-blocked-fourth)))))
 
 (deftest test-simple-retraction
   (let [cold-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]])

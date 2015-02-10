@@ -436,6 +436,7 @@
       (send-tokens transport memory listener children tokens)))
 
   (left-retract [node join-bindings tokens memory transport listener]
+    (mem/remove-tokens! memory node join-bindings tokens)
     (when (empty? (mem/get-elements memory node join-bindings))
       (retract-tokens transport memory listener children tokens)))
 
