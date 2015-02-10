@@ -182,10 +182,17 @@
        :else
        (list (list 'if exp (cons 'do compiled-rest) nil))))))
 
+(defn flatten-expression
+  "Flattens expression as clojure.core/flatten does, except will flatten
+   anything that is a collection rather than specifically sequential."
+  [expression]
+  (filter (complement coll?)
+          (tree-seq coll? seq expression)))
+
 (defn variables-as-keywords
   "Returns symbols in the given s-expression that start with '?' as keywords"
   [expression]
-  (into #{} (for [item (flatten expression)
+  (into #{} (for [item (flatten-expression expression)
                   :when (and (symbol? item)
                              (= \? (first (name item))))]
               (keyword  item))))
@@ -379,7 +386,7 @@
                                   (not (#{'= '==} (first form)))
                                   (some (fn [sym] (and (symbol? sym)
                                                       (.startsWith (name sym) "?")))
-                                        form))
+                                        (flatten-expression form)))
 
                          (reset! found-complex true))
 
@@ -586,7 +593,7 @@
                                 (not (#{'= '==} (first form)))
                                 (some (fn [sym] (and (symbol? sym)
                                                     (.startsWith (name sym) "?")))
-                                      (flatten form)))
+                                      (flatten-expression form)))
 
                          (doseq [item (rest form)
                                  :when (and (symbol? item)

@@ -775,7 +775,7 @@
 (defn variables-as-keywords
   "Returns symbols in the given s-expression that start with '?' as keywords"
   [expression]
-  (into #{} (for [item (flatten expression)
+  (into #{} (for [item (tree-seq coll? seq expression)
                   :when (and (symbol? item)
                              (= \? (first (name item))))]
               (keyword item))))
