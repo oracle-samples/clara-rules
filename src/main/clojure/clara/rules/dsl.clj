@@ -184,7 +184,7 @@
 
                            (assoc (meta rhs) :file *file*)))}
 
-        symbols (set (filter symbol? (flatten (concat lhs rhs))))
+        symbols (set (filter symbol? (com/flatten-expression (concat lhs rhs))))
         matching-env (into {} (for [sym (keys env)
                                     :when (symbols sym)
                                     ]
@@ -206,7 +206,7 @@
                                        conditions))
                :params (set params)}
 
-        symbols (set (filter symbol? (flatten lhs)))
+        symbols (set (filter symbol? (com/flatten-expression lhs)))
         matching-env (into {}
                            (for [sym (keys env)
                                  :when (symbols sym)]

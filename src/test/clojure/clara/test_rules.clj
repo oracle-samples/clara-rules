@@ -1890,3 +1890,26 @@
           (fire-rules))
 
       (is (= [100 50 0 -50] @salience-rule-output)))))
+
+(deftest test-variable-visibility
+  (let [temps-for-locations (dsl/parse-rule [[:location (= ?loc (:loc this))]
+
+                                             [Temperature
+                                              (= ?temp temperature)
+                                              ;; This can only have one binding right
+                                              ;; now due to work that needs to be done
+                                              ;; still in clara.rules.compiler/extract-from-constraint
+                                              ;; around support multiple bindings in a condition.
+                                              (contains? #{?loc} location)]]
+
+                                            (insert! (->Cold ?temp)))
+        
+        find-cold (dsl/parse-query [] [[?c <- Cold]])
+
+        session (-> (mk-session [temps-for-locations find-cold])
+                    (insert ^{:type :location} {:loc "MCI"})
+                    (insert (->Temperature 10 "MCI"))
+                    fire-rules)]
+
+    (is (= #{{:?c (->Cold 10)}}
+           (set (query session find-cold))))))
