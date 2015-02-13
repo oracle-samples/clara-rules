@@ -417,26 +417,30 @@
 
     (is (true? @fired?))))
 
-(deftest test-accumulator-with-test-join
+(deftest test-accumulator-with-test-join-single-type
   "Tests an accumulator that does a join based on an arbitrary predicate."
   (let [colder-than-mci-query (dsl/parse-query []
-                                               [(Temperature (= "MCI" location) (= ?mci-temp temperature))
+                                               [[Temperature (= "MCI" location) (= ?mci-temp temperature)]
                                                 [?colder-temps <- (acc/all)
-                                                 :from [Temperature (< temperature  ?mci-temp)]]])
+                                                 :from [Temperature (< temperature ?mci-temp)]]])
 
         session (mk-session [colder-than-mci-query] :cache false)
 
         ;; Checks the result of the session for different permutations of input.
         check-result (fn [session]
-                       (is (= {:?mci-temp 15
-                               :?colder-temps #{(->Temperature 10 "ORD")
-                                                (->Temperature 5 "LGA")}}
+                       (let [results (query session colder-than-mci-query)]
 
-                              ;; Convert temps to a set, since ordering isn't guaranteed.
-                              (update-in
-                               (first (query session colder-than-mci-query))
-                               [:?colder-temps]
-                               set))))]
+                         (is (= 1 (count results)))
+                         
+                         (is (= {:?mci-temp 15
+                                 :?colder-temps #{(->Temperature 10 "ORD")
+                                                  (->Temperature 5 "LGA")}}
+
+                                ;; Convert temps to a set, since ordering isn't guaranteed.
+                                (update-in
+                                 (first results)
+                                 [:?colder-temps]
+                                 set)))))]
 
     ;; Simple insertion of facts at once.
     (check-result (-> session
@@ -482,9 +486,225 @@
                       (insert (->Temperature 15 "MCI"))
                       (retract (->Temperature 15 "MCI"))
                       (insert (->Temperature 15 "MCI"))
-                      (fire-rules)))
+                      (fire-rules)))))
 
-    ))
+(deftest ^{:doc "Testing that a join filter accumulate node with no initial value will
+                 only propagate results when candidate facts pass the join filter."}
+  test-accumulator-with-test-join-multi-type
+  (let [get-cold-temp (dsl/parse-query [] [[?cold <- Cold]])
+
+        get-min-temp-under-threshold (dsl/parse-rule [[?threshold <- :temp-threshold]
+
+                                                   [?min-temp <- (acc/min :temperature)
+                                                    :from
+                                                    [Temperature
+                                                     (< temperature (:temperature ?threshold))]]]
+
+                                                     (insert! (->Cold ?min-temp)))
+
+        ;; Test assertion helper.
+        assert-query-results (fn [test-name session & expected-results]
+                               
+                               (is (= (count expected-results)
+                                      (count (query session get-cold-temp)))
+                                   (str test-name))
+                               
+                               (is (= (set expected-results)
+                                      (set (query session get-cold-temp)))
+                                   (str test-name)))
+        
+        thresh-10 ^{:type :temp-threshold} {:temperature 10}
+        thresh-20 ^{:type :temp-threshold} {:temperature 20}
+
+        temp-5-mci (->Temperature 5 "MCI")
+        temp-10-lax (->Temperature 10 "LAX")
+        temp-20-mci (->Temperature 20 "MCI")
+        
+        session (mk-session [get-cold-temp get-min-temp-under-threshold])]
+
+    ;; No temp tests - no firing
+
+    (assert-query-results 'no-thresh-no-temps
+                          session)
+    
+    (assert-query-results 'one-thresh-no-temps
+                          (-> session
+                              (insert thresh-10)
+                              fire-rules))
+
+    (assert-query-results 'retract-thresh-no-temps
+                          (-> session
+                              (insert thresh-10)
+                              fire-rules
+                              (retract thresh-10)
+                              fire-rules))
+
+    (assert-query-results 'two-thresh-no-temps
+                          (-> session
+                              (insert thresh-10)
+                              (insert thresh-20)
+                              fire-rules))
+
+    ;; With temps tests.
+    
+    (assert-query-results 'one-thresh-one-temp-no-match
+                          (-> session
+                              (insert thresh-10)
+                              (insert temp-10-lax)
+                              fire-rules))
+
+    (assert-query-results 'one-thresh-one-temp-no-match-retracted
+                          (-> session
+                              (insert thresh-10)
+                              (insert temp-10-lax)
+                              fire-rules
+                              (retract temp-10-lax)
+                              fire-rules))
+    
+    (assert-query-results 'two-thresh-one-temp-no-match
+                          (-> session
+                              (insert thresh-10)
+                              (insert thresh-20)
+                              (insert temp-20-mci)
+                              fire-rules))
+
+    (assert-query-results 'two-thresh-one-temp-two-match
+                          (-> session
+                              (insert thresh-10)
+                              (insert thresh-20)
+                              (insert temp-5-mci)
+                              fire-rules)
+
+                          {:?cold (->Cold 5)}
+                          {:?cold (->Cold 5)})
+
+    (assert-query-results 'one-thresh-one-temp-one-match
+                          (-> session
+                              (insert thresh-20)
+                              (insert temp-5-mci)
+                              fire-rules)
+
+                          {:?cold (->Cold 5)})
+
+    (assert-query-results 'retract-thresh-one-temp-one-match
+                          (-> session
+                              (insert thresh-20)
+                              (insert temp-5-mci)
+                              fire-rules
+                              (retract thresh-20)
+                              fire-rules))
+    
+    (assert-query-results 'one-thresh-two-temp-one-match
+                          (-> session
+                              (insert thresh-20)
+                              (insert temp-5-mci)
+                              (insert temp-20-mci)
+                              fire-rules)
+
+                          {:?cold (->Cold 5)})
+
+    (assert-query-results 'one-thresh-one-temp-one-match-retracted
+                          (-> session
+                              (insert thresh-20)
+                              (insert temp-5-mci)
+                              fire-rules
+                              (retract temp-5-mci)
+                              fire-rules))
+    
+    (assert-query-results 'one-thresh-two-temp-two-match
+                          (-> session
+                              (insert thresh-20)
+                              (insert temp-5-mci)
+                              (insert temp-10-lax)
+                              fire-rules)
+
+                          {:?cold (->Cold 5)})))
+
+(deftest ^{:doc "A test to make sure the appropriate data is held in the memory 
+                 of accumulate node with join filter is correct upon right-retract."}
+  test-accumulator-with-test-join-retract-accumulated-use-new-result
+  (let [coldest-temp (dsl/parse-rule [[?thresh <- :temp-threshold]
+                                      [?temp <- (acc/max :temperature)
+                                       :from [Temperature (< temperature (:temperature ?thresh))]]]
+                                     
+                                     (insert! (->Cold ?temp)))
+
+        find-cold (dsl/parse-query [] [[?c <- Cold]])
+
+        thresh-20 ^{:type :temp-threshold} {:temperature 20}
+        
+        temp-10-mci (->Temperature 10 "MCI")
+        temp-15-lax (->Temperature 15 "LAX")
+
+        cold-results (-> (mk-session [coldest-temp find-cold])
+                         (insert thresh-20
+                                 temp-10-mci)
+                         ;; Retract it and add it back so that an
+                         ;; accumulate happens on the intermediate
+                         ;; node memory state.
+                         (retract temp-10-mci)
+                         (insert temp-10-mci)
+                         fire-rules
+                         (query find-cold))]
+
+    (is (= [{:?c (->Cold 10)}]
+           cold-results))))
+
+(deftest ^{:doc "A test that ensures that when candidate facts are grouped by bindings in a 
+                 join filter accumulator that has an initial-value to propagate, that the value
+                 is propagated for empty groups."}
+  test-accumulator-with-init-and-binding-groups
+  (let [get-temp-history (dsl/parse-query [] [[?his <- TemperatureHistory]])
+
+        get-temps-under-threshold (dsl/parse-rule [[?threshold <- :temp-threshold]
+
+                                                   [?temps <- (acc/all) :from [Temperature (= ?loc location)
+                                                                               (< temperature (:temperature ?threshold))]]]
+
+                                                  (insert! (->TemperatureHistory ?temps)))
+
+        thresh-11 ^{:type :temp-threshold} {:temperature 11}
+        thresh-20 ^{:type :temp-threshold} {:temperature 20}
+
+        temp-10-mci (->Temperature 10 "MCI")
+        temp-15-lax (->Temperature 15 "LAX")
+        temp-20-mci (->Temperature 20 "MCI")
+        
+        session (mk-session [get-temp-history get-temps-under-threshold])
+
+        two-groups-one-init (-> session
+                                (insert thresh-11
+                                        temp-10-mci
+                                        temp-15-lax
+                                        temp-20-mci)
+                                fire-rules
+                                (query get-temp-history))
+
+        two-groups-no-init (-> session
+                               (insert thresh-20
+                                       temp-10-mci
+                                       temp-15-lax
+                                       temp-20-mci)
+                               fire-rules
+                               (query get-temp-history))]
+
+    (is (= [{:?his (->TemperatureHistory [])}]
+           (-> session
+               (insert thresh-11)
+               fire-rules
+               (query get-temp-history))))
+
+    (is (= 2 (count two-groups-one-init)))
+    (is (= #{{:?his (->TemperatureHistory [])}
+             {:?his (->TemperatureHistory [temp-10-mci])}}
+
+           (set two-groups-one-init)))
+
+    (is (= 2 (count two-groups-no-init)))
+    (is (= #{{:?his (->TemperatureHistory [temp-15-lax])}
+             {:?his (->TemperatureHistory [temp-10-mci])}}
+
+           (set two-groups-no-init)))))
 
 (deftest test-simple-negation
   (let [not-cold-query (dsl/parse-query [] [[:not [Temperature (< temperature 20)]]])
