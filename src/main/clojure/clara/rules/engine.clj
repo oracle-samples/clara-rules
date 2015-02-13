@@ -627,12 +627,19 @@
         (send-accumulated node accum-condition accumulator result-binding token retracted bindings transport memory listener)))))
 
 (defn- do-accumulate
-  "Runs the actual accumulation."
+  "Runs the actual accumulation.  Returns the accumulated value if there are candidate facts
+   that match the join filter or if there is an :initial-value to propagate from the accumulator.
+   If neither of these conditions are true, ::no-accum-result is returned to indicate so.
+   Note:  A returned value of nil is not the same as ::no-accum-result.  A nil value may be the result
+          of running the accumulator over facts matching the token."
   [accumulator join-filter-fn token candidate-facts]
   (let [filtered-facts (filter #(join-filter-fn token % {}) candidate-facts)] ;; TODO: and env
-    (r/reduce (:reduce-fn accumulator)
-              (:initial-value accumulator)
-              filtered-facts)))
+
+    (if (or (:initial-value accumulator) (seq filtered-facts))
+      (r/reduce (:reduce-fn accumulator)
+                (:initial-value accumulator)
+                filtered-facts)
+      ::no-accum-result)))
 
 ;; A specialization of the AccumulateNode that supports additional tests
 ;; that have to occur on the beta side of the network. The key difference between this and the simple
@@ -656,7 +663,10 @@
          (doseq [[fact-bindings candidate-facts] grouped-candidate-facts
 
                  ;; Filter to items that match the incoming token, then apply the accumulator.
-                 :let [accum-result (do-accumulate accumulator join-filter-fn token candidate-facts)]]
+                 :let [accum-result (do-accumulate accumulator join-filter-fn token candidate-facts)]
+
+                 ;; There is nothing to propagate if nothing was accumulated.
+                 :when (not= ::no-accum-result accum-result)]
 
            (send-accumulated node accum-condition accumulator result-binding token accum-result fact-bindings transport memory listener))
 
@@ -688,7 +698,11 @@
     (let [grouped-candidate-facts (mem/get-accum-reduced-all memory node join-bindings)]
       (doseq [token (mem/remove-tokens! memory node join-bindings tokens)
               [fact-bindings candidate-facts] grouped-candidate-facts
-              :let [accum-result (do-accumulate accumulator join-filter-fn token candidate-facts)]]
+
+              :let [accum-result (do-accumulate accumulator join-filter-fn token candidate-facts)]
+
+              ;; There is nothing to retract if nothing was accumulated.
+              :when (not= ::no-accum-result accum-result)]
 
         (retract-accumulated node accum-condition accumulator result-binding token accum-result fact-bindings transport memory listener))))
 
@@ -717,7 +731,11 @@
       (when previously-reduced?
 
         (doseq [token (mem/get-tokens memory node join-bindings)
-                :let [previous-accum-result (do-accumulate accumulator join-filter-fn token previous-candidates)]]
+
+                :let [previous-accum-result (do-accumulate accumulator join-filter-fn token previous-candidates)]
+
+                ;; There is nothing to retract if nothing was accumulated.
+                :when (not= ::no-accum-result previous-accum-result)]
 
           (retract-accumulated node accum-condition accumulator result-binding token previous-accum-result bindings transport memory listener)))
 
@@ -728,7 +746,11 @@
 
         (mem/add-accum-reduced! memory node join-bindings combined-candidates bindings)
         (doseq [token matched-tokens
-                :let [accum-result (do-accumulate accumulator join-filter-fn token combined-candidates)]]
+
+                :let [accum-result (do-accumulate accumulator join-filter-fn token combined-candidates)]
+
+                ;; There is nothing to propagate if nothing was accumulated.
+                :when (not= ::no-accum-result accum-result)]
 
           (send-accumulated node accum-condition accumulator result-binding token accum-result bindings transport memory listener)))))
 
@@ -760,18 +782,19 @@
 
             ;; Compute the new version with the retracted information.
             :let [previous-result (do-accumulate accumulator join-filter-fn token previous-candidates)
-                  new-result (do-accumulate accumulator join-filter-fn token (second (mem/remove-first-of-each [fact] previous-candidates)))]]
+                  new-candidates (second (mem/remove-first-of-each [fact] previous-candidates))
+                  new-result (do-accumulate accumulator join-filter-fn token new-candidates)]]
 
-      ;; Add our newly retracted information to our node.
-      (mem/add-accum-reduced! memory node join-bindings new-result bindings)
+      ;; Add the new candidates to our node.
+      (mem/add-accum-reduced! memory node join-bindings new-candidates bindings)
 
-      ;; Retract the previous token.
-      (retract-accumulated node accum-condition accumulator result-binding token previous-result bindings transport memory listener)
+      ;; Retract the previous token if something was previously accumulated.
+      (when (not= ::no-accum-result previous-result)
+        (retract-accumulated node accum-condition accumulator result-binding token previous-result bindings transport memory listener))
 
-      ;; Send a new accumulated token with our new, retracted information.
-      (when new-result
+      ;; Send a new accumulated token with our new, retracted information when there is a new result.
+      (when (and new-result (not= ::no-accum-result new-result))
         (send-accumulated node accum-condition accumulator result-binding token new-result bindings transport memory listener)))))
-
 
 (defn variables-as-keywords
   "Returns symbols in the given s-expression that start with '?' as keywords"
