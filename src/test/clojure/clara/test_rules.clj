@@ -694,19 +694,87 @@
                fire-rules
                (query get-temp-history))))
 
-    (comment
-      ;; Temporarily removed; see https://github.com/rbrush/clara-rules/issues/91
-      (is (= 2 (count two-groups-one-init)))
-      (is (= #{{:?his (->TemperatureHistory [])}
-               {:?his (->TemperatureHistory [temp-10-mci])}}
+    (is (= 2 (count two-groups-one-init)))
+    (is (= #{{:?his (->TemperatureHistory [])}
+             {:?his (->TemperatureHistory [temp-10-mci])}}
 
-             (set two-groups-one-init)))
+           (set two-groups-one-init)))
 
-      (is (= 2 (count two-groups-no-init)))
-      (is (= #{{:?his (->TemperatureHistory [temp-15-lax])}
-               {:?his (->TemperatureHistory [temp-10-mci])}}
+    (is (= 2 (count two-groups-no-init)))
+    (is (= #{{:?his (->TemperatureHistory [temp-15-lax])}
+             {:?his (->TemperatureHistory [temp-10-mci])}}
 
-             (set two-groups-no-init))))))
+           (set two-groups-no-init)))))
+
+(deftest test-retract-initial-value
+  (clara.rules.compiler/clear-session-cache!)
+
+  (let [get-temp-history (dsl/parse-query [] [[?his <- TemperatureHistory]])
+
+        get-temps-under-threshold (dsl/parse-rule [[?temps <- (acc/all) :from [Temperature (= ?loc location)]]]
+
+                                                  (insert! (->TemperatureHistory ?temps)))
+
+        temp-10-mci (->Temperature 10 "MCI")
+
+        temp-history (-> (mk-session [get-temp-history get-temps-under-threshold])
+
+                         (insert temp-10-mci)
+                         (fire-rules)
+                         (query get-temp-history))
+
+        empty-history (-> (mk-session [get-temp-history get-temps-under-threshold])
+                          (fire-rules)
+                          (query get-temp-history))]
+
+    (is (= 1 (count empty-history)))
+    (is (= [{:?his (->TemperatureHistory [])}]
+            empty-history))
+
+    (is (= 1 (count temp-history)))
+    (is (= [{:?his (->TemperatureHistory [temp-10-mci])}]
+            temp-history))))
+
+(deftest test-retract-initial-value-filtered
+  (let [get-temp-history (dsl/parse-query [] [[?his <- TemperatureHistory]])
+
+        get-temps-under-threshold (dsl/parse-rule [[?threshold <- :temp-threshold]
+
+                                                   [?temps <- (acc/all) :from [Temperature (= ?loc location)
+                                                                               (< temperature (:temperature ?threshold))]]]
+
+                                                  (insert! (->TemperatureHistory ?temps)))
+
+        thresh-11 ^{:type :temp-threshold} {:temperature 11}
+
+        temp-10-mci (->Temperature 10 "MCI")
+        temp-15-lax (->Temperature 15 "LAX")
+        temp-20-mci (->Temperature 20 "MCI")
+
+        temp-history (-> (mk-session [get-temp-history get-temps-under-threshold])
+                         (insert thresh-11) ;; Explicitly insert this first to expose condition.
+                         (insert temp-10-mci
+                                 temp-15-lax
+                                 temp-20-mci)
+
+                         (fire-rules)
+                         (query get-temp-history))
+
+        empty-history (-> (mk-session [get-temp-history get-temps-under-threshold])
+                          (insert thresh-11)
+                          (fire-rules)
+                          (query get-temp-history))]
+
+    (is (= 1 (count empty-history)))
+    (is (= [{:?his (->TemperatureHistory [])}]
+            empty-history))
+
+    (is (= 2 (count temp-history)))
+    (is (= #{{:?his (->TemperatureHistory [])}
+             {:?his (->TemperatureHistory [temp-10-mci])}}
+
+           (set temp-history)))))
+
 
 (deftest test-simple-negation
   (let [not-cold-query (dsl/parse-query [] [[:not [Temperature (< temperature 20)]]])

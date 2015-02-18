@@ -570,12 +570,19 @@
             [bindings reduced] reduced-seq
             :let [previous (mem/get-accum-reduced memory node join-bindings bindings)]]
 
-      ;; If the accumulation result was previously calculated, retract it
-      ;; from the children.
-      (when (not= :clara.rules.memory/no-accum-reduced previous)
+      (if (not= :clara.rules.memory/no-accum-reduced previous)
 
+        ;; A previous value was reduced, so we need to retract it.
         (doseq [token (mem/get-tokens memory node join-bindings)]
-          (retract-accumulated node accum-condition accumulator result-binding token previous bindings transport memory listener)))
+          (retract-accumulated node accum-condition accumulator result-binding token
+                               previous bindings transport memory listener))
+
+        ;; The accumulator has an initial value that is effectively the previous result when
+        ;; there was no previous item, so retract it.
+        (when-let [initial-value (:initial-value accumulator)]
+          (doseq [token (mem/get-tokens memory node join-bindings)]
+            (retract-accumulated node accum-condition accumulator result-binding token initial-value
+                                 {result-binding initial-value} transport memory listener))))
 
       ;; Combine the newly reduced values with any previous items.
       (let [combined (if (not= :clara.rules.memory/no-accum-reduced previous)
@@ -728,16 +735,28 @@
                   previously-reduced? (not= :clara.rules.memory/no-accum-reduced previous-candidates)
                   previous-candidates (when previously-reduced? previous-candidates)]]
 
-      (when previously-reduced?
+      (if previously-reduced?
 
-        (doseq [token (mem/get-tokens memory node join-bindings)
+       ;; Items were previously reduced that matched the bindings, so retract them to
+       ;; allow the newly accumulated result to propagate.
+       (doseq [token (mem/get-tokens memory node join-bindings)
 
-                :let [previous-accum-result (do-accumulate accumulator join-filter-fn token previous-candidates)]
+               :let [previous-accum-result (do-accumulate accumulator join-filter-fn token previous-candidates)]
 
-                ;; There is nothing to retract if nothing was accumulated.
-                :when (not= ::no-accum-result previous-accum-result)]
+               ;; There is nothing to retract if nothing was accumulated.
+               :when (not= ::no-accum-result previous-accum-result)]
 
-          (retract-accumulated node accum-condition accumulator result-binding token previous-accum-result bindings transport memory listener)))
+         (retract-accumulated node accum-condition accumulator result-binding token
+                              previous-accum-result bindings transport memory listener))
+
+       ;; No items were previously reduced, but there may be an initial value that still needs to be
+       ;; retracted.
+       (when-let [initial-value (:initial-value accumulator)]
+
+         (doseq [token (mem/get-tokens memory node join-bindings)]
+
+           (retract-accumulated node accum-condition accumulator result-binding token initial-value
+                                {result-binding initial-value} transport memory listener))))
 
       ;; Combine the newly reduced values with any previous items.
       (let [combined-candidates (into previous-candidates candidates)]
