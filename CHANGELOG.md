@@ -1,5 +1,10 @@
 This is a history of changes to clara-rules.
 
+### 0.8.5
+* Fix specific filtered accumulator bug. See [issue 89](https://github.com/rbrush/clara-rules/pull/89).
+* Allow binding variables in set and map literals. See [issue 88](https://github.com/rbrush/clara-rules/pull/88).
+* Fix truth maintenance consistency when working with equal facts. See [issue 84](https://github.com/rbrush/clara-rules/issues/84).
+
 ### 0.8.4
 * Ensure all truth maintenance updates are flushed. See [issue 83](https://github.com/rbrush/clara-rules/issues/83).
 
