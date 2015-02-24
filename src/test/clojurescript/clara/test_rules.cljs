@@ -51,9 +51,24 @@
   =>
   (insert! (->ColdAndWindy ?t ?w)))
 
+(defrule is-cold-and-windy-map
+  "A rule which uses a custom type on a map, to determine whether it
+  is indeed cold and windy"
+
+  [:temp [{degrees :degrees}] (< degrees 20) (== ?t degrees)]
+  [:wind [{mph :mph}] (> mph 30) (== ?w mph)]
+  =>
+  (insert! {:type :cold-and-windy
+            :temp ?t
+            :wind ?w}))
+
 (defquery find-cold-and-windy
     []
     [?fact <- ColdAndWindy])
+
+(defquery find-cold-and-windy-map
+    []
+    [?fact <- :cold-and-windy])
 
 (defquery wind-without-temperature
   []
@@ -65,7 +80,9 @@
   [WindSpeed (== ?w windspeed) (== ?loc location)]
   [Temperature (== ?t temperature) (== ?loc location)])
 
-(defsession my-session 'clara.test-rules)  
+(defsession my-session 'clara.test-rules)
+
+(defsession my-session-map 'clara.test-rules :fact-type-fn :type)
 
 (deftest test-simple-defrule
   (let [session (insert my-session (->Temperature 10 "MCI"))]
@@ -105,6 +122,17 @@
     (is (= #{{:?fact (->ColdAndWindy 15 45)}}  
            (set 
             (query session find-cold-and-windy))))))
+
+(deftest test-simple-insert-map
+
+  (let [session (-> my-session-map
+                    (insert {:type :temp :degrees 15})
+                    (insert {:type :wind :mph 45})
+                    (fire-rules))]
+    (.log js/console "it's happening..." (str (query session find-cold-and-windy-map)))
+    (is (= #{{:?fact {:type :cold-and-windy :temp 15 :wind 45}}}
+           (set
+            (query session find-cold-and-windy-map))))))
 
 (deftest test-no-temperature
 

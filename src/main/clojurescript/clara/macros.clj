@@ -155,6 +155,7 @@ use it as follows:
 
     `(let [beta-network# ~beta-network
            alpha-nodes# ~alpha-nodes
-           productions# '~productions]
+           productions# '~productions
+           options# ~options]
        
-       (def ~name (clara.rules/assemble-session beta-network# alpha-nodes# productions# {})))))
+       (def ~name (clara.rules/assemble-session beta-network# alpha-nodes# productions# options#)))))
