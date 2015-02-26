@@ -13,10 +13,20 @@
 (defn- add-production [name production]
   (swap! env/*compiler* assoc-in [::productions (com/cljs-ns) name] production))
 
-(defn- get-productions 
+(defn- get-productions-from-namespace 
   "Returns a map of names to productions in the given namespace."
   [namespace]
-  (get-in @env/*compiler* [::productions namespace]))
+  ;; TODO: remove need for ugly eval by changing our quoting strategy.
+  (let [productions (get-in @env/*compiler* [::productions namespace])]
+    (map eval (vals productions))))
+
+(defn- get-productions
+  "Return the productions from the source"
+  [source]
+  (cond
+   (symbol? source) (get-productions-from-namespace source)
+   (coll? source) (seq source)
+   :else (throw (IllegalArgumentException. "Unknown source value type passed to defsession"))))
 
 (defmacro defrule 
   [name & body]
@@ -122,6 +132,18 @@
 (defmacro defsession 
   "Creates a sesson given a list of sources and keyword-style options, which are typically ClojureScript namespaces.
 
+  Each source is eval'ed at compile time, in Clojure (not ClojureScript.)
+
+  If the eval result is a symbol, it is presumed to be a ClojureScript
+  namespace, and all rules and queries defined in that namespace will
+  be found and used.
+
+  If the eval result is a collection, it is presumed to be a
+  collection of productions. Note that although the collection must
+  exist in the compiling Clojure runtime (since the eval happens at
+  macro-expansion time), any expressions in the rule or query
+  definitions will be executed in ClojureScript.
+
   Typical usage would be like this, with a session defined as a var:
 
 (defsession my-session 'example.namespace)
@@ -136,16 +158,14 @@ use it as follows:
      (fire-rules))  
 "
   [name & sources-and-options]
-
   (let [sources (take-while #(not (keyword? %)) sources-and-options)
         options (apply hash-map (drop-while #(not (keyword? %)) sources-and-options))
-        ;; Sources are typically quoted for consistency for the caller, so eval to unquote.
+        ;; Eval to unquote ns symbols, and to eval exprs to look up
+        ;; explicit rule sources
         sources (eval (vec sources))
-
-        ;; TODO: remove need for ugly eval by changing our quoting strategy.
-        productions (eval (vec (for [source sources 
-                                     [name production] (get-productions source)]
-                                 production)))
+        productions (vec (for [source sources
+                               production (get-productions source)]
+                           production))
 
         beta-tree (com/to-beta-tree productions) 
         beta-network (gen-beta-network beta-tree #{})
@@ -157,5 +177,4 @@ use it as follows:
            alpha-nodes# ~alpha-nodes
            productions# '~productions
            options# ~options]
-       
        (def ~name (clara.rules/assemble-session beta-network# alpha-nodes# productions# options#)))))

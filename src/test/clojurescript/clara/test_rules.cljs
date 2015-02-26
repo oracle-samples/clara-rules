@@ -1,6 +1,7 @@
 (ns clara.test-rules
   (:require-macros [cemerick.cljs.test :refer (is deftest run-tests testing)]
-                  [clara.macros :refer [defrule defsession defquery]] )
+                   [clara.macros :refer [defrule defsession defquery]]
+                   [clara.test-rules-data])
   (:require [cemerick.cljs.test :as t]
             [clara.rules.engine :as eng]
             [clara.rules.accumulators :as acc]
@@ -19,7 +20,6 @@
 
 (def simple-defrule-side-effect (atom nil))
 (def other-defrule-side-effect (atom nil))
-
 
 (defrule test-rule 
   [Temperature (< temperature 20)]
@@ -81,8 +81,9 @@
   [Temperature (== ?t temperature) (== ?loc location)])
 
 (defsession my-session 'clara.test-rules)
-
 (defsession my-session-map 'clara.test-rules :fact-type-fn :type)
+(defsession my-session-data (clara.test-rules-data/weather-rules))
+
 
 (deftest test-simple-defrule
   (let [session (insert my-session (->Temperature 10 "MCI"))]
@@ -113,7 +114,6 @@
            (set (query session coldest-query))))))
 
 (deftest test-simple-insert
-
   (let [session (-> my-session
                     (insert (->Temperature 15 "MCI"))
                     (insert (->WindSpeed 45 "MCI"))
@@ -129,10 +129,19 @@
                     (insert {:type :temp :degrees 15})
                     (insert {:type :wind :mph 45})
                     (fire-rules))]
-    (.log js/console "it's happening..." (str (query session find-cold-and-windy-map)))
     (is (= #{{:?fact {:type :cold-and-windy :temp 15 :wind 45}}}
            (set
             (query session find-cold-and-windy-map))))))
+
+(deftest test-simple-insert-data
+
+  (let [session (-> my-session-data
+                    (insert (->Temperature 15 "MCI"))
+                    (insert (->WindSpeed 45 "MCI"))
+                    (fire-rules))]
+    (is (= #{{:?fact (->ColdAndWindy 15 45)}}  
+           (set 
+            (query session "clara.test-rules-data/find-cold-and-windy-data"))))))
 
 (deftest test-no-temperature
 
