@@ -2203,3 +2203,46 @@
 
     (is (= #{{:?c (->Cold 10)}}
            (set (query session find-cold))))))
+
+(deftest test-nested-binding
+  (let [same-wind-and-temp (dsl/parse-query []
+                                            [[Temperature (= ?t temperature)]
+                                             [WindSpeed (or (= ?t windspeed)
+                                                            (= "MCI" location))]])
+
+        session (mk-session [same-wind-and-temp])]
+
+    ;; Matches because temperature and windspeed match.
+    (is (= [{:?t 10}]
+           (-> session
+               (insert (->Temperature 10  "MCI")
+                       (->WindSpeed 10  "SFO"))
+               (fire-rules)
+               (query same-wind-and-temp))))
+
+    ;; Matches because cities match.
+    (is (= [{:?t 10}]
+           (-> session
+               (insert (->Temperature 10  "MCI")
+                       (->WindSpeed 20  "MCI"))
+               (fire-rules)
+               (query same-wind-and-temp))))
+
+    ;; No match because neither city nor temperature/windspeed match.
+    (is (empty? (-> session
+                    (insert (->Temperature 10  "MCI")
+                            (->WindSpeed 20  "SFO"))
+                    (fire-rules)
+                    (query same-wind-and-temp))))))
+
+(deftest test-unmatched-nested-binding
+  ;; This should throw an exception because ?w may not be bound. There is no
+  ;; ancestor of the constraint that includes ?w, so there isn't a consitent value
+  ;; that can be associated with ?w, therefore we throw an exception when
+  ;; compiling the rules.
+  (let [same-wind-and-temp (dsl/parse-query []
+                                            [[WindSpeed (or (= "MCI" location)
+                                                            (= ?w windspeed))]])]
+
+    (is (thrown? clojure.lang.ExceptionInfo
+                 (mk-session [same-wind-and-temp])))))

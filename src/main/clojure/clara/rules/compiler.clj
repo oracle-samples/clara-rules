@@ -156,14 +156,20 @@
        (class? type) (get-bean-accessors type) ; Treat unrecognized classes as beans.
        :default []))))
 
+(defn- is-equals?
+  [cmp]
+  (and (symbol? cmp)
+       (let [cmp-str (name cmp)]
+         (or (= cmp-str "=")
+             (= cmp-str "==")))))
+
 (defn- compile-constraints [exp-seq assigment-set]
   (if (empty? exp-seq)
     `((deref ~'?__bindings__))
     (let [ [[cmp a b :as exp] & rest] exp-seq
            compiled-rest (compile-constraints rest assigment-set)
-           containEq? (and (symbol? cmp) (let [cmp-str (name cmp)] (or (= cmp-str "=") (= cmp-str "=="))))
-           a-in-assigment (and containEq? (and (symbol? a) (assigment-set (keyword a))))
-           b-in-assigment (and containEq? (and (symbol? b) (assigment-set (keyword b))))]
+           a-in-assigment (and is-equals? (and (symbol? a) (assigment-set (keyword a))))
+           b-in-assigment (and is-equals? (and (symbol? b) (assigment-set (keyword b))))]
       (cond
        a-in-assigment
        (if b-in-assigment
@@ -580,49 +586,70 @@
    :default 0
    ))
 
+(defn- is-variable?
+  "Returns true if the given expression is a variable (a symbol prefixed by ?)"
+  [expr]
+  (and (symbol? expr)
+       (.startsWith (name expr) "?")))
+
 (defn- extract-from-constraint
   "Process and extract a test expression from the constraint. Returns a pair of [processed-constraint, test-constraint],
    which can be expanded into correspoding join and test nodes.
-   The test may be nil if no extraction is necessary."
-  [constraint]
+  The test may be nil if no extraction is necessary."
+  [[op arg & rest :as constraint]]
 
-  ;; If any expression contains
-  (let [binding-map (atom {})
-        process-form (fn [form]
-                       (if (and (list? form)
-                                (not (#{'= '==} (first form)))
-                                (some (fn [sym] (and (symbol? sym)
-                                                    (.startsWith (name sym) "?")))
-                                      (flatten-expression form)))
+  (let [has-variable? (fn [expr]
+                        (some is-variable?
+                              (flatten-expression expr)))
 
-                         (doseq [item (rest form)
-                                 :when (and (symbol? item)
-                                            (not
-                                             (.startsWith (name item) "?")))]
+        binding-map (atom {})
 
-                           (swap! binding-map assoc item (gensym "?__gen__")))
-                         form))]
+        ;; Walks a constraint and updates the map of expressions
+        ;; that should be bound to symbols for use in the downstream
+        ;; test expression.
+        process-form (fn process [[op & rest :as form]]
+                       (if (not (has-variable? form))
+                         (swap! binding-map assoc form (gensym "?__gen__"))
+                         (doseq [item rest]
+                           (if (sequential? item)
+                             (process item)
+                             (when (and (not (is-variable? item))
+                                        (not (coll? item))) ;; Handle collection literals.
+                               (swap! binding-map assoc item (gensym "?__gen__")))))))]
 
-    ;; Walk the map, identifing bindings we need to extract into tests.
-    (clojure.walk/prewalk process-form constraint)
+    ;; If the constraint is a simple binding or an expression without variables,
+    ;; there is no test expression to extract.
+    (if (or (not (has-variable? constraint))
+            (and (is-equals? op)
+                 (or (and (is-variable? arg)
+                          (not (has-variable? rest)))
+                     (and (is-variable? rest)
+                          (not (has-variable? arg))))))
 
-    (if (not-empty @binding-map)
+      [[constraint] []]
 
-      ;; Replace the condition with the bindings needed for the test.
-      [(first ;; TODO: support multiple bindings in a condition?
-        (for [[form sym] @binding-map]
-          (list '= sym form)))
+      ;; The constraint had some cross-condition comparison or nested binding
+      ;; that must be extracted to a test
+      (do
 
-       ;; Create a test condition that is the same as the original, but
-       ;; with nested expressions replaced by the binding map.
-       (clojure.walk/postwalk (fn [form]
-                                (if-let [sym (get @binding-map form)]
-                                  sym
-                                  form))
-                              constraint)]
+        (process-form constraint)
 
-      ;; No test bindings found, so simply keep the constraint as is.
-      [constraint nil])))
+        (if (not-empty @binding-map)
+
+          ;; Replace the condition with the bindings needed for the test.
+          [(for [[form sym] @binding-map]
+             (list '= sym form))
+
+           ;; Create a test condition that is the same as the original, but
+           ;; with nested expressions replaced by the binding map.
+           [(clojure.walk/postwalk (fn [form]
+                                      (if-let [sym (get @binding-map form)]
+                                        sym
+                                        form))
+                                    constraint)]]
+
+          ;; No test bindings found, so simply keep the constraint as is.
+          [[constraint] []])))))
 
 (defn- extract-tests
   "Pre-process the sequence of conditions, and returns a sequence of conditions that has
@@ -650,21 +677,46 @@
   ;; item in an ancestor, do two things: modify the constraint to bind its internal items to a new
   ;; generated symbol, and add a test that does the expected check.
 
-  (for [{:keys [type constraints] :as condition} conditions
-        :let [extracted (map extract-from-constraint constraints)
-              processed-constraints (map first extracted)
-              test-constraints (->> (map second extracted)
-                                    (remove nil?))]
+  (let [expanded-items (for [{:keys [type constraints] :as condition} conditions
+                             :let [extracted (map extract-from-constraint constraints)
+                                   processed-constraints (mapcat first extracted)
+                                   test-constraints (mapcat second extracted)]
 
-        expanded (if (empty? test-constraints)
-                   [condition]
-                   ;; There were test constraints created, so the processed constraints
-                   ;; and generated test condition.
-                   [(assoc condition :constraints processed-constraints
-                           :original-constraints constraints)
-                    {:constraints test-constraints}  ])]
+                             expanded (if (empty? test-constraints)
+                                        [condition]
+                                        ;; There were test constraints created, so the processed constraints
+                                        ;; and generated test condition.
+                                        [(assoc condition :constraints processed-constraints
+                                                :original-constraints constraints)
+                                         {:constraints test-constraints}  ])]
 
-    expanded))
+                         expanded)]
+
+    ;; Check through each expanded item and ensure that any test
+    (loop [ancestor-variables #{}
+           [item & rest] expanded-items]
+
+      (let [variables (set (filter is-variable? (flatten-expression (:constraints item))))]
+
+        (when (and (not (:type item)) ; Check only test expressions, since they don't bind variables.
+                   (not (s/subset? variables ancestor-variables)))
+          (throw (ex-info (str "Using variable that is not previously bound. This can happen "
+                               "when a test expression uses a previously unbound variable, "
+                               "or if a a variable is referenced in a nested part of a parent "
+                               "expression, such as (or (= ?my-expression my-field) ...). "
+                               "Unbound variables: "
+                               (s/difference variables ancestor-variables ))
+                          {:variables (s/difference variables ancestor-variables )}) ))
+
+        (when (seq? rest)
+
+          ;; Recur with bound variables and fact bindings visible to children.
+          (recur (cond-> (into ancestor-variables variables)
+                         (:fact-binding item) (conj (symbol (name (:fact-binding item)))))
+
+                 rest))))
+
+    expanded-items))
 
 (defn- get-conds
   "Returns a sequence of [condition environment] tuples and their corresponding productions."
