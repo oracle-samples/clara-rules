@@ -3,4 +3,3 @@ lein: lein2
 script: lein2 test
 jdk:
   - openjdk7
-  - openjdk6
