@@ -1,4 +1,5 @@
-# clara
+# Clara
+[![Build Status](https://travis-ci.org/rbrush/clara-rules.svg?branch=master)](https://travis-ci.org/rbrush/clara-rules)
 
 Clara is a forward-chaining rules engine written in Clojure with Java interoperability.
 
