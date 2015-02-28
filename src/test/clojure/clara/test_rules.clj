@@ -2246,3 +2246,19 @@
 
     (is (thrown? clojure.lang.ExceptionInfo
                  (mk-session [same-wind-and-temp])))))
+
+;; Test for: https://github.com/rbrush/clara-rules/issues/96
+(deftest test-destructured-binding
+  (let [rule-output (atom nil)
+        rule {:name "clara.test-destructured-binding/test-destructured-binding"
+              :env {:rule-output rule-output} ; Rule environment so we can check its output.
+              :lhs '[{:args [[e a v]]
+                     :type :foo
+                     :constraints [(= e 1) (= v ?value)]}]
+              :rhs '(reset! rule-output ?value)}]
+
+    (-> (mk-session [rule] :fact-type-fn second)
+        (insert [1 :foo 42])
+        (fire-rules))
+
+    (is (= 42 @rule-output))))

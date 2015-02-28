@@ -621,9 +621,11 @@
     ;; there is no test expression to extract.
     (if (or (not (has-variable? constraint))
             (and (is-equals? op)
+                 ;; Handle bindings where variable is first.
                  (or (and (is-variable? arg)
                           (not (has-variable? rest)))
-                     (and (is-variable? rest)
+                     ;; Handle bindings with later variables.
+                     (and (every? is-variable? rest)
                           (not (has-variable? arg))))))
 
       [[constraint] []]
