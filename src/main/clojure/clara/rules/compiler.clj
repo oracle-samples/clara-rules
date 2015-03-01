@@ -678,33 +678,35 @@
   ;; Look at the constraints under each condition. If the constraint does a comparison with an
   ;; item in an ancestor, do two things: modify the constraint to bind its internal items to a new
   ;; generated symbol, and add a test that does the expected check.
+  (for [{:keys [type constraints] :as condition} conditions
+        :let [extracted (map extract-from-constraint constraints)
+              processed-constraints (mapcat first extracted)
+              test-constraints (mapcat second extracted)]
 
-  (let [expanded-items (for [{:keys [type constraints] :as condition} conditions
-                             :let [extracted (map extract-from-constraint constraints)
-                                   processed-constraints (mapcat first extracted)
-                                   test-constraints (mapcat second extracted)]
+        expanded (if (empty? test-constraints)
+                   [condition]
+                   ;; There were test constraints created, so the processed constraints
+                   ;; and generated test condition.
+                   [(assoc condition :constraints processed-constraints
+                           :original-constraints constraints)
+                    {:constraints test-constraints}  ])]
 
-                             expanded (if (empty? test-constraints)
-                                        [condition]
-                                        ;; There were test constraints created, so the processed constraints
-                                        ;; and generated test condition.
-                                        [(assoc condition :constraints processed-constraints
-                                                :original-constraints constraints)
-                                         {:constraints test-constraints}  ])]
+    expanded))
 
-                         expanded)]
+(defn- check-unubound-variables
+  "Checks the expanded condition to see if there are any potentially unbound
+   variables being referenced."
+  [expanded-conditions]
+  (loop [ancestor-variables #{}
+         [condition & rest] expanded-conditions]
 
-    ;; Check through each expanded item and ensure that any test
-    (loop [ancestor-variables #{}
-           [item & rest] expanded-items]
+    (let [variables (set (filter is-variable? (flatten-expression (:constraints condition))))]
 
-      (let [variables (set (filter is-variable? (flatten-expression (:constraints item))))]
-
-        (when (and (not (:type item)) ; Check only test expressions, since they don't bind variables.
+        (when (and (not (:type condition)) ; Check only test expressions, since they don't bind variables.
                    (not (s/subset? variables ancestor-variables)))
           (throw (ex-info (str "Using variable that is not previously bound. This can happen "
                                "when a test expression uses a previously unbound variable, "
-                               "or if a a variable is referenced in a nested part of a parent "
+                               "or if a variable is referenced in a nested part of a parent "
                                "expression, such as (or (= ?my-expression my-field) ...). "
                                "Unbound variables: "
                                (s/difference variables ancestor-variables ))
@@ -714,11 +716,10 @@
 
           ;; Recur with bound variables and fact bindings visible to children.
           (recur (cond-> (into ancestor-variables variables)
-                         (:fact-binding item) (conj (symbol (name (:fact-binding item)))))
+                         (:fact-binding condition) (conj (symbol (name (:fact-binding condition)))))
 
-                 rest))))
+                 rest)))))
 
-    expanded-items))
 
 (defn- get-conds
   "Returns a sequence of [condition environment] tuples and their corresponding productions."
@@ -744,6 +745,9 @@
 
                 ;; Sort conditions, see the condition-comp function for the reason.
                 sorted-conditions (sort condition-comp conditions)
+
+                ;; Ensure there are no potentially unbound variables in use.
+                _ (check-unubound-variables sorted-conditions)
 
                 ;; Attach the conditions environment. TODO: narrow environment to those used?
                 conditions-with-env (for [condition sorted-conditions]

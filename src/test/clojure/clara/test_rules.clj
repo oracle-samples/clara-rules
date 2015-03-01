@@ -2235,6 +2235,29 @@
                     (fire-rules)
                     (query same-wind-and-temp))))))
 
+;; Test for: https://github.com/rbrush/clara-rules/issues/97
+(deftest test-nested-binding-with-disjunction
+  (let [any-cold? (dsl/parse-rule [[Temperature (= ?t temperature)]
+                                   [:or
+                                    [Cold (< temperature ?t)]
+                                    [Cold (< temperature 5)]]]
+
+                                  (insert! ^{:type :found-cold} {:found true}))
+
+        found-cold (dsl/parse-query [] [[?f <- :found-cold]])
+
+        session (-> (mk-session [any-cold? found-cold])
+                    (insert (->Temperature 10 "MCI")
+                            (->Cold 5))
+                    fire-rules)
+
+        results (query session found-cold)]
+
+    (is (= 1 (count results)))
+
+    (is (= ^{:type found-cold} {:?f {:found true}}
+           (first results)))))
+
 (deftest test-unmatched-nested-binding
   ;; This should throw an exception because ?w may not be bound. There is no
   ;; ancestor of the constraint that includes ?w, so there isn't a consitent value
