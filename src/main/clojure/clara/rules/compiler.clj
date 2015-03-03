@@ -422,20 +422,24 @@
                    (:type condition) :join
                    :else :test)
 
-        ;; Get the non-equality unifications so we can handle them.
-        join-filter-expressions (if (and (= :accumulator node-type)
-                                           (some non-equality-unification? (:constraints condition)))
+        ;; Get the non-equality unifications so we can handle them
+        join-filter-expressions (if (and (or (= :accumulator node-type)
+                                             (= :negation node-type))
+                                         (some non-equality-unification? (:constraints condition)))
 
                                     (assoc condition :constraints (filterv non-equality-unification? (:constraints condition)))
 
                                     nil)
 
-        ;; Remove instances of non-equality constraints from accumulator conditions
-        condition (if (= :accumulator node-type)
-                    (assoc condition :constraints (into [] (remove non-equality-unification? (:constraints condition))))
+        ;; Remove instances of non-equality constraints from accumulator
+        ;; and negation nodes, since those are handled with specialized node implementations.
+        condition (if (or (= :accumulator node-type)
+                          (= :negation node-type))
+                    (assoc condition
+                      :constraints (into [] (remove non-equality-unification? (:constraints condition)))
+                      :original-constraints (:constraints condition))
 
                     condition)
-
 
         ;; For the sibling beta nodes, find a match for the candidate.
         matching-node (first (for [beta-node beta-nodes
@@ -656,22 +660,15 @@
 (defn- extract-tests
   "Pre-process the sequence of conditions, and returns a sequence of conditions that has
    constraints that must be expanded into tests properly expanded.
-
    For example, consider the following conditions
-
   [Temperature (= ?t1 temperature)]
   [Temperature (< ?t1 temperature)]
-
-
   The second temperature is doing a comparison, so we can't use our hash-based index to
   unify these items. Therefore we extract the logic into a separate test, so the above
   conditions are transformed into this:
-
-
   [Temperature (= ?t1 temperature)]
   [Temperature (= ?__gen__1234 temperature)]
   [:test (< ?t2 ?__gen__1234)]
-
   The comparison is transformed into binding to a generate bind variable,
   which is then available in the test node for comparison with other bindings."
   [conditions]
@@ -883,11 +880,23 @@
              join-bindings))
 
           :negation
-          (eng/->NegationNode
-           id
-           condition
-           (compile-beta-tree children all-bindings)
-           join-bindings)
+          ;; Check to see if the negation includes an
+          ;; expression that must be joined to the incoming token
+          ;; and use the appropriate node type.
+          (if (:join-filter-expressions beta-node)
+
+            (eng/->NegationWithJoinFilterNode
+             id
+             condition
+             (eval (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node)))
+             (compile-beta-tree children all-bindings)
+             join-bindings)
+
+            (eng/->NegationNode
+             id
+             condition
+             (compile-beta-tree children all-bindings)
+             join-bindings))
 
           :test
           (eng/->TestNode

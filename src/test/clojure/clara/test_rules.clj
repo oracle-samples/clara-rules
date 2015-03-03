@@ -2258,6 +2258,90 @@
     (is (= ^{:type found-cold} {:?f {:found true}}
            (first results)))))
 
+(deftest test-negation-with-extracted-test
+    (let [colder-temp (dsl/parse-rule [[Temperature (= ?t temperature)]
+                                       [:not [Cold (or (< temperature ?t)
+                                                       (< temperature 0))]]]
+
+                                    (insert! ^{:type :found-colder} {:found true}))
+
+          find-colder (dsl/parse-query [] [[?f <- :found-colder]])
+
+          session (-> (mk-session [colder-temp find-colder] :cache false))]
+
+      ;; Test no token.
+      (is (empty? (-> session
+                      (insert (->Cold 11))
+                      (fire-rules)
+                      (query find-colder))))
+
+      ;; Test simple insertion.
+      (is (= [{:?f {:found true}}]
+             (-> session
+                 (insert (->Temperature 10 "MCI"))
+                 (insert (->Cold 11))
+                 (fire-rules)
+                 (query find-colder))))
+
+      ;; Test insertion with right-hand match first.
+      (is (= [{:?f {:found true}}]
+             (-> session
+                 (insert (->Cold 11))
+                 (insert (->Temperature 10 "MCI"))
+                 (fire-rules)
+                 (query find-colder))))
+
+      ;; Test no fact matching not.
+      (is (= [{:?f {:found true}}]
+             (-> session
+                 (insert (->Temperature 10 "MCI"))
+                 (fire-rules)
+                 (query find-colder))))
+
+      ;; Test violate negation.
+      (is (empty? (-> session
+                      (insert (->Cold 9))
+                      (insert (->Temperature 10 "MCI"))
+                      (fire-rules)
+                      (query find-colder))))
+
+      ;; Test violate negation alternate order.
+      (is (empty? (-> session
+                      (insert (->Temperature 10 "MCI"))
+                      (insert (->Cold 9))
+                      (fire-rules)
+                      (query find-colder))))
+
+      ;; Test retract violation.
+      (is (= [{:?f {:found true}}]
+           (-> session
+               (insert (->Cold 9))
+               (insert (->Temperature 10 "MCI"))
+               (fire-rules)
+               (retract (->Cold 9))
+               (fire-rules)
+               (query find-colder))))
+
+      ;; Test only partial retraction of violation,
+      ;; ensuring the remaining violation holds.
+      (is (empty? (-> session
+                      (insert (->Cold 9))
+                      (insert (->Cold 9))
+                      (insert (->Temperature 10 "MCI"))
+                      (fire-rules)
+                      (retract (->Cold 9))
+                      (fire-rules)
+                      (query find-colder))))
+
+      ;; Test violate negation after success.
+      (is (empty? (-> session
+                      (insert (->Cold 11))
+                      (insert (->Temperature 10 "MCI"))
+                      (fire-rules)
+                      (insert (->Cold 9))
+                      (fire-rules)
+                      (query find-colder))))))
+
 (deftest test-unmatched-nested-binding
   ;; This should throw an exception because ?w may not be bound. There is no
   ;; ancestor of the constraint that includes ?w, so there isn't a consitent value

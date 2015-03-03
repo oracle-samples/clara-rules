@@ -85,9 +85,18 @@
 (declare BetaNode)
 
 (def JoinNode
-  {:node-type (s/enum :join :negation)
+  {:node-type (s/enum :join)
    :id s/Num
    :condition LeafCondition
+   :join-bindings #{s/Keyword}
+   (s/optional-key :env) {s/Keyword s/Any}
+   :children  [(s/recursive #'BetaNode)]})
+
+(def NegationNode
+  {:node-type (s/enum :negation)
+   :id s/Num
+   :condition LeafCondition
+   (s/optional-key :join-filter-expressions) LeafCondition
    :join-bindings #{s/Keyword}
    (s/optional-key :env) {s/Keyword s/Any}
    :children  [(s/recursive #'BetaNode)]})
@@ -125,8 +134,11 @@
 
   (s/conditional
 
-   #(#{:join :negation} (:node-type %))
+   #(= (:node-type %) :join)
    JoinNode
+
+   #(= (:node-type %) :negation)
+   NegationNode
 
    #(= (:node-type %) :test)
    TestNode

@@ -454,6 +454,92 @@
     (mem/remove-elements! memory node join-bindings elements)
     (send-tokens transport memory listener children (mem/get-tokens memory node join-bindings))))
 
+(defn- matches-some-facts?
+  "Returns true if the given token matches one or more of the given elements."
+  [token elements join-filter-fn condition]
+  (some (fn [{:keys [fact]}]
+          (join-filter-fn token fact (:env condition)))
+        elements))
+
+;; A specialization of the NegationNode that supports additional tests
+;; that have to occur on the beta side of the network. The key difference between this and the simple
+;; negation node is the join-filter-fn, which allows negation tests to
+;; be applied with the parent token in context, rather than just a simple test of the non-existence
+;; on the alpha side.
+(defrecord NegationWithJoinFilterNode [id condition join-filter-fn children binding-keys]
+  ILeftActivate
+  (left-activate [node join-bindings tokens memory transport listener]
+    ;; Add token to the node's working memory for future right activations.
+    (mem/add-tokens! memory node join-bindings tokens)
+
+    (send-tokens transport
+                 memory
+                 listener
+                 children
+                 (for [token tokens
+                       :when (not (matches-some-facts? token
+                                                       (mem/get-elements memory node join-bindings)
+                                                       join-filter-fn
+                                                       condition))]
+                   token)))
+
+  (left-retract [node join-bindings tokens memory transport listener]
+    (mem/remove-tokens! memory node join-bindings tokens)
+    (retract-tokens transport
+                    memory
+                    listener
+                    children
+
+                    ;; Retract only if it previously had no matches in the negation node,
+                    ;; and therefore had an activation.
+                    (for [token tokens
+                          :when (not (matches-some-facts? token
+                                                          (mem/get-elements memory node join-bindings)
+                                                          join-filter-fn
+                                                          condition))]
+                      token)))
+
+  (get-join-keys [node] binding-keys)
+
+  (description [node] (str "NegationWithJoinFilterNode -- " (:text condition)))
+
+  IRightActivate
+  (right-activate [node join-bindings elements memory transport listener]
+    (mem/add-elements! memory node join-bindings elements)
+    ;; Retract tokens that matched the activation, since they are no longer negated.
+    (retract-tokens transport
+                    memory
+                    listener
+                    children
+                    (for [token (mem/get-tokens memory node join-bindings)
+
+                          :when (matches-some-facts? token
+                                                     elements
+                                                     join-filter-fn
+                                                     condition)]
+                      token)))
+
+  (right-retract [node join-bindings elements memory transport listener]
+    (mem/remove-elements! memory node join-bindings elements)
+
+    (send-tokens transport
+                 memory
+                 listener
+                 children
+                 (for [token (mem/get-tokens memory node join-bindings)
+
+                       ;; Propagate tokens when some of the retracted facts joined
+                       ;; but none of the remaining facts do.
+                       :when (and (matches-some-facts? token
+                                                     elements
+                                                     join-filter-fn
+                                                     condition)
+                                  (not (matches-some-facts? token
+                                                            (mem/get-elements memory node join-bindings)
+                                                            join-filter-fn
+                                                            condition)))]
+                   token))))
+
 ;; The test node represents a Rete extension in which
 (defrecord TestNode [id test children]
   ILeftActivate

@@ -51,9 +51,14 @@
        (for [[fact node-id] matches
              :let [node (id-to-node node-id)
                    condition (if (:accum-condition node)
-                               (:accum-condition node)
+
+                               {:accumulator (get-in node [:accum-condition :accumulator])
+                                :from {:type (get-in node [:accum-condition :from :type])
+                                       :constraints (or (seq (get-in node [:accum-condition :from :original-constraints]))
+                                                        (get-in node [:accum-condition :from :constraints]))}}
+
                                {:type (:type (:condition node))
-                                :constraints (or (:original-constraints (:condition node))
+                                :constraints (or (seq (:original-constraints (:condition node)))
                                                  (:constraints (:condition node)))})]]
          [fact condition])
 
