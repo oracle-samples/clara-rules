@@ -387,9 +387,15 @@
   "Returns true if the given expression does a non-equality unification against a variable,
    indicating it can't be solved by simple unification."
   (let [found-complex (atom false)
+        qualify-when-sym #(when-let [resolved (and (symbol? %)
+                                                   (resolve %))]
+                            (and (var? resolved)
+                                 (symbol (-> resolved meta :ns ns-name name)
+                                         (-> resolved meta :name name))))
         process-form (fn [form]
                        (when (and (list? form)
-                                  (not (#{'= '==} (first form)))
+                                  (not (#{'clojure.core/= 'clojure.core/==}
+                                        (qualify-when-sym (first form))))
                                   (some (fn [sym] (and (symbol? sym)
                                                       (.startsWith (name sym) "?")))
                                         (flatten-expression form)))

@@ -2369,3 +2369,27 @@
         (fire-rules))
 
     (is (= 42 @rule-output))))
+
+(deftest test-qualified-equals-for-fact-binding
+  (let [get-accum-nodes #(->> %
+                              .rulebase
+                              :beta-roots
+                              first
+                              :children
+                              (filter (partial instance? clara.rules.engine.AccumulateNode)))
+        
+        with-qualified-accum-nodes (get-accum-nodes
+                                    (mk-session [(dsl/parse-query [] [[Temperature (= ?t temperature)]
+
+                                                                      ;; Use fully-qualified = here.
+                                                                      [?c <- (acc/all) :from [Cold (clojure.core/= temperature ?t)]]])]))
+
+        without-qualified-accum-nodes (get-accum-nodes
+                                       (mk-session [(dsl/parse-query [] [[Temperature (= ?t temperature)]
+
+                                                                         ;; Use fully-qualified = here.
+                                                                         [?c <- (acc/all) :from [Cold (= temperature ?t)]]])]))]
+
+    (is (= (count with-qualified-accum-nodes)
+           (count without-qualified-accum-nodes)))))
+
