@@ -1662,6 +1662,28 @@
     ;; Only one reduced temperature should be present.
     (is (= [{:?t 9}] (query session temp-query)))))
 
+;; Test to ensure :no-loop applies to retractions as well as activations of rules.
+;; For https://github.com/rbrush/clara-rules/issues/99
+(deftest test-no-loop-retraction
+  (let [counter (atom 0)
+        looper (dsl/parse-rule [[:not [:marker]]]
+
+                               (do
+                                 ;; Safety net to avoid infinite loop if test fails.
+                                 (swap! counter inc)
+                                 (when (> @counter 1)
+                                   (throw (ex-info "No loop counter should not activate more than once!" {})))
+
+                                 (insert! ^{:type :marker} {:has-marker true}))
+
+                               {:no-loop true})
+        has-marker (dsl/parse-query [] [[?marker <- :marker]])]
+
+    (is (= [{:?marker {:has-marker true}}]
+           (-> (mk-session [looper has-marker])
+               (fire-rules)
+               (query has-marker))))))
+
 (defrule reduce-temp-no-loop
   "Example rule to reduce temperature."
   {:no-loop true}
@@ -2377,7 +2399,7 @@
                               first
                               :children
                               (filter (partial instance? clara.rules.engine.AccumulateNode)))
-        
+
         with-qualified-accum-nodes (get-accum-nodes
                                     (mk-session [(dsl/parse-query [] [[Temperature (= ?t temperature)]
 
@@ -2392,4 +2414,3 @@
 
     (is (= (count with-qualified-accum-nodes)
            (count without-qualified-accum-nodes)))))
-

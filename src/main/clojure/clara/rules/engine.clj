@@ -267,11 +267,17 @@
 
       ;; If there is current session with rules firing, add these items to the queue
       ;; to be retracted so they occur in the same order as facts being inserted.
-
-      ;; If there is no current session with rules firing, we can simply retract these now.
-
       (if *current-session*
-        (retract-facts! insertions)
+
+        ;; Retract facts that have become untrue, unless they became untrue
+        ;; because of an activation of the current rule that is :no-loop
+        (when (or (not (get-in production [:props :no-loop]))
+                  (not (= production (get-in *rule-context* [:node :production]))))
+
+          (retract-facts! insertions))
+
+        ;; The retraction is occuring outside of a rule-firing phase,
+        ;; so simply retract them as an external caller would.
         (doseq [[cls fact-group] (group-by type insertions)
                 root (get-in (mem/get-rulebase memory) [:alpha-roots cls])]
           (alpha-retract root fact-group memory transport listener)))))
