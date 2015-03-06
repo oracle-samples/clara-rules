@@ -409,12 +409,10 @@
 
     @found-complex))
 
-(defn- add-to-beta-tree
-  "Adds a sequence of conditions and the corresponding production to the beta tree."
-  [beta-nodes
-   [[condition env] & more]
-   bindings
-   production]
+(defn condition-type
+  "Returns the type of a single condition that has been transformed
+   to disjunctive normal form. The types are: :negation, :accumulator, :test, and :join"
+  [condition]
   (let [is-negation (= :not (first condition))
         accumulator (:accumulator condition)
         result-binding (:result-binding condition) ; Get the optional result binding used by accumulators.
@@ -426,7 +424,23 @@
                    is-negation :negation
                    accumulator :accumulator
                    (:type condition) :join
-                   :else :test)
+                   :else :test)]
+
+    node-type))
+
+(defn- add-to-beta-tree
+  "Adds a sequence of conditions and the corresponding production to the beta tree."
+  [beta-nodes
+   [[condition env] & more]
+   bindings
+   production]
+  (let [node-type (condition-type condition)
+        accumulator (:accumulator condition)
+        result-binding (:result-binding condition) ; Get the optional result binding used by accumulators.
+        condition (cond
+                   (= :negation node-type) (second condition)
+                   accumulator (:from condition)
+                   :default condition)
 
         ;; Get the non-equality unifications so we can handle them
         join-filter-expressions (if (and (or (= :accumulator node-type)
@@ -686,7 +700,10 @@
               processed-constraints (mapcat first extracted)
               test-constraints (mapcat second extracted)]
 
-        expanded (if (empty? test-constraints)
+        ;; Don't extract test conditions from tests themselves,
+        ;; or items with no matching test constraints.
+        expanded (if (or (= :test (condition-type condition))
+                         (empty? test-constraints))
                    [condition]
                    ;; There were test constraints created, so the processed constraints
                    ;; and generated test condition.
@@ -696,32 +713,38 @@
 
     expanded))
 
-(defn- check-unubound-variables
+(defn- check-unbound-variables
   "Checks the expanded condition to see if there are any potentially unbound
    variables being referenced."
   [expanded-conditions]
   (loop [ancestor-variables #{}
          [condition & rest] expanded-conditions]
 
-    (let [variables (set (filter is-variable? (flatten-expression (:constraints condition))))]
+    (let [variables (set (filter is-variable?
+                                 (flatten-expression
+                                  (if (= :accumulator (condition-type condition))
+                                    (get-in condition [:from :constraints])
+                                    (:constraints condition)))))]
 
-        (when (and (not (:type condition)) ; Check only test expressions, since they don't bind variables.
-                   (not (s/subset? variables ancestor-variables)))
-          (throw (ex-info (str "Using variable that is not previously bound. This can happen "
-                               "when a test expression uses a previously unbound variable, "
-                               "or if a variable is referenced in a nested part of a parent "
-                               "expression, such as (or (= ?my-expression my-field) ...). "
-                               "Unbound variables: "
-                               (s/difference variables ancestor-variables ))
-                          {:variables (s/difference variables ancestor-variables )}) ))
+      ;; Check only test expressions, since they don't bind variables.
+      (when (and (= :test (condition-type condition))
+                 (not (s/subset? variables ancestor-variables)))
+        (throw (ex-info (str "Using variable that is not previously bound. This can happen "
+                             "when a test expression uses a previously unbound variable, "
+                             "or if a variable is referenced in a nested part of a parent "
+                             "expression, such as (or (= ?my-expression my-field) ...). "
+                             "Unbound variables: "
+                             (s/difference variables ancestor-variables ))
+                        {:variables (s/difference variables ancestor-variables )}) ))
 
-        (when (seq? rest)
+      (when (seq? rest)
 
-          ;; Recur with bound variables and fact bindings visible to children.
-          (recur (cond-> (into ancestor-variables variables)
-                         (:fact-binding condition) (conj (symbol (name (:fact-binding condition)))))
+        ;; Recur with bound variables and fact and accumulator result bindings visible to children.
+        (recur (cond-> (into ancestor-variables variables)
+                       (:fact-binding condition) (conj (symbol (name (:fact-binding condition))))
+                       (:result-binding condition) (conj (symbol (name (:result-binding condition)))))
 
-                 rest)))))
+               rest)))))
 
 
 (defn- get-conds
@@ -750,7 +773,7 @@
                 sorted-conditions (sort condition-comp conditions)
 
                 ;; Ensure there are no potentially unbound variables in use.
-                _ (check-unubound-variables sorted-conditions)
+                _ (check-unbound-variables sorted-conditions)
 
                 ;; Attach the conditions environment. TODO: narrow environment to those used?
                 conditions-with-env (for [condition sorted-conditions]

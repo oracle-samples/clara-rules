@@ -2364,6 +2364,27 @@
                       (fire-rules)
                       (query find-colder))))))
 
+(deftest test-accumulator-with-extracted-test
+  (let [q1 (dsl/parse-query []
+                            [[?res <- (acc/all) :from [Temperature (= ?t temperature)]]
+                             [:test (and ?t (< ?t 10))]])
+
+        q2 (dsl/parse-query []
+                            [[?res <- (acc/all) :from [Temperature]]
+                             [:test (not (empty? ?res))]])]
+
+    (is (= [{:?res [(->Temperature 9 "MCI")] :?t 9}]
+           (-> (mk-session [q1])
+               (insert (->Temperature 9 "MCI"))
+               (fire-rules)
+               (query q1))))
+
+    (is (= [{:?res [(->Temperature 9 "MCI")]}]
+           (-> (mk-session [q2])
+               (insert (->Temperature 9 "MCI"))
+               (fire-rules)
+               (query q2))))))
+
 (deftest test-unmatched-nested-binding
   ;; This should throw an exception because ?w may not be bound. There is no
   ;; ancestor of the constraint that includes ?w, so there isn't a consitent value
