@@ -1,4 +1,4 @@
-(defproject org.toomuchcode/clara-rules "0.8.6-SNAPSHOT"
+(defproject org.toomuchcode/clara-rules "0.8.6"
   :description "Clara Rules Engine"
   :url "http://rbrush.github.io/clara-rules/"
   :license {:name "Eclipse Public License"

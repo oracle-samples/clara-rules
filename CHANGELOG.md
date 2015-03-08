@@ -1,5 +1,11 @@
 This is a history of changes to clara-rules.
 
+### 0.8.6
+* Fix a collection of issues surrounding referencing bound variables in nested functions. See [issue 90](https://github.com/rbrush/clara-rules/issues/90) and items referenced from there.
+* Fix a truth maintenance issue for accumulators that offer an initial value when there is nothing to accumulate over. See [issue 91](https://github.com/rbrush/clara-rules/issues/91).
+* Better handle macro-generated rules. See [issue 100](https://github.com/rbrush/clara-rules/pull/100).
+* The :no-loop property now applies to facts retracted due to truth maintenance. See [issue 99](https://github.com/rbrush/clara-rules/issues/99).
+
 ### 0.8.5
 * Fix specific filtered accumulator bug. See [issue 89](https://github.com/rbrush/clara-rules/pull/89).
 * Allow binding variables in set and map literals. See [issue 88](https://github.com/rbrush/clara-rules/pull/88).
@@ -18,7 +24,7 @@ This is a history of changes to clara-rules.
 * Optimize some internal functions based on real-world profiling.
 
 ### 0.8.1
-* Fix stack overflow under workloads with many indivdually inserted facts. See [issue 76](https://github.com/rbrush/clara-rules/pull/76).
+* Fix stack overflow under workloads with many individually inserted facts. See [issue 76](https://github.com/rbrush/clara-rules/pull/76).
 
 ### 0.8.0
 * Support for salience. See [issue 25](https://github.com/rbrush/clara-rules/issues/25).
