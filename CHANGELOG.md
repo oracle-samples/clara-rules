@@ -3,6 +3,8 @@ This is a history of changes to clara-rules.
 ### 0.8.6
 * Fix a collection of issues surrounding referencing bound variables in nested functions. See [issue 90](https://github.com/rbrush/clara-rules/issues/90) and items referenced from there.
 * Fix a truth maintenance issue for accumulators that offer an initial value when there is nothing to accumulate over. See [issue 91](https://github.com/rbrush/clara-rules/issues/91).
+* Fix bug that caused options to be dropped in cljs. See [issue 92](https://github.com/rbrush/clara-rules/pull/92).
+* Allow explicitly specifying productions in CLJS. See [issue 94](https://github.com/rbrush/clara-rules/pull/94).
 * Better handle macro-generated rules. See [issue 100](https://github.com/rbrush/clara-rules/pull/100).
 * The :no-loop property now applies to facts retracted due to truth maintenance. See [issue 99](https://github.com/rbrush/clara-rules/issues/99).
 
