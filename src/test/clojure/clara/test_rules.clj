@@ -2435,3 +2435,23 @@
 
     (is (= (count with-qualified-accum-nodes)
            (count without-qualified-accum-nodes)))))
+
+(deftest test-handle-exception
+  (let [int-value (atom nil)
+        to-int-rule (dsl/parse-rule [[?s <- String]]
+                                    (try
+                                      (reset! int-value (Integer/parseInt ?s))
+                                      (catch NumberFormatException e
+                                        (reset! int-value -1))))]
+
+    (-> (mk-session [to-int-rule])
+        (insert "100")
+        (fire-rules))
+
+    (is (= 100 @int-value))
+
+    (-> (mk-session [to-int-rule])
+        (insert "NotANumber")
+        (fire-rules))
+
+    (is (= -1 @int-value))))

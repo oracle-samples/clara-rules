@@ -133,6 +133,7 @@
         (if (and (symbol? sym) ; Only qualify symbols...
                  (not (env sym)) ; not in env (env contains locals).
                  (resolve sym) ; that we can resolve
+                 (not (instance? Class (resolve sym))) ; not a Java class.
                  (not (= "clojure.core"
                          (str (ns-name (:ns (meta (resolve sym))))))) ; Don't qualify clojure.core for portability, since CLJS uses a different namespace.
                  (name sym))
