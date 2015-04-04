@@ -2444,12 +2444,22 @@
                                       (catch NumberFormatException e
                                         (reset! int-value -1))))]
 
+    ;; the RHS should resolve to the qualified exception name.
+    (is (some #{'java.lang.NumberFormatException}
+              (flatten (:rhs to-int-rule))))
+
+    ;; The static method call should be qualified
+    (is (some #{'java.lang.Integer/parseInt}
+              (flatten (:rhs to-int-rule))))
+
+    ;; Test successful integer parse.
     (-> (mk-session [to-int-rule])
         (insert "100")
         (fire-rules))
 
     (is (= 100 @int-value))
 
+    ;; Test failed integer parse.
     (-> (mk-session [to-int-rule])
         (insert "NotANumber")
         (fire-rules))

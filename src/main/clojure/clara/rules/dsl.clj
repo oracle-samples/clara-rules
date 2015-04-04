@@ -131,13 +131,32 @@
 
         ;; Qualify a normal clojure symbol.
         (if (and (symbol? sym) ; Only qualify symbols...
-                 (not (env sym)) ; not in env (env contains locals).
-                 (resolve sym) ; that we can resolve
-                 (not (instance? Class (resolve sym))) ; not a Java class.
-                 (not (= "clojure.core"
-                         (str (ns-name (:ns (meta (resolve sym))))))) ; Don't qualify clojure.core for portability, since CLJS uses a different namespace.
-                 (name sym))
-          (symbol (str (ns-name (:ns (meta (resolve sym))))) (name sym))
+                 (not (env sym))) ; not in env (env contains locals).) ; that we can resolve
+
+          (cond
+           ;; If it's a Java class, simply qualify it.
+           (instance? Class (resolve sym))
+           (symbol (.getName ^Class (resolve sym)))
+
+           ;; Don't qualify clojure.core for portability, since CLJS uses a different namespace.
+           (and (resolve sym)
+                (not (= "clojure.core"
+                        (str (ns-name (:ns (meta (resolve sym)))))))
+                (name sym))
+           (symbol (str (ns-name (:ns (meta (resolve sym))))) (name sym))
+
+           ;; See if it's a static method call and qualify it.
+           (and (namespace sym)
+                (not (resolve sym))
+                (instance? Class (resolve (symbol (namespace sym))))) ; The namespace portion is the class name we try to resolve.
+           (symbol (.getName ^Class (resolve (symbol (namespace sym))))
+                   (name sym))
+
+           ;; Finally, just return the symbol unchanged if it doesn't match anything above,
+           ;; assuming it's a local parameter or variable.
+           :default
+           sym)
+
           sym)))))
 
 (defn- qualify-meta
