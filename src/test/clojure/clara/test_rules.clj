@@ -782,7 +782,11 @@
         session  (mk-session [not-cold-query])
 
         session-with-temp (insert session (->Temperature 10 "MCI"))
-        session-retracted (retract session-with-temp (->Temperature 10 "MCI"))]
+        session-retracted (retract session-with-temp (->Temperature 10 "MCI"))
+        session-with-partial-retraction (-> session
+                                            (insert (->Temperature 10 "MCI")
+                                                    (->Temperature 15 "MCI"))
+                                            (retract (->Temperature 10 "MCI")))]
 
     ;; No facts for the above criteria exist, so we should see a positive result
     ;; with no bindings.
@@ -795,7 +799,12 @@
 
     ;; Retracting the inserted item should make the negation valid again.
     (is (= #{{}}
-           (set (query session-retracted not-cold-query))))))
+           (set (query session-retracted not-cold-query))))
+
+    ;; Some but not all items were retracted, so the negation
+    ;; should still block propagation.
+    (is (empty? (query session-with-partial-retraction
+                       not-cold-query)))))
 
 (deftest negation-truth-maintenance
   (let [make-hot (dsl/parse-rule [[WindSpeed]] ; Hack to only insert item on rule activation.

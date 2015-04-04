@@ -458,7 +458,8 @@
 
   (right-retract [node join-bindings elements memory transport listener]
     (mem/remove-elements! memory node join-bindings elements)
-    (send-tokens transport memory listener children (mem/get-tokens memory node join-bindings))))
+    (when (empty? (mem/get-elements memory node join-bindings))
+      (send-tokens transport memory listener children (mem/get-tokens memory node join-bindings)))))
 
 (defn- matches-some-facts?
   "Returns true if the given token matches one or more of the given elements."
