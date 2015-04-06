@@ -1,5 +1,9 @@
 This is a history of changes to clara-rules.
 
+### 0.8.7
+* Properly qualify references to Java classes on the RHS of rules, supporting try/catch and static method calls. See [issue 104](https://github.com/rbrush/clara-rules/issues/104).
+* Fix bug when retracting a subset of facts blocked by a negation rule. See [issue 105](https://github.com/rbrush/clara-rules/issues/105).
+
 ### 0.8.6
 * Fix a collection of issues surrounding referencing bound variables in nested functions. See [issue 90](https://github.com/rbrush/clara-rules/issues/90) and items referenced from there.
 * Fix a truth maintenance issue for accumulators that offer an initial value when there is nothing to accumulate over. See [issue 91](https://github.com/rbrush/clara-rules/issues/91).
