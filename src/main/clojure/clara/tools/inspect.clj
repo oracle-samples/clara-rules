@@ -15,7 +15,7 @@
 ;; This is derived from the Rete-style tokens, but this token
 ;; is designed to propagate all context needed to easily inspect
 ;; the state of rules.
-(sm/defrecord Explanation [matches :- [[(s/one s/Any "fact") (s/one schema/Condition "condition")]] ; Fact, condition tuples
+(s/defrecord Explanation [matches :- [[(s/one s/Any "fact") (s/one schema/Condition "condition")]] ; Fact, condition tuples
                            bindings :- {s/Keyword s/Any}]) ; Bound variables
 
 ;; Schema of an inspected rule session.
@@ -65,7 +65,7 @@
        ;; Remove generated bindings from user-facing explanation.
        (into {} (remove (fn [[k v]] (.startsWith (name k) "?__gen__")) bindings))))))
 
-(sm/defn inspect
+(s/defn inspect
   " Returns a representation of the given rule session useful to understand the
    state of the underlying rules.
 

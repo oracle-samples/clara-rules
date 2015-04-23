@@ -5,7 +5,7 @@
             [schema.macros :as sm]))
 
 
-(sm/defn condition-type :- (s/enum :or :not :and :fact :accumulator :test)
+(s/defn condition-type :- (s/enum :or :not :and :fact :accumulator :test)
   "Returns the type of node in a LHS condition expression."
   [condition]
   (if (map? condition) ; Leaf nodes are maps, per the schema
