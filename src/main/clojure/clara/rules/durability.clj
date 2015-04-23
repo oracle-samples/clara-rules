@@ -37,7 +37,7 @@
    ;; to track truth maintenance, so if a given token is retracted, we can also retract the inferred items.
    :insertions {[(s/one s/Int "node-id") (s/one Token "token")] [s/Any]}})
 
-(sm/defn session-state :- session-state-schema
+(s/defn session-state :- session-state-schema
   " Returns the state of a session as an EDN- or Fressian-serializable data structure. The returned
    structure contains only the minimal data necessary to reconstruct the session via the restore-session-state
    function below."
@@ -137,7 +137,7 @@
 
     (eng/assemble (assoc components :memory (mem/to-persistent! transient-memory)))))
 
-(sm/defn restore-session-state
+(s/defn restore-session-state
   " Restore the given session to have the provided session state. The given session should be
    a newly-created session that was created with the same parameters as the session that was
    serialized. For instance, it should use the same rulesets, type function, and other settings.

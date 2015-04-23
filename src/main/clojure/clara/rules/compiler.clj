@@ -25,7 +25,7 @@
                          NegationNode TestNode AccumulateNode))
 
 ;; A rulebase -- essentially an immutable Rete network with a collection of alpha and beta nodes and supporting structure.
-(sm/defrecord Rulebase [;; Map of matched type to the alpha nodes that handle them.
+(sc/defrecord Rulebase [;; Map of matched type to the alpha nodes that handle them.
                         alpha-roots :- {sc/Any [AlphaNode]}
                         ;; Root beta nodes (join, accumulate, etc.)
                         beta-roots :- [BetaNode]
@@ -782,7 +782,7 @@
       [conditions-with-env production])))
 
 
-(sm/defn to-beta-tree :- [schema/BetaNode]
+(sc/defn to-beta-tree :- [schema/BetaNode]
   "Convert a sequence of rules and/or queries into a beta tree. Returns each root."
   [productions :- [schema/Production]]
   (let [conditions (mapcat get-conds productions)
@@ -815,7 +815,7 @@
     ;; Assign IDs to the roots and return them.
     (map assign-ids-fn raw-roots)))
 
-(sm/defn to-alpha-tree :- [schema/AlphaNode]
+(sc/defn to-alpha-tree :- [schema/AlphaNode]
   "Returns a sequence of [condition-fn, [node-ids]] tuples to represent the alpha side of the network."
   [beta-roots :- [schema/BetaNode]]
 
@@ -847,7 +847,7 @@
                 :beta-children (distinct node-ids)}
                env (assoc :env env))))))
 
-(sm/defn compile-alpha-nodes :- [{:type sc/Any
+(sc/defn compile-alpha-nodes :- [{:type sc/Any
                                   :alpha-fn sc/Any ;; TODO: is a function...
                                   (sc/optional-key :env) {sc/Keyword sc/Any}
                                   :children [sc/Num]}]
@@ -866,7 +866,7 @@
              :children beta-children}
             env (assoc :env env))))
 
-(sm/defn compile-beta-tree
+(sc/defn compile-beta-tree
   "Compile the beta tree to the nodes used at runtime."
   ([beta-nodes  :- [schema/BetaNode]
     parent-bindings]
@@ -991,7 +991,7 @@
           )))))
 
 
-(sm/defn build-network
+(sc/defn build-network
   "Constructs the network from compiled beta tree and condition functions."
   [beta-roots alpha-fns productions]
 
@@ -1082,7 +1082,7 @@
   []
   (reset! session-cache {}))
 
-(sm/defn mk-session*
+(sc/defn mk-session*
   "Compile the rules into a rete network and return the given session."
   [productions :- [schema/Production]
    options :- {sc/Keyword sc/Any}]

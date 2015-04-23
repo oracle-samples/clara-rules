@@ -6,7 +6,7 @@
   :dependencies [[org.clojure/clojure "1.6.0"]
                  [org.codehaus.jsr166-mirror/jsr166y "1.7.0"]
                  [org.clojure/clojurescript "0.0-2727" :scope "provided"]
-                 [prismatic/schema "0.2.4"]
+                 [prismatic/schema "0.4.0"]
                  [dorothy "0.0.4"]
                  [hiccup "1.0.4"]]
   :plugins [[codox "0.8.10"]
