@@ -2474,3 +2474,14 @@
         (fire-rules))
 
     (is (= -1 @int-value))))
+
+(deftest test-qualified-java-introp
+  (let [find-string-substring (dsl/parse-query []
+                                               [[?s <- String (and (<= 2 (count this))
+                                                                   (.. this (substring 2) toString))]])
+        session (-> (mk-session [find-string-substring])
+                    (insert "abc")
+                    fire-rules)]
+
+    (is (= [{:?s "abc"}]
+           (query session find-string-substring)))))
