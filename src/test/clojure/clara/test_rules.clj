@@ -2485,3 +2485,18 @@
 
     (is (= [{:?s "abc"}]
            (query session find-string-substring)))))
+
+(deftest test-condition-comparison-nil-safe
+  (let [q (dsl/parse-query []
+                           ;; Make two conditions that are very similar, but differ
+                           ;; where a nil will be compared to something else.
+                           [[(accumulate :reduce-fn (fn [x y] nil)) :from [Temperature]]
+                            [(accumulate :reduce-fn (fn [x y] 10)) :from [Temperature]]])
+        s (mk-session [q])]
+
+    ;; Mostly just ensuring the rulebase was compiled successfully.
+    (is (== 3
+            (-> s
+                .rulebase
+                :id-to-node
+                count)))))
