@@ -562,6 +562,16 @@
   [left right]
   (cond
 
+   ;; Handle the nil cases first to ensure nil-safety.
+   (and (nil? left) (nil? right))
+   0
+
+   (nil? left)
+   -1
+
+   (nil? right)
+   1
+    
    ;; Ignore functions for our comparison purposes,
    ;; since we won't distinguish rules by them.
    (and (fn? left) (fn? right))
