@@ -3,7 +3,7 @@
   :url "https://github.com/rbrush/clara-rules"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[org.clojure/clojure "1.7.0-RC1"] 
+  :dependencies [[org.clojure/clojure "1.7.0-RC2"] 
                  [org.codehaus.jsr166-mirror/jsr166y "1.7.0"]
                  [org.clojure/clojurescript "0.0-3308"]
                  [prismatic/schema "0.4.3"]
@@ -31,7 +31,7 @@
                        ;; Build for unit tests.
                        :test {:source-paths ["src/main/clojurescript" "src/test/clojurescript" "test"]
                               :notify-command ["phantomjs" "phantom/unit-test.js" "phantom/unit-test.html"]
-                              :compiler {:output-to "target/testable.js"
+                              :compiler {:output-to "target/cljs-test/testable.js"
                                          :pretty-print true
                                          :optimizations :whitespace}}}}
   :profiles {:dev {:dependencies [[cljsbuild "1.0.6"]]}
