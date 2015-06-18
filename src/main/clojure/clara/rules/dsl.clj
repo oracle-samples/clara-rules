@@ -113,6 +113,7 @@
         sym)
 
       (if (and (symbol? sym)
+               (not= '.. sym) ; Skip the special .. host interop macro. 
                (.endsWith (name sym) "."))
 
         ;; The . suffix indicates a type constructor, so we qualify the type instead, then

@@ -127,9 +127,7 @@
 
       (when (not= 1 (count children))
         (throw (RuntimeException. "Negation must have only one child.")))
-;        (throw #?(:clj (RuntimeException. "Negation must have only one child.")
-;                       :cljs (js/Error. "Negation must have only one child.")))
-        
+
       (condp = (expr-type child)
 
         ;; If the child is a single condition, simply return the ast.
@@ -319,42 +317,6 @@
                                       [condition (:env production)])]]
 
       [conditions-with-env production])))
-
-(defn extract-tests
-  "Pre-process the sequence of conditions, and returns a sequence of conditions that has
-   constraints that must be expanded into tests properly expanded.
-   For example, consider the following conditions
-  [Temperature (= ?t1 temperature)]
-  [Temperature (< ?t1 temperature)]
-  The second temperature is doing a comparison, so we can't use our hash-based index to
-  unify these items. Therefore we extract the logic into a separate test, so the above
-  conditions are transformed into this:
-  [Temperature (= ?t1 temperature)]
-  [Temperature (= ?__gen__1234 temperature)]
-  [:test (< ?t2 ?__gen__1234)]
-  The comparison is transformed into binding to a generate bind variable,
-  which is then available in the test node for comparison with other bindings."
-  [conditions]
-  ;; Look at the constraints under each condition. If the constraint does a comparison with an
-  ;; item in an ancestor, do two things: modify the constraint to bind its internal items to a new
-  ;; generated symbol, and add a test that does the expected check.
-  (for [{:keys [type constraints] :as condition} conditions
-        :let [extracted (map extract-from-constraint constraints)
-              processed-constraints (mapcat first extracted)
-              test-constraints (mapcat second extracted)]
-
-        ;; Don't extract test conditions from tests themselves,
-        ;; or items with no matching test constraints.
-        expanded (if (or (= :test (condition-type condition))
-                         (empty? test-constraints))
-                   [condition]
-                   ;; There were test constraints created, so the processed constraints
-                   ;; and generated test condition.
-                   [(assoc condition :constraints processed-constraints
-                           :original-constraints constraints)
-                    {:constraints test-constraints}  ])]
-
-    expanded))
 
 (defn non-equality-unification? [expression]
   "Returns true if the given expression does a non-equality unification against a variable,
