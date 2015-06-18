@@ -1,6 +1,8 @@
 (ns clara.macros
   "Forward-chaining rules for Clojure. The primary API is in this namespace"
   (:require [clara.rules.engine :as eng]
+            [clara.rules.engine.nodes :as nodes]
+            [clara.rules.engine.nodes.accumulators :as accs]
             [clara.rules.memory :as mem]
             [clara.rules.compiler :as com]
             [clara.rules.compiler.expressions :as expr] [clara.rules.compiler.helpers :as hlp] [clara.rules.compiler.trees :as trees]
@@ -77,27 +79,27 @@
         (case (:node-type beta-node)
 
           :join
-          `(eng/->JoinNode
+          `(nodes/->JoinNode
             ~id
             '~condition
             ~(gen-beta-network children all-bindings)
             ~join-bindings)
 
           :negation
-          `(eng/->NegationNode
+          `(nodes/->NegationNode
             ~id
             '~condition
             ~(gen-beta-network children all-bindings)
             ~join-bindings)
           
           :test
-          `(eng/->TestNode
+          `(nodes/->TestNode
             ~id
             ~(com/compile-test (:constraints condition))
             ~(gen-beta-network children all-bindings))
 
           :accumulator
-          `(eng/->AccumulateNode
+          `(accs/->AccumulateNode
             ~id
             {:accumulator '~(:accumulator beta-node)
              :from '~condition}
@@ -107,13 +109,13 @@
             ~join-bindings)
 
           :production
-          `(eng/->ProductionNode
+          `(nodes/->ProductionNode
            ~id
            '~production
            ~(com/compile-action all-bindings (:rhs production) (:env production)))
 
           :query
-          `(eng/->QueryNode
+          `(nodes/->QueryNode
            ~id
            '~query
            ~(:params query))

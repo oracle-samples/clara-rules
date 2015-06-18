@@ -2429,7 +2429,7 @@
                               :beta-roots
                               first
                               :children
-                              (filter (partial instance? clara.rules.engine.AccumulateNode)))
+                              (filter (partial instance? clara.rules.engine.nodes.accumulators.AccumulateNode)))
 
         with-qualified-accum-nodes (get-accum-nodes
                                     (mk-session [(dsl/parse-query [] [[Temperature (= ?t temperature)]

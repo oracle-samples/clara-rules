@@ -2,7 +2,7 @@
   (:require-macros [clara.macros :refer [defrule defsession defquery]]
                    [clara.test-rules-data])
   (:require [cljs.test :as test :refer-macros [deftest testing is]]
-            [clara.rules.engine :as eng]
+            [clara.rules.engine.nodes :as modes]
             [clara.rules.accumulators :as acc]
             [clara.rules :refer (assemble-session insert fire-rules query insert!)]
             [clara.rules.testfacts :refer [->Temperature Temperature

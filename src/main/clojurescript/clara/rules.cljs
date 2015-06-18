@@ -1,9 +1,12 @@
 (ns clara.rules
-  (:require [clara.rules.engine :as eng]
-            [clara.rules.memory :as mem]
-            [clara.rules.listener :as l]))
+  (:require [clara.rules.engine :as eng] [clara.rules.engine.state :as state]
+            [clara.rules.engine.nodes :as nodes :refer [ProductionNode QueryNode]]
+            [clara.rules.engine.wme :as wme]
+            [clara.rules.engine.transports :refer [LocalTransport]]
+            [clara.rules.engine.sessions :refer [LocalSession]]
+            [clara.rules.memory :as mem] [clara.rules.listener :as l]))
 
-(defrecord Rulebase [alpha-roots beta-roots productions queries production-nodes query-nodes id-to-node])
+(defrecord Rulebase [alpha-roots beta-roots productions production-nodes query-nodes id-to-node])
 
 (defn- create-get-alphas-fn
   "Returns a function that given a sequence of facts,
@@ -45,11 +48,11 @@
                        node)
 
           production-nodes (for [node beta-nodes
-                                 :when (= eng/ProductionNode (type node))]
+                                 :when (= ProductionNode (type node))]
                              node)
 
           query-nodes (for [node beta-nodes
-                            :when (= eng/QueryNode (type node))]
+                            :when (= QueryNode (type node))]
                         node)
 
           query-map (into {} (for [query-node query-nodes
@@ -66,7 +69,7 @@
           ;; type, alpha node tuples.
           alpha-nodes (for [{:keys [type alpha-fn children env]} alpha-fns
                             :let [beta-children (map id-to-node children)]]
-                        [type (eng/->AlphaNode env beta-children alpha-fn)])
+                        [type (nodes/->AlphaNode env beta-children alpha-fn)])
 
           ;; Merge the alpha nodes into a multi-map
           alpha-map (reduce
@@ -79,7 +82,6 @@
        {:alpha-roots alpha-map
         :beta-roots beta-roots
         :productions (filter :rhs productions)
-        :queries (remove :rhs productions)
         :production-nodes production-nodes
         :query-nodes query-map
         :id-to-node id-to-node})))
@@ -88,7 +90,7 @@
   "This is used by tools to create a session; most users won't use this function."
   [beta-roots alpha-fns productions options]
   (let [rulebase (mk-rulebase beta-roots alpha-fns productions)
-        transport (eng/LocalTransport.)
+        transport (LocalTransport.)
 
         ;; The fact-type uses Clojure's type function unless overridden.
         fact-type-fn (get options :fact-type-fn type)
@@ -116,7 +118,7 @@
 
     ;; ClojureScript implementation doesn't support salience yet, so
     ;; no activation group functions are used.
-    (eng/LocalSession. rulebase (eng/local-memory rulebase transport activation-group-sort-fn activation-group-fn) transport listener get-alphas-fn)))
+    (LocalSession. rulebase (eng/local-memory rulebase transport activation-group-sort-fn activation-group-fn) transport listener get-alphas-fn)))
 
 
 (defn accumulate
@@ -130,7 +132,7 @@
      Simply uses identity by default.
     "
   [& {:keys [initial-value reduce-fn combine-fn retract-fn convert-return-fn] :as args}]
-  (eng/map->Accumulator
+  (wme/map->Accumulator
    (merge
     {:combine-fn reduce-fn ; Default combine function is simply the reduce.
      :convert-return-fn identity ; Default conversion does nothing, so use identity.
@@ -222,7 +224,7 @@
    have a specific need, it is better to simply do inserts on the rule's right-hand side, and let
    Clara's underlying truth maintenance retract inserted items if their support becomes false."
   [& facts]
-  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} eng/*current-session*]
+  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} state/*current-session*]
 
     ;; Update the count so the rule engine will know when we have normalized.
     (swap! insertions + (count facts))

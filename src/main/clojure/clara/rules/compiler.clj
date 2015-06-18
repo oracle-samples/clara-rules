@@ -4,38 +4,23 @@
   (:require
     [clara.rules.engine :as eng]
     [clara.rules.compiler.helpers :as hlp]
+    [clara.rules.compiler.code :as code]
     [clara.rules.compiler.expressions :as expr]
     [clara.rules.compiler.trees :as trees]
-    [clara.rules.listener :as listener]
     [clara.rules.platform :as platform]
     [clara.rules.schema :as schema]
+    [clara.rules.engine :as eng]
+    [clara.rules.engine.nodes :as nodes]
+    [clara.rules.engine.nodes.accumulators :as accs]
+    [clara.rules.engine.transports :as transports]
     [clojure.set :as s] [clojure.string :as string]
     [schema.core :as sc] [schema.macros :as sm])
 
-  (:import [clara.rules.engine ProductionNode QueryNode JoinNode NegationNode TestNode
-                               AccumulateNode AlphaNode LocalTransport LocalSession Accumulator]))
-
-;; Protocol for loading rules from some arbitrary source.
-(defprotocol IRuleSource
-  (load-rules [source]))
-
-;; These nodes exist in the beta network.
-(def BetaNode (sc/either ProductionNode QueryNode JoinNode
-                         NegationNode TestNode AccumulateNode))
-
-;; A rulebase -- essentially an immutable Rete network with a collection of alpha and beta nodes and supporting structure.
-(sc/defrecord Rulebase [;; Map of matched type to the alpha nodes that handle them.
-                        alpha-roots :- {sc/Any [AlphaNode]}
-                        ;; Root beta nodes (join, accumulate, etc.)
-                        beta-roots :- [BetaNode]
-                        ;; Productions in the rulebase.
-                        productions :- [schema/Production]
-                        ;; Production nodes.
-                        production-nodes :- [ProductionNode]
-                        ;; Map of queries to the nodes hosting them.
-                        query-nodes :- {sc/Any QueryNode}
-                        ;; May of id to one of the beta nodes (join, accumulate, etc)
-                        id-to-node :- {sc/Num BetaNode}])
+  (:import [clara.rules.engine.nodes ProductionNode QueryNode JoinNode NegationNode TestNode
+                                AlphaNode]
+           [clara.rules.engine.nodes.accumulators AccumulateNode]
+           [clara.rules.engine.transports LocalTransport]
+           [clara.rules.engine.wme Accumulator]))
 
 (defn- compile-constraints [exp-seq assigment-set]
   (if (empty? exp-seq)
@@ -209,12 +194,12 @@
           :join
           ;; Use an specialized root node for efficiency in this case.
           (if is-root
-            (eng/->RootJoinNode
+            (nodes/->RootJoinNode
              id
              condition
              (compile-beta-tree children all-bindings)
              join-bindings)
-            (eng/->JoinNode
+            (nodes/->JoinNode
              id
              condition
              (compile-beta-tree children all-bindings)
@@ -226,21 +211,21 @@
           ;; and use the appropriate node type.
           (if (:join-filter-expressions beta-node)
 
-            (eng/->NegationWithJoinFilterNode
+            (nodes/->NegationWithJoinFilterNode
              id
              condition
              (eval (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node)))
              (compile-beta-tree children all-bindings)
              join-bindings)
 
-            (eng/->NegationNode
+            (nodes/->NegationNode
              id
              condition
              (compile-beta-tree children all-bindings)
              join-bindings))
 
           :test
-          (eng/->TestNode
+          (nodes/->TestNode
            id
            (eval (compile-test (:constraints condition)))
            (compile-beta-tree children all-bindings))
@@ -259,7 +244,7 @@
 
             (if (:join-filter-expressions beta-node)
 
-              (eng/->AccumulateWithJoinFilterNode
+              (accs/->AccumulateWithJoinFilterNode
                id
                ;; Create an accumulator structure for use when examining the node or the tokens
                ;; it produces.
@@ -274,7 +259,7 @@
                join-bindings)
 
               ;; All unification is based on equality, so just use the simple accumulate node.
-              (eng/->AccumulateNode
+              (accs/->AccumulateNode
                id
                ;; Create an accumulator structure for use when examining the node or the tokens
                ;; it produces.
@@ -286,7 +271,7 @@
                join-bindings)))
 
           :production
-          (eng/->ProductionNode
+          (nodes/->ProductionNode
            id
            production
            (binding [*file* (:file (meta (:rhs production)))]
@@ -296,7 +281,7 @@
                      (meta (:rhs production))))))
 
           :query
-          (eng/->QueryNode
+          (nodes/->QueryNode
            id
            query
            (:params query))
@@ -333,7 +318,7 @@
         ;; type, alpha node tuples.
         alpha-nodes (for [{:keys [type alpha-fn children env]} alpha-fns
                           :let [beta-children (map id-to-node children)]]
-                      [type (eng/->AlphaNode env beta-children alpha-fn)])
+                      [type (nodes/->AlphaNode env beta-children alpha-fn)])
 
         ;; Merge the alpha nodes into a multi-map
         alpha-map (reduce
@@ -342,7 +327,7 @@
                    {}
                    alpha-nodes)]
 
-    (strict-map->Rulebase
+    (code/strict-map->Rulebase
      {:alpha-roots alpha-map
       :beta-roots beta-roots
       :productions productions
@@ -428,10 +413,10 @@
         get-alphas-fn (create-get-alphas-fn fact-type-fn ancestors-fn rulebase)]
 
     (eng/assemble {:rulebase rulebase
-                   :memory (eng/local-memory rulebase transport activation-group-sort-fn activation-group-fn)
-                   :transport transport
-                   :listeners (get options :listeners  [])
-                   :get-alphas-fn get-alphas-fn})))
+                  :memory (eng/local-memory rulebase transport activation-group-sort-fn activation-group-fn)
+                  :transport transport
+                  :listeners (get options :listeners  [])
+                  :get-alphas-fn get-alphas-fn})))
 
 (defn mk-session
   "Creates a new session using the given rule source. Thew resulting session
@@ -447,8 +432,8 @@
        (let [sources (take-while (complement keyword?) sources-and-options)
              options (apply hash-map (drop-while (complement keyword?) sources-and-options))
              productions (mapcat
-                          #(if (satisfies? IRuleSource %)
-                             (load-rules %)
+                          #(if (satisfies? code/IRuleSource %)
+                             (code/load-rules %)
                              %)
                           sources) ; Load rules from the source, or just use the input as a seq.
              session (mk-session* productions options)]

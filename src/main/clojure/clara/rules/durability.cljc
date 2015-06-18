@@ -12,12 +12,19 @@
     [clara.rules :refer [insert-all]]
     [clara.rules.listener :as l]
     [clara.rules.engine :as eng]
+    [clara.rules.engine.wme :as wme]
     [clara.rules.memory :as mem]
     [clojure.set :as set]
     [schema.core :as s]
     #?(:clj [schema.macros :as sm])
-    #?(:cljs [clara.rules.engine :refer [JoinNode RootJoinNode Token AccumulateNode ProductionNode]]))
-  #?(:clj (:import [clara.rules.engine JoinNode RootJoinNode Token AccumulateNode ProductionNode]))
+    #?@(:cljs
+         [[clara.rules.engine.nodes :refer [JoinNode RootJoinNode Token AccumulateNode ProductionNode]]
+          [clara.rules.engine.nodes.accumulators :refer [AccumulateNode]]
+          [clara.rules.engine.wme :refer [Token]]]))
+  #?(:clj 
+      (:import [clara.rules.engine.nodes JoinNode RootJoinNode ProductionNode]
+               [clara.rules.engine.nodes.accumulators AccumulateNode]
+               [clara.rules.engine.wme Token]))
   #?(:cljs (:require-macros [schema.macros :as sm])))
 
 ;; A schema representing a minimal representation of a rule session's state.
@@ -91,7 +98,7 @@
 
         restored-activations (for [[node-id tokens] activations
                                    token tokens]
-                               (eng/->Activation (id-to-node node-id) token))
+                               (wme/->Activation (id-to-node node-id) token))
 
         grouped-by-production (group-by (fn [activation]
                                           (-> activation :node :production)) restored-activations)

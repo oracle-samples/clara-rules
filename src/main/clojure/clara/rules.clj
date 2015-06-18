@@ -1,13 +1,15 @@
 (ns clara.rules
   "Forward-chaining rules for Clojure. The primary API is in this namespace."
   (:require [clara.rules.engine :as eng]
-            [clara.rules.memory :as mem]
+            [clara.rules.memory :as mem] [clara.rules.engine.state :as state]
             [clara.rules.compiler :as com]
             [clara.rules.schema :as schema]
+            [clara.rules.compiler.code :as code]
+            [clara.rules.engine :as eng]
+            [clara.rules.engine.wme :as wme]
             [clara.rules.dsl :as dsl]
             [clara.rules.listener :as l]
-            [schema.core :as sc])
-  (import [clara.rules.engine LocalTransport LocalSession]))
+            [schema.core :as sc]))
 
 (defn insert
   "Inserts one or more facts into a working session. It does not modify the given
@@ -47,8 +49,6 @@
    "
   [session query & params]
   (eng/query session query (apply hash-map params)))
-
-
 
 (defn insert!
   "To be executed within a rule's right-hand side, this inserts a new fact or facts into working memory.
@@ -105,7 +105,7 @@
    have a specific need, it is better to simply do inserts on the rule's right-hand side, and let
    Clara's underlying truth maintenance retract inserted items if their support becomes false."
   [& facts]
-  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} eng/*current-session*]
+  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} state/*current-session*]
 
     ;; Update the count so the rule engine will know when we have normalized.
     (swap! insertions + (count facts))
@@ -126,7 +126,7 @@
      Simply uses identity by default.
     "
   [& {:keys [initial-value reduce-fn combine-fn retract-fn convert-return-fn] :as args}]
-  (eng/map->Accumulator
+  (wme/map->Accumulator
    (merge
     {:combine-fn reduce-fn ; Default combine function is simply the reduce.
      :convert-return-fn identity ; Default conversion does nothing, so use identity.
@@ -165,7 +165,7 @@
 
 ;; Treate a symbol as a rule source, loading all items in its namespace.
 (extend-type clojure.lang.Symbol
-  com/IRuleSource
+  code/IRuleSource
   (load-rules [sym]
 
     ;; Find the rules and queries in the namespace, shred them,
