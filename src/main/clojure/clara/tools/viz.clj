@@ -6,6 +6,7 @@
            [clara.rules.engine :as eng]
            [hiccup.core :as h]
            [clara.rules.compiler :as com]
+           [clara.rules.compiler.trees :as trees]
            [clojure.string :as string]))
 
 (defn get-productions 
@@ -46,11 +47,11 @@
   "Opens a window that contains a visualization of the Rete network associated with the rules."
   [& sources]
   (let [productions (get-productions sources)
-        beta-tree (com/to-beta-tree productions)
+        beta-tree (trees/to-beta-tree productions)
         beta-nodes (for [beta-root beta-tree
                          beta-node (tree-seq :children :children beta-root)]
                      beta-node)
-        alpha-nodes (com/to-alpha-tree beta-tree)]
+        alpha-nodes (trees/to-alpha-tree beta-tree)]
     
     (-> 
 

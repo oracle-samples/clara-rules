@@ -1,8 +1,7 @@
 (ns clara.test-rules
-  (:require-macros [cemerick.cljs.test :refer (is deftest run-tests testing)]
-                   [clara.macros :refer [defrule defsession defquery]]
+  (:require-macros [clara.macros :refer [defrule defsession defquery]]
                    [clara.test-rules-data])
-  (:require [cemerick.cljs.test :as t]
+  (:require [cljs.test :as test :refer-macros [deftest testing is]]
             [clara.rules.engine :as eng]
             [clara.rules.accumulators :as acc]
             [clara.rules :refer (assemble-session insert fire-rules query insert!)]

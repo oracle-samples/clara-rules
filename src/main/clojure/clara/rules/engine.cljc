@@ -1,12 +1,10 @@
 (ns clara.rules.engine
   "The Clara rules engine. Most users should use only the clara.rules namespace."
-  (:require [clojure.reflect :as reflect]
-            [clojure.core.reducers :as r]
-            [schema.core :as s]
-            [clojure.string :as string]
-            [clara.rules.memory :as mem]
-            [clara.rules.listener :as l]
-            [clara.rules.platform :as platform]))
+  (:require
+    #?(:clj [clojure.core.reducers :as r])
+    [clara.rules.memory :as mem] [clara.rules.listener :as l]
+    [clara.rules.platform :as platform]
+    [schema.core :as s] [clojure.string :as string]            ))
 
 ;; The accumulator is a Rete extension to run an accumulation (such as sum, average, or similar operation)
 ;; over a collection of values passing through the Rete network. This object defines the behavior
@@ -652,9 +650,14 @@
     ;; Return a map of bindings to the pre-reduced value.
     (for [[bindings element-group] (platform/tuned-group-by :bindings elements)]
       [bindings
-       (r/reduce (:reduce-fn accumulator)
-                 (:initial-value accumulator)
-                 (r/map :fact element-group))]))
+       #?(:clj
+           (r/reduce (:reduce-fn accumulator)
+                     (:initial-value accumulator)
+                     (r/map :fact element-group))
+           :cljs 
+           (reduce (:reduce-fn accumulator)
+                     (:initial-value accumulator)
+                     (map :fact element-group)))]))
 
   (right-activate-reduced [node join-bindings reduced-seq  memory transport listener]
     ;; Combine previously reduced items together, join to matching tokens,
@@ -736,9 +739,14 @@
   (let [filtered-facts (filter #(join-filter-fn token % {}) candidate-facts)] ;; TODO: and env
 
     (if (or (:initial-value accumulator) (seq filtered-facts))
-      (r/reduce (:reduce-fn accumulator)
-                (:initial-value accumulator)
-                filtered-facts)
+      #?(:clj
+          (r/reduce (:reduce-fn accumulator)
+                   (:initial-value accumulator)
+                   filtered-facts)
+          :cljs
+          (reduce (:reduce-fn accumulator)
+                   (:initial-value accumulator)
+                   filtered-facts))   
       ::no-accum-result)))
 
 ;; A specialization of the AccumulateNode that supports additional tests
@@ -907,14 +915,6 @@
       ;; Send a new accumulated token with our new, retracted information when there is a new result.
       (when (and new-result (not= ::no-accum-result new-result))
         (send-accumulated node accum-condition accumulator result-binding token new-result bindings transport memory listener)))))
-
-(defn variables-as-keywords
-  "Returns symbols in the given s-expression that start with '?' as keywords"
-  [expression]
-  (into #{} (for [item (tree-seq coll? seq expression)
-                  :when (and (symbol? item)
-                             (= \? (first (name item))))]
-              (keyword item))))
 
 (defn conj-rulebases
   "DEPRECATED. Simply concat sequences of rules and queries.

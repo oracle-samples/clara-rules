@@ -4,7 +4,7 @@
    * inspect, which returns a data structure describing the session that can be used by tooling.
    * explain-activations, which uses inspect and prints a human-readable description covering
      why each rule activation or query match occurred."
-  (:require [clara.rules.compiler :as com]
+  (:require [clara.rules.compiler.trees :as trees]
             [clara.rules.engine :as eng]
             [clara.rules.schema :as schema]
             [clara.rules.memory :as mem]
@@ -94,7 +94,7 @@
   (let [{:keys [memory rulebase]} (eng/components session)
         {:keys [productions production-nodes query-nodes]} rulebase
 
-        beta-tree (com/to-beta-tree productions)
+        beta-tree (trees/to-beta-tree productions)
 
         ;; Map of queries to their nodes in the network.
         query-to-nodes (into {} (for [[query-name query-node] query-nodes]

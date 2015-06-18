@@ -3,6 +3,7 @@
   (:require [clara.rules.engine :as eng]
             [clara.rules.memory :as mem]
             [clara.rules.compiler :as com]
+            [clara.rules.compiler.expressions :as expr] [clara.rules.compiler.helpers :as hlp] [clara.rules.compiler.trees :as trees]
             [clara.rules.dsl :as dsl]            
             [cljs.analyzer :as ana]
             [cljs.env :as env]
@@ -11,7 +12,7 @@
 
 ;; Store production in cljs.env/*compiler* under ::productions seq?
 (defn- add-production [name production]
-  (swap! env/*compiler* assoc-in [::productions (com/cljs-ns) name] production))
+  (swap! env/*compiler* assoc-in [::productions (hlp/cljs-ns) name] production))
 
 (defn- get-productions-from-namespace 
   "Returns a map of names to productions in the given namespace."
@@ -37,7 +38,7 @@
         {:keys [lhs rhs]} (dsl/split-lhs-rhs definition)
 
         production (cond-> (dsl/parse-rule* lhs rhs properties {})
-                           name (assoc :name (str (clojure.core/name (com/cljs-ns)) "/" (clojure.core/name name)))
+                           name (assoc :name (str (clojure.core/name (hlp/cljs-ns)) "/" (clojure.core/name name)))
                            doc (assoc :doc doc))]
     (add-production name production)
     `(def ~name
@@ -50,7 +51,7 @@
         definition (if doc (drop 2 body) (rest body) )
 
         query (cond-> (dsl/parse-query* binding definition {})
-                      name (assoc :name (str (clojure.core/name (com/cljs-ns)) "/" (clojure.core/name name)))
+                      name (assoc :name (str (clojure.core/name (hlp/cljs-ns)) "/" (clojure.core/name name)))
                       doc (assoc :doc doc))]
     (add-production name query)
     `(def ~name
@@ -64,7 +65,7 @@
       (for [beta-node beta-nodes
             :let [{:keys [condition children id production query join-bindings]} beta-node
 
-                  constraint-bindings (com/variables-as-keywords (:constraints condition))
+                  constraint-bindings (expr/variables-as-keywords (:constraints condition))
 
                   ;; Get all bindings from the parent, condition, and returned fact.
                   all-bindings (cond-> (s/union parent-bindings constraint-bindings)
@@ -124,7 +125,7 @@
    (for [{:keys [condition beta-children env]} alpha-nodes
          :let [{:keys [type constraints fact-binding args]} condition]]
 
-     {:type (com/effective-type type)
+     {:type (hlp/effective-type type)
       :alpha-fn (com/compile-condition type (first args) constraints fact-binding env)
       :children (vec beta-children)
       })))
@@ -167,10 +168,10 @@ use it as follows:
                                production (get-productions source)]
                            production))
 
-        beta-tree (com/to-beta-tree productions) 
+        beta-tree (trees/to-beta-tree productions) 
         beta-network (gen-beta-network beta-tree #{})
 
-        alpha-tree (com/to-alpha-tree beta-tree)
+        alpha-tree (trees/to-alpha-tree beta-tree)
         alpha-nodes (compile-alpha-nodes alpha-tree)]
 
     `(let [beta-network# ~beta-network

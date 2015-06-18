@@ -106,4 +106,6 @@
                          (filter #(instance? PersistentTracingListener %) )
                          (first))]
     (.-trace ^PersistentTracingListener listener)
-    (throw (IllegalStateException. "No tracing listener attached to session."))))
+    (throw #?(:clj (IllegalStateException. "No tracing listener attached to session.")
+                   :cljs (js/Error. "No tracing listener attached to session.")))))
+

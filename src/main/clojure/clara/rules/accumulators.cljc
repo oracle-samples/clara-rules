@@ -1,10 +1,8 @@
 (ns clara.rules.accumulators
   "A set of common accumulators usable in Clara rules."
-  (:require [clara.rules.engine :as eng]
-            [clojure.set :as set]
-            [clara.rules :refer [accumulate]])
+  (:require
+    [clojure.set :as set] [clara.rules :refer [accumulate]])
   (:refer-clojure :exclude [min max distinct count]))
-
 
 (defn min
   "Returns an accumulator that returns the minimum value of a given field."

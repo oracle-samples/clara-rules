@@ -8,16 +8,17 @@
    be easily serialized via EDN or Fressian. Sessions can then be recovered with the restore-session-state function.
 
    TODO: diff support is pending -- functions for obtaining a diff of state from a previous point, allowing for a write-ahead log."
-  (:require [clara.rules :refer :all]
-            [clara.rules.listener :as l]
-            [clara.rules.engine :as eng]
-            [clara.rules.memory :as mem]
-            [clojure.set :as set]
-            [schema.core :as s]
-            [schema.macros :as sm])
-
-  (:import [clara.rules.engine JoinNode RootJoinNode Token AccumulateNode ProductionNode]))
-
+  (:require
+    [clara.rules :refer [insert-all]]
+    [clara.rules.listener :as l]
+    [clara.rules.engine :as eng]
+    [clara.rules.memory :as mem]
+    [clojure.set :as set]
+    [schema.core :as s]
+    #?(:clj [schema.macros :as sm])
+    #?(:cljs [clara.rules.engine :refer [JoinNode RootJoinNode Token AccumulateNode ProductionNode]]))
+  #?(:clj (:import [clara.rules.engine JoinNode RootJoinNode Token AccumulateNode ProductionNode]))
+  #?(:cljs (:require-macros [schema.macros :as sm])))
 
 ;; A schema representing a minimal representation of a rule session's state.
 ;; This allows for efficient storage, particularly when serialized with Fressian or a similar format
