@@ -3,7 +3,6 @@
    [cljs.test :as test :refer-macros [run-tests] :refer [report]]
    [clara.test-rules]))
 
-
 (enable-console-print!)
 
 (defmethod report [::test/default :summary] [m]
@@ -13,6 +12,8 @@
   (aset js/window "test-failures" (+ (:fail m) (:error m))))
 
 (defn runner []
+  (println "Test run started")
   (test/run-tests
-   (test/empty-env ::test/default)
-   'clara.test-rules))
+    (test/empty-env ::test/default)
+   'clara.test-rules)
+  (println "Test run ended"))

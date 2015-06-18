@@ -29,11 +29,11 @@
                                    :optimizations :whitespace}}
 
                        ;; Build for unit tests.
-                       :test {:source-paths ["src/main/clojurescript" "src/test/clojurescript"]
-                               :notify-command ["phantomjs" "phantom/unit-test.js" "phantom/unit-test.html"]
-                               :compiler {:output-to "target/cljs/testable.js"
-                                          :pretty-print true
-                                          :optimizations :whitespace}}}}
+                       :test {:source-paths ["src/main/clojurescript" "src/test/clojurescript" "test"]
+                              :notify-command ["phantomjs" "phantom/unit-test.js" "phantom/unit-test.html"]
+                              :compiler {:output-to "target/testable.js"
+                                         :pretty-print true
+                                         :optimizations :whitespace}}}}
   :profiles {:dev {:dependencies [[cljsbuild "1.0.6"]]}
              :aot {:aliases {"check" ["do" "clean," "compile"]}
                    :resource-paths ["/tmp/clara.rules/target/js/out"]
