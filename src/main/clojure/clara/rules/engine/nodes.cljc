@@ -6,7 +6,7 @@
     [clara.rules.engine.helpers :as hlp]
     [clara.rules.engine.wme :as wme]
     [clara.rules.memory :as mem] [clara.rules.listener :as l]
-    #?(:clj [schema.core :as sc] [schema.core :as sc :include-macros true])
+    #?(:clj [schema.core :as sc] :cljs [schema.core :as sc :include-macros true])
     #?(:clj [clara.rules.engine.nodes.accumulators]
             :cljs [clara.rules.engine.nodes.accumulators :refer [AccumulateNode]]))
     #?(:clj (:import [clara.rules.engine.nodes.accumulators AccumulateNode])))
