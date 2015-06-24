@@ -1,7 +1,7 @@
 (ns clara.rules.compiler.expressions
   (:require
     [clara.rules.schema :as schema] [schema.core :as sc]
-    [clojure.set :as s]))
+    [clojure.set :as s] [clojure.walk :as wlk]))
 
 (defn flatten-expression
   "Flattens expression as clojure.core/flatten does, except will flatten
@@ -97,10 +97,10 @@
 
            ;; Create a test condition that is the same as the original, but
            ;; with nested expressions replaced by the binding map.
-           [(clojure.walk/postwalk (fn [form]
-                                      (if-let [sym (get @binding-map form)]
-                                        sym
-                                        form))
+           [(wlk/postwalk (fn [form]
+                             (if-let [sym (get @binding-map form)]
+                               sym
+                               form))
                                     constraint)]]
 
           ;; No test bindings found, so simply keep the constraint as is.
@@ -340,6 +340,6 @@
                        form)]
 
     ;; Walk the expression to find use of a symbol that can't be solved by equality-based unificaiton.
-    (doall (clojure.walk/postwalk process-form expression))
+    (doall (wlk/postwalk process-form expression))
 
     @found-complex))
