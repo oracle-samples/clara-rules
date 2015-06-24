@@ -86,6 +86,11 @@
         :query-nodes query-map
         :id-to-node id-to-node})))
 
+;    (eng/assemble {:rulebase rulebase
+;                  :memory (eng/local-memory rulebase transport activation-group-sort-fn activation-group-fn)
+;                  :transport transport
+;                  :listeners (get options :listeners  [])
+;                  :get-alphas-fn get-alphas-fn})
 (defn assemble-session
   "This is used by tools to create a session; most users won't use this function."
   [beta-roots alpha-fns productions options]

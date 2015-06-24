@@ -4,7 +4,7 @@
             [clara.rules.memory :as mem] [clara.rules.engine.state :as state]
             [clara.rules.compiler :as com]
             [clara.rules.schema :as schema]
-            [clara.rules.compiler.code :as code]
+            [clara.rules.compiler.codegen :as codegen]
             [clara.rules.engine :as eng]
             [clara.rules.engine.wme :as wme]
             [clara.rules.dsl :as dsl]
@@ -165,7 +165,7 @@
 
 ;; Treate a symbol as a rule source, loading all items in its namespace.
 (extend-type clojure.lang.Symbol
-  code/IRuleSource
+  codegen/IRuleSource
   (load-rules [sym]
 
     ;; Find the rules and queries in the namespace, shred them,

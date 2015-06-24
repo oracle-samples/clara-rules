@@ -92,9 +92,7 @@
    :get-alphas-fn The function used to return the alpha nodes for a fact of the given type."
 
   [{:keys [rulebase memory transport listeners get-alphas-fn]}]
-  (LocalSession. rulebase
-                 memory
-                 transport
+  (LocalSession. rulebase memory transport
                  (if (> (count listeners) 0)
                    (l/delegating-listener listeners)
                    l/default-listener)

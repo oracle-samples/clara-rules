@@ -5,7 +5,7 @@
            [clara.rules.schema :as schema]
            [clara.rules.engine :as eng]
            [hiccup.core :as h]
-           [clara.rules.compiler.code :as code]
+           [clara.rules.compiler.codegen :as codegen]
            [clara.rules.compiler.trees :as trees]
            [clojure.string :as string]))
 
@@ -13,8 +13,8 @@
   "Returns a sequence of productions from the given sources."
   [sources]
   (mapcat
-   #(if (satisfies? code/IRuleSource %)
-      (code/load-rules %)
+   #(if (satisfies? codegen/IRuleSource %)
+      (codegen/load-rules %)
       %)
    sources))
 

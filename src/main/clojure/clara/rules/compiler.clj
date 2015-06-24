@@ -4,7 +4,7 @@
   (:require
     [clara.rules.engine :as eng]
     [clara.rules.compiler.helpers :as hlp]
-    [clara.rules.compiler.code :as code]
+    [clara.rules.compiler.codegen :as codegen]
     [clara.rules.compiler.expressions :as expr]
     [clara.rules.compiler.trees :as trees]
     [clara.rules.platform :as platform]
@@ -288,52 +288,6 @@
           )))))
 
 
-(sc/defn build-network
-  "Constructs the network from compiled beta tree and condition functions."
-  [beta-roots alpha-fns productions]
-
-  (let [beta-nodes (for [root beta-roots
-                         node (tree-seq :children :children root)]
-                     node)
-
-        production-nodes (for [node beta-nodes
-                               :when (= ProductionNode (type node))]
-                           node)
-
-        query-nodes (for [node beta-nodes
-                          :when (= QueryNode (type node))]
-                      node)
-
-        query-map (into {} (for [query-node query-nodes
-
-                                 ;; Queries can be looked up by reference or by name;
-                                 entry [[(:query query-node) query-node]
-                                        [(:name (:query query-node)) query-node]]]
-                             entry))
-
-        ;; Map of node ids to beta nodes.
-        id-to-node (into {} (for [node beta-nodes]
-                                 [(:id node) node]))
-
-        ;; type, alpha node tuples.
-        alpha-nodes (for [{:keys [type alpha-fn children env]} alpha-fns
-                          :let [beta-children (map id-to-node children)]]
-                      [type (nodes/->AlphaNode env beta-children alpha-fn)])
-
-        ;; Merge the alpha nodes into a multi-map
-        alpha-map (reduce
-                   (fn [alpha-map [type alpha-node]]
-                     (update-in alpha-map [type] conj alpha-node))
-                   {}
-                   alpha-nodes)]
-
-    (code/strict-map->Rulebase
-     {:alpha-roots alpha-map
-      :beta-roots beta-roots
-      :productions productions
-      :production-nodes production-nodes
-      :query-nodes query-map
-      :id-to-node id-to-node})))
 
 (defn- create-get-alphas-fn
   "Returns a function that given a sequence of facts,
@@ -386,7 +340,7 @@
   (let [beta-struct (trees/to-beta-tree productions)
         beta-tree (compile-beta-tree beta-struct #{} true)
         alpha-nodes (compile-alpha-nodes (trees/to-alpha-tree beta-struct))
-        rulebase (build-network beta-tree alpha-nodes productions)
+        rulebase (codegen/build-network beta-tree alpha-nodes productions)
         transport (LocalTransport.)
 
         ;; The fact-type uses Clojure's type function unless overridden.
@@ -432,8 +386,8 @@
        (let [sources (take-while (complement keyword?) sources-and-options)
              options (apply hash-map (drop-while (complement keyword?) sources-and-options))
              productions (mapcat
-                          #(if (satisfies? code/IRuleSource %)
-                             (code/load-rules %)
+                          #(if (satisfies? codegen/IRuleSource %)
+                             (codegen/load-rules %)
                              %)
                           sources) ; Load rules from the source, or just use the input as a seq.
              session (mk-session* productions options)]
