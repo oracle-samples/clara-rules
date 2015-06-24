@@ -46,5 +46,5 @@
 
 (defn mk-java-session [rulesets]
   (JavaWorkingMemory. 
-   (eng/mk-session (map symbol rulesets))))
+   (eng/compile->session (map symbol rulesets))))
 
