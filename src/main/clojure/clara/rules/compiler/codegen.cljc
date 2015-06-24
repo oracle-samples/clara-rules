@@ -12,16 +12,17 @@
 (defprotocol IRuleSource (load-rules [source]))
 
 ;; Treate a symbol as a rule source, loading all items in its namespace.
-(extend-type clojure.lang.Symbol
-  IRuleSource
-  (load-rules [sym]
-
-    ;; Find the rules and queries in the namespace, shred them,
-    ;; and compile them into a rule base.
-    (->> (ns-interns sym)
-         (vals) ; Get the references in the namespace.
-         (filter #(or (:rule (meta %)) (:query (meta %)))) ; Filter down to rules and queries.
-         (map deref))))  ; Get the rules from the symbols.
+#?(:clj
+    (extend-type clojure.lang.Symbol
+      IRuleSource
+      (load-rules [sym]
+        
+        ;; Find the rules and queries in the namespace, shred them,
+        ;; and compile them into a rule base.
+        (->> (ns-interns sym)
+          (vals) ; Get the references in the namespace.
+          (filter #(or (:rule (meta %)) (:query (meta %)))) ; Filter down to rules and queries.
+          (map deref)))))  ; Get the rules from the symbols.
 
 ;; A rulebase -- essentially an immutable Rete network with a collection of alpha and beta nodes and supporting structure.
 (sc/defrecord Rulebase [;; Map of matched type to the alpha nodes that handle them.
