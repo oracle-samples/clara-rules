@@ -2,6 +2,7 @@
   "The Clara rules engine. Most users should use only the clara.rules namespace."
   (:require
     [clara.rules.memory :as mem] [clara.rules.listener :as l]
+    #?(:clj [clara.rules.compiler :as comp])
     [clara.rules.compiler.codegen :as codegen]
     [clara.rules.engine.wme :as wme] [clara.rules.engine.state :as state]
     [clara.rules.engine.sessions :as sessions]
@@ -85,29 +86,31 @@
   [base1 base2]
   (concat base1 base2))
 
-(defn mk-session
-  "Creates a new session using the given rule source. Thew resulting session
-   is immutable, and can be used with insert, retract, fire-rules, and query functions."
-  ([sources-and-options]
+#?(:clj
+    (defn compile->session
+      "Creates a new session using the given rule source(s). Compiles the productions into a rule base.
+       The resulting session is immutable, and can be used with insert, retract, fire-rules, and query functions."
+      ([sources-and-options]
 
-     ;; If an equivalent session has been created, simply reuse it.
-     ;; This essentially memoizes this function unless the caller disables caching.
-     (if-let [session (get @session-cache [sources-and-options])]
-       session
+         ;; If an equivalent session has been created, simply reuse it.
+         ;; This essentially memoizes this function unless the caller disables caching.
+         (if-let [session (get @session-cache [sources-and-options])]
+           session
 
-       ;; Separate sources and options, then load them.
-       (let [sources (take-while (complement keyword?) sources-and-options)
-             options (apply hash-map (drop-while (complement keyword?) sources-and-options))
-             productions (mapcat
-                          #(if (satisfies? codegen/IRuleSource %)
-                             (codegen/load-rules %)
-                             %)
-                          sources) ; Load rules from the source, or just use the input as a seq.
-             session (sessions/mk-session* productions options)]
+           ;; Separate sources and options, then load them.
+           (let [sources (take-while (complement keyword?) sources-and-options)
+                 options (apply hash-map (drop-while (complement keyword?) sources-and-options))
+                 productions (mapcat
+                              #(if (satisfies? codegen/IRuleSource %)
+                                 (codegen/load-rules %)
+                                 %)
+                              sources) ; Load rules from the source, or just use the input as a seq.
+                 rulebase  (comp/compile->rulebase productions)
+                 session (sessions/mk-session* rulebase options)]
 
-         ;; Cache the session unless instructed not to.
-         (when (get options :cache true)
-           (swap! session-cache assoc [sources-and-options] session))
+             ;; Cache the session unless instructed not to.
+             (when (get options :cache true)
+               (swap! session-cache assoc [sources-and-options] session))
 
-         ;; Return the session.
-         session))))
+             ;; Return the session.
+             session)))))
