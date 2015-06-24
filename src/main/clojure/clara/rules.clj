@@ -3,7 +3,6 @@
   (:require [clara.rules.engine :as eng]
             [clara.rules.memory :as mem] [clara.rules.engine.state :as state]
             [clara.rules.schema :as schema]
-            [clara.rules.compiler.codegen :as codegen]
             [clara.rules.engine :as eng]
             [clara.rules.engine.wme :as wme]
             [clara.rules.dsl :as dsl]
@@ -133,10 +132,6 @@
      }
     args)))
 
-
-;; Cache of sessions for fast reloading.
-(def ^:private session-cache (atom {}))
-
 (defmacro mk-session
    "Creates a new session using the given rule sources. Thew resulting session
    is immutable, and can be used with insert, retract, fire-rules, and query functions.
@@ -159,8 +154,8 @@
    users must use pre-defined rulesessions using defsession."
   [& args]
   (if (and (seq args) (not (keyword? (first args))))
-    `(eng/mk-session ~(vec args)) ; At least one namespace given, so use it.
-    `(eng/mk-session (concat [(ns-name *ns*)] ~(vec args))))) ; No namespace given, so use the current one.
+    `(eng/compile->session ~(vec args)) ; At least one namespace given, so use it.
+    `(eng/compile->session (concat [(ns-name *ns*)] ~(vec args))))) ; No namespace given, so use the current one.
 
 (defmacro defsession
   "Creates a sesson given a list of sources and keyword-style options, which are typically Clojure namespaces.
@@ -181,7 +176,7 @@ use it as follows:
    "
   [name & sources-and-options]
 
-  `(def ~name (eng/mk-session ~(vec sources-and-options))))
+  `(def ~name (eng/compile->session ~(vec sources-and-options))))
 
 (defmacro defrule
   "Defines a rule and stores it in the given var. For instance, a simple rule would look like this:
