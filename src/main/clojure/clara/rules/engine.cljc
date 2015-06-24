@@ -5,7 +5,7 @@
     [clara.rules.engine.wme :as wme] [clara.rules.engine.state :as state]
     #?(:clj [clara.rules.engine.sessions :as sessions]
             :cljs [clara.rules.engine.sessions :as sessions :refer [LocalSession]])
-    [clara.rules.engine.impl :as impl]
+    [clara.rules.engine.protocols :as impl]
     [clara.rules.platform :as platform]
     [schema.core :as s] [clojure.string :as string])
   #?(:clj (:import [clara.rules.engine.sessions LocalSession])))

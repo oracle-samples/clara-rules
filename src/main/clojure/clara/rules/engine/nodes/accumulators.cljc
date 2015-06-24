@@ -3,10 +3,38 @@
   (:require
     #?(:clj [clojure.core.reducers :as r])
     [clara.rules.platform :as platform]
-    [clara.rules.engine.impl :as impl]
+    [clara.rules.engine.protocols :as impl]
     [clara.rules.engine.helpers :as hlp]
     [clara.rules.engine.wme :as wme]
     [clara.rules.memory :as mem] [clara.rules.listener :as l]))
+
+(defn- send-accumulated
+  "Helper function to send the result of an accumulated value to the node's children."
+  [node accum-condition accumulator result-binding token result fact-bindings transport memory listener]
+  (let [converted-result ((:convert-return-fn accumulator) result)
+        new-bindings (merge (:bindings token)
+                            fact-bindings
+                            (when result-binding
+                              { result-binding
+                                converted-result}))]
+
+    (impl/send-tokens transport memory listener (:children node)
+                 [(wme/->Token (conj (:matches token) [converted-result (:id node)]) new-bindings)])))
+
+(defn- retract-accumulated
+  "Helper function to retract an accumulated value."
+  [node accum-condition accumulator result-binding token result fact-bindings transport memory listener]
+  (let [converted-result ((:convert-return-fn accumulator) result)
+        new-facts (conj (:matches token) [converted-result (:id node)])
+        new-bindings (merge (:bindings token)
+                            fact-bindings
+                            (when result-binding
+                              { result-binding
+                                converted-result}))]
+
+    (impl/retract-tokens transport memory listener (:children node)
+                    [(wme/->Token new-facts new-bindings)])))
+
 
 ;; The AccumulateNode hosts Accumulators, a Rete extension described above, in the Rete network
 ;; It behavios similarly to a JoinNode, but performs an accumulation function on the incoming
@@ -24,7 +52,7 @@
          ;; If there are previously accumulated results to propagate, simply use them.
          (seq previous-results)
          (doseq [[fact-bindings previous] previous-results]
-           (hlp/send-accumulated node accum-condition accumulator result-binding token previous fact-bindings transport memory listener))
+           (send-accumulated node accum-condition accumulator result-binding token previous fact-bindings transport memory listener))
 
          ;; There are no previously accumulated results, but we still may need to propagate things
          ;; such as a sum of zero items.
@@ -38,7 +66,7 @@
                previous (:initial-value accumulator)]
 
            ;; Send the created accumulated item to the children.
-           (hlp/send-accumulated node accum-condition accumulator result-binding token previous fact-bindings transport memory listener)
+           (send-accumulated node accum-condition accumulator result-binding token previous fact-bindings transport memory listener)
 
            (l/add-accum-reduced! listener node join-bindings previous fact-bindings)
 
@@ -52,7 +80,7 @@
     (let [previous-results (mem/get-accum-reduced-all memory node join-bindings)]
       (doseq [token (mem/remove-tokens! memory node join-bindings tokens)
               [fact-bindings previous] previous-results]
-        (hlp/retract-accumulated node accum-condition accumulator result-binding token previous fact-bindings transport memory listener))))
+        (retract-accumulated node accum-condition accumulator result-binding token previous fact-bindings transport memory listener))))
 
   (get-join-keys [node] binding-keys)
 
@@ -83,14 +111,14 @@
 
         ;; A previous value was reduced, so we need to retract it.
         (doseq [token (mem/get-tokens memory node join-bindings)]
-          (hlp/retract-accumulated node accum-condition accumulator result-binding token
+          (retract-accumulated node accum-condition accumulator result-binding token
                                previous bindings transport memory listener))
 
         ;; The accumulator has an initial value that is effectively the previous result when
         ;; there was no previous item, so retract it.
         (when-let [initial-value (:initial-value accumulator)]
           (doseq [token (mem/get-tokens memory node join-bindings)]
-            (hlp/retract-accumulated node accum-condition accumulator result-binding token initial-value
+            (retract-accumulated node accum-condition accumulator result-binding token initial-value
                                  {result-binding initial-value} transport memory listener))))
 
       ;; Combine the newly reduced values with any previous items.
@@ -102,7 +130,7 @@
 
         (mem/add-accum-reduced! memory node join-bindings combined bindings)
         (doseq [token matched-tokens]
-          (hlp/send-accumulated node accum-condition accumulator result-binding token combined bindings transport memory listener)))))
+          (send-accumulated node accum-condition accumulator result-binding token combined bindings transport memory listener)))))
 
   impl/IRightActivate
   (right-activate [node join-bindings elements memory transport listener]
@@ -136,11 +164,11 @@
       (mem/add-accum-reduced! memory node join-bindings retracted bindings)
 
       ;; Retract the previous token.
-      (hlp/retract-accumulated node accum-condition accumulator result-binding token previous bindings transport memory listener)
+      (retract-accumulated node accum-condition accumulator result-binding token previous bindings transport memory listener)
 
       ;; Send a new accumulated token with our new, retracted information.
       (when retracted
-        (hlp/send-accumulated node accum-condition accumulator result-binding token retracted bindings transport memory listener)))))
+        (send-accumulated node accum-condition accumulator result-binding token retracted bindings transport memory listener)))))
 
 (defn- do-accumulate
   "Runs the actual accumulation.  Returns the accumulated value if there are candidate facts
@@ -189,7 +217,7 @@
                  ;; There is nothing to propagate if nothing was accumulated.
                  :when (not= ::no-accum-result accum-result)]
 
-           (hlp/send-accumulated node accum-condition accumulator result-binding token accum-result fact-bindings transport memory listener))
+           (send-accumulated node accum-condition accumulator result-binding token accum-result fact-bindings transport memory listener))
 
          ;; There are no previously accumulated results, but we still may need to propagate things
          ;; such as a sum of zero items.
@@ -203,7 +231,7 @@
                initial-value (:initial-value accumulator)]
 
            ;; Send the created accumulated item to the children.
-           (hlp/send-accumulated node accum-condition accumulator result-binding token initial-value fact-bindings transport memory listener)
+           (send-accumulated node accum-condition accumulator result-binding token initial-value fact-bindings transport memory listener)
 
            ;; This accumulator keeps candidate facts rather than fully reduced values in the working memory,
            ;; since the reduce operation must occur per token. Since there are no candidate facts
@@ -225,7 +253,7 @@
               ;; There is nothing to retract if nothing was accumulated.
               :when (not= ::no-accum-result accum-result)]
 
-        (hlp/retract-accumulated node accum-condition accumulator result-binding token accum-result fact-bindings transport memory listener))))
+        (retract-accumulated node accum-condition accumulator result-binding token accum-result fact-bindings transport memory listener))))
 
   (get-join-keys [node] binding-keys)
 
@@ -260,7 +288,7 @@
                ;; There is nothing to retract if nothing was accumulated.
                :when (not= ::no-accum-result previous-accum-result)]
 
-         (hlp/retract-accumulated node accum-condition accumulator result-binding token
+         (retract-accumulated node accum-condition accumulator result-binding token
                               previous-accum-result bindings transport memory listener))
 
        ;; No items were previously reduced, but there may be an initial value that still needs to be
@@ -269,7 +297,7 @@
 
          (doseq [token (mem/get-tokens memory node join-bindings)]
 
-           (hlp/retract-accumulated node accum-condition accumulator result-binding token initial-value
+           (retract-accumulated node accum-condition accumulator result-binding token initial-value
                                 {result-binding initial-value} transport memory listener))))
 
       ;; Combine the newly reduced values with any previous items.
@@ -285,7 +313,7 @@
                 ;; There is nothing to propagate if nothing was accumulated.
                 :when (not= ::no-accum-result accum-result)]
 
-          (hlp/send-accumulated node accum-condition accumulator result-binding token accum-result bindings transport memory listener)))))
+          (send-accumulated node accum-condition accumulator result-binding token accum-result bindings transport memory listener)))))
 
   impl/IRightActivate
   (right-activate [node join-bindings elements memory transport listener]
@@ -321,10 +349,10 @@
 
       ;; Retract the previous token if something was previously accumulated.
       (when (not= ::no-accum-result previous-result)
-        (hlp/retract-accumulated node accum-condition accumulator result-binding token previous-result bindings transport memory listener))
+        (retract-accumulated node accum-condition accumulator result-binding token previous-result bindings transport memory listener))
 
       ;; Send a new accumulated token with our new, retracted information when there is a new result.
       (when (and new-result (not= ::no-accum-result new-result))
-        (hlp/send-accumulated node accum-condition accumulator result-binding token new-result bindings transport memory listener)))))
+        (send-accumulated node accum-condition accumulator result-binding token new-result bindings transport memory listener)))))
 
 

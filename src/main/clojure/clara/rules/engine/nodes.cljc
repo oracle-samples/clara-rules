@@ -1,7 +1,7 @@
 (ns clara.rules.engine.nodes
   "Rete network node types, accumulators are in a separate name space"
   (:require
-    [clara.rules.engine.impl :as impl]
+    [clara.rules.engine.protocols :as impl]
     [clara.rules.engine.state :as state]
     [clara.rules.engine.helpers :as hlp]
     [clara.rules.engine.wme :as wme]
@@ -11,7 +11,7 @@
             :cljs [clara.rules.engine.nodes.accumulators :refer [AccumulateNode]]))
     #?(:clj (:import [clara.rules.engine.nodes.accumulators AccumulateNode])))
 
-(defn ^:private retract-facts!
+(defn- retract-facts!
   "Perform the fact retraction."
   [facts]
   (swap! (:pending-updates state/*current-session*) into [(wme/->PendingUpdate :retract facts)]))

@@ -1,4 +1,4 @@
-(ns clara.rules.engine.impl)
+(ns clara.rules.engine.protocols)
 
 ;; Returns a new session with the additional facts inserted.
 (defprotocol ISession

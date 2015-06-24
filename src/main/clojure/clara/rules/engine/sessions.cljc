@@ -1,6 +1,6 @@
 (ns clara.rules.engine.sessions
   (:require
-    [clara.rules.engine.impl :as impl] [clara.rules.memory :as mem]
+    [clara.rules.engine.protocols :as impl] [clara.rules.memory :as mem]
     [clara.rules.engine.helpers :as hlp] [clara.rules.platform :as platform]
     [clara.rules.engine.state :as state] [clara.rules.listener :as l]))
 

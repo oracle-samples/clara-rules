@@ -1,6 +1,6 @@
 (ns clara.rules.engine.helpers
   (:require
-    [clara.rules.engine.impl :as impl]
+    [clara.rules.engine.protocols :as impl]
     [clara.rules.engine.wme :as wme]))
 
 (defn has-keys?
@@ -14,20 +14,6 @@
   (some (fn [{:keys [fact]}]
           (join-filter-fn token fact (:env condition)))
         elements))
-
-(defn send-accumulated
-  "Helper function to send the result of an accumulated value to the node's children."
-  [node accum-condition accumulator result-binding token result fact-bindings transport memory listener]
-  (let [converted-result ((:convert-return-fn accumulator) result)
-        new-bindings (merge (:bindings token)
-                            fact-bindings
-                            (when result-binding
-                              { result-binding
-                                converted-result}))]
-
-    (impl/send-tokens transport memory listener (:children node)
-                 [(wme/->Token (conj (:matches token) [converted-result (:id node)]) new-bindings)])))
-
 
 (defn flush-updates
   "Flush pending updates in the current session. Returns true if there were some items to flush,
@@ -50,17 +36,3 @@
         (impl/alpha-retract root fact-group transient-memory transport listener)))
 
     (not (empty? pending-updates))))
-
-(defn retract-accumulated
-  "Helper function to retract an accumulated value."
-  [node accum-condition accumulator result-binding token result fact-bindings transport memory listener]
-  (let [converted-result ((:convert-return-fn accumulator) result)
-        new-facts (conj (:matches token) [converted-result (:id node)])
-        new-bindings (merge (:bindings token)
-                            fact-bindings
-                            (when result-binding
-                              { result-binding
-                                converted-result}))]
-
-    (impl/retract-tokens transport memory listener (:children node)
-                    [(wme/->Token new-facts new-bindings)])))

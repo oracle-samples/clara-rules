@@ -1,6 +1,6 @@
 (ns clara.rules.engine.transports
   (:require
-    [clara.rules.engine.impl :as impl]
+    [clara.rules.engine.protocols :as impl]
     [clara.rules.engine.wme :as wme] [clara.rules.platform :as platform]
     [clara.rules.memory :as mem] [clara.rules.listener :as l]))  
 

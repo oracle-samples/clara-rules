@@ -18,12 +18,12 @@
                              (= \? (first (name item))))]
               (keyword  item))))
 
-(defn ^:private expr-type [expression]
+(defn- expr-type [expression]
   (if (map? expression)
     :condition
     (first expression)))
 
-(defn ^:private cartesian-join [lists lst]
+(defn- cartesian-join [lists lst]
   (if (seq lists)
     (let [[h & t] lists]
       (mapcat
@@ -32,7 +32,7 @@
        h))
     [lst]))
 
-(defn ^:private is-variable?
+(defn- is-variable?
   "Returns true if the given expression is a variable (a symbol prefixed by ?)"
   [expr]
   (and (symbol? expr)
@@ -45,7 +45,7 @@
          (or (= cmp-str "=")
              (= cmp-str "==")))))
 
-(defn ^:private extract-from-constraint
+(defn- extract-from-constraint
   "Process and extract a test expression from the constraint. Returns a pair of [processed-constraint, test-constraint],
    which can be expanded into correspoding join and test nodes.
   The test may be nil if no extraction is necessary."
@@ -223,7 +223,7 @@
 
     expanded))
 
-(defn ^:private condition-comp
+(defn- condition-comp
   "Helper function to sort conditions to ensure bindings
    are created in the needed order. The current implementation
    simply pushes tests to the end (since they don't create new bindings)
@@ -251,7 +251,7 @@
       ;; Tests are last.
       :test false)))
 
-(defn ^:private check-unbound-variables
+(defn- check-unbound-variables
   "Checks the expanded condition to see if there are any potentially unbound
    variables being referenced."
   [expanded-conditions]
