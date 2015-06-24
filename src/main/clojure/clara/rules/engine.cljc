@@ -2,17 +2,11 @@
   "The Clara rules engine. Most users should use only the clara.rules namespace."
   (:require
     [clara.rules.memory :as mem] [clara.rules.listener :as l]
+    [clara.rules.compiler.codegen :as codegen]
     [clara.rules.engine.wme :as wme] [clara.rules.engine.state :as state]
-    #?(:clj [clara.rules.engine.sessions :as sessions]
-            :cljs [clara.rules.engine.sessions :as sessions :refer [LocalSession]])
+    [clara.rules.engine.sessions :as sessions]
     [clara.rules.engine.protocols :as impl]
-    [clara.rules.platform :as platform]
-    [schema.core :as s] [clojure.string :as string])
-  #?(:clj (:import [clara.rules.engine.sessions LocalSession])))
-
-
-;; Token with no bindings, used as the root of beta nodes.
-(def empty-token (wme/->Token [] {}))
+    [schema.core :as s] [clojure.string :as string]))
 
 ;; Schema for the structure returned by the components
 ;; function on the session protocol.
@@ -27,6 +21,17 @@
      :transport s/Any
      :listeners [s/Any]
      :get-alphas-fn s/Any}))
+
+;; Cache of sessions for fast reloading.
+(def ^:private session-cache (atom {}))
+
+(defn clear-session-cache!
+  "Clears the cache of reusable Clara sessions, so any subsequent sessions
+   will be re-compiled from the rule definitions. This is intended for use
+   by tooling or specialized needs; most users can simply specify the :cache false
+   option when creating sessions."
+  []
+  (reset! session-cache {}))
 
 ;;
 ;; Hide implementation to outsiders
@@ -69,8 +74,7 @@
       (l/insert-facts! listener facts)
       (do
         (mem/add-insertions! transient-memory node token facts)
-        (l/insert-facts-logical! listener node token facts)
-        ))
+        (l/insert-facts-logical! listener node token facts)))
 
     (swap! (:pending-updates state/*current-session*) into [(wme/->PendingUpdate :insert facts)])))
 
@@ -81,27 +85,29 @@
   [base1 base2]
   (concat base1 base2))
 
-(defn assemble
-  "Assembles a session from the given components, which must be a map
-   containing the following:
+(defn mk-session
+  "Creates a new session using the given rule source. Thew resulting session
+   is immutable, and can be used with insert, retract, fire-rules, and query functions."
+  ([sources-and-options]
 
-   :rulebase A recorec matching the clara.rules.compiler/Rulebase structure.
-   :memory An implementation of the clara.rules.memory/IMemoryReader protocol
-   :transport An implementation of the clara.rules.engine/ITransport protocol
-   :listeners A vector of listeners implementing the clara.rules.listener/IPersistentListener protocol
-   :get-alphas-fn The function used to return the alpha nodes for a fact of the given type."
+     ;; If an equivalent session has been created, simply reuse it.
+     ;; This essentially memoizes this function unless the caller disables caching.
+     (if-let [session (get @session-cache [sources-and-options])]
+       session
 
-  [{:keys [rulebase memory transport listeners get-alphas-fn]}]
-  (LocalSession. rulebase memory transport
-                 (if (> (count listeners) 0)
-                   (l/delegating-listener listeners)
-                   l/default-listener)
-                 get-alphas-fn))
+       ;; Separate sources and options, then load them.
+       (let [sources (take-while (complement keyword?) sources-and-options)
+             options (apply hash-map (drop-while (complement keyword?) sources-and-options))
+             productions (mapcat
+                          #(if (satisfies? codegen/IRuleSource %)
+                             (codegen/load-rules %)
+                             %)
+                          sources) ; Load rules from the source, or just use the input as a seq.
+             session (sessions/mk-session* productions options)]
 
-(defn local-memory
-  "Returns a local, in-process working memory."
-  [rulebase transport activation-group-sort-fn activation-group-fn]
-  (let [memory (mem/to-transient (mem/local-memory rulebase activation-group-sort-fn activation-group-fn))]
-    (doseq [beta-node (:beta-roots rulebase)]
-      (impl/left-activate beta-node {} [empty-token] memory transport l/default-listener))
-    (mem/to-persistent! memory)))
+         ;; Cache the session unless instructed not to.
+         (when (get options :cache true)
+           (swap! session-cache assoc [sources-and-options] session))
+
+         ;; Return the session.
+         session))))

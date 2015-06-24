@@ -11,7 +11,7 @@
   (:require
     [clara.rules :refer [insert-all]]
     [clara.rules.listener :as l]
-    [clara.rules.engine :as eng]
+    [clara.rules.engine :as eng] [clara.rules.engine.sessions :as session]
     [clara.rules.engine.wme :as wme]
     [clara.rules.memory :as mem]
     [clojure.set :as set]
@@ -111,7 +111,7 @@
       (mem/add-activations! transient-memory production activations))
 
     ;; Create a new session with the given activations.
-    (eng/assemble (assoc components :memory (mem/to-persistent! transient-memory)))))
+    (session/assemble (assoc components :memory (mem/to-persistent! transient-memory)))))
 
 (defn- restore-accum-results
   [session {:keys [accum-results] :as session-state}]
@@ -130,7 +130,7 @@
                                   transport
                                   (l/to-transient l/default-listener)))
 
-    (eng/assemble (assoc components :memory (mem/to-persistent! transient-memory)))))
+    (session/assemble (assoc components :memory (mem/to-persistent! transient-memory)))))
 
 (defn- restore-insertions
   [session {:keys [insertions] :as session-state}]
@@ -143,7 +143,7 @@
 
       (mem/add-insertions! transient-memory (id-to-node id) token inserted-facts))
 
-    (eng/assemble (assoc components :memory (mem/to-persistent! transient-memory)))))
+    (session/assemble (assoc components :memory (mem/to-persistent! transient-memory)))))
 
 (s/defn restore-session-state
   " Restore the given session to have the provided session state. The given session should be

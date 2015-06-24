@@ -76,3 +76,10 @@
                      memory
                      transport
                      listener))))
+(defn ->transport
+  [type]
+  (case type
+    :local
+    (LocalTransport.)
+    (throw #?(:clj (Exception. (format "Unknown transport implementation %s" type))
+                   :cljs (js/Error (str "Unknown transport implementation" type))))))

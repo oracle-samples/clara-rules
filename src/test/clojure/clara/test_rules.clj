@@ -708,7 +708,7 @@
            (set two-groups-no-init)))))
 
 (deftest test-retract-initial-value
-  (clara.rules.compiler/clear-session-cache!)
+  (clara.rules.engine/clear-session-cache!)
 
   (let [get-temp-history (dsl/parse-query [] [[?his <- TemperatureHistory]])
 

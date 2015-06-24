@@ -1,44 +1,12 @@
 (ns clara.rules
   (:require [clara.rules.engine :as eng] [clara.rules.engine.state :as state]
+            [clara.rules.engine.transport :as transport]
             [clara.rules.engine.nodes :as nodes :refer [ProductionNode QueryNode]]
             [clara.rules.engine.wme :as wme]
-            [clara.rules.engine.transports :refer [LocalTransport]]
+            [clara.rules.compiler.codegen :as codegen :refer [Rulebase]]
             [clara.rules.engine.sessions :refer [LocalSession]]
             [clara.rules.memory :as mem] [clara.rules.listener :as l]))
 
-(defrecord Rulebase [alpha-roots beta-roots productions production-nodes query-nodes id-to-node])
-
-(defn- create-get-alphas-fn
-  "Returns a function that given a sequence of facts,
-  returns a map associating alpha nodes with the facts they accept."
-  [fact-type-fn merged-rules]
-
-  ;; We preserve a map of fact types to alpha nodes for efficiency,
-  ;; effectively memoizing this operation.
-  (let [alpha-map (atom {})]
-    (fn [facts]
-      (for [[fact-type facts] (group-by fact-type-fn facts)]
-
-        (if-let [alpha-nodes (get @alpha-map fact-type)]
-
-          ;; If the matching alpha nodes are cached, simply return them.
-          [alpha-nodes facts]
-
-          ;; The alpha nodes weren't cached for the type, so get them now.
-          (let [ancestors (conj (ancestors fact-type) fact-type)
-
-                ;; Get all alpha nodes for all ancestors.
-                new-nodes (distinct
-                           (reduce
-                            (fn [coll ancestor]
-                              (concat
-                               coll
-                               (get-in merged-rules [:alpha-roots ancestor])))
-                            []
-                            ancestors))]
-
-            (swap! alpha-map assoc fact-type new-nodes)
-            [new-nodes facts]))))))
 
 (defn- mk-rulebase
   [beta-roots alpha-fns productions]
@@ -95,7 +63,7 @@
   "This is used by tools to create a session; most users won't use this function."
   [beta-roots alpha-fns productions options]
   (let [rulebase (mk-rulebase beta-roots alpha-fns productions)
-        transport (LocalTransport.)
+        transport (transport/->transport :local)
 
         ;; The fact-type uses Clojure's type function unless overridden.
         fact-type-fn (get options :fact-type-fn type)
@@ -104,7 +72,7 @@
         ;; of alpha nodes they target.
         ;; We cache an alpha-map for facts of a given type to avoid computing
         ;; them for every fact entered.
-        get-alphas-fn (create-get-alphas-fn fact-type-fn rulebase)
+        get-alphas-fn (codegen/create-get-alphas-fn fact-type-fn rulebase)
 
         ;; Default sort by higher to lower salience.
         activation-group-sort-fn (get options :activation-group-sort-fn >)

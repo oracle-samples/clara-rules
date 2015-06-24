@@ -19,3 +19,6 @@
 
 ;; Record indicating pending insertion or removal of a sequence of facts.
 (defrecord PendingUpdate [type facts])
+
+;; Token with no bindings, used as the root of beta nodes.
+(def empty-token (->Token [] {}))

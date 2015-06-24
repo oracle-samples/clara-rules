@@ -1,131 +1,74 @@
 (ns clara.rules.engine.sessions
+  "The purpose of this name space is to support session creation"
   (:require
-    [clara.rules.engine.protocols :as impl] [clara.rules.memory :as mem]
-    [clara.rules.engine.helpers :as hlp] [clara.rules.platform :as platform]
-    [clara.rules.engine.state :as state] [clara.rules.listener :as l]))
+    [clara.rules.memory :as mem] [clara.rules.compiler.codegen :as codegen]
+    [clara.rules.engine.protocols :as impl] [clara.rules.engine.wme :as wme]
+    [clara.rules.compiler :as comp] [clara.rules.listener :as l]
+    [clara.rules.schema :as schema] [clara.rules.engine.transports :as transport]
+    #?(:clj [clara.rules.engine.sessions.local :as local]
+            :cljs [clara.rules.engine.sessions.local :as local :refer [LocalSession]])
+    #?(:clj [schema.core :as sc] :cljs [schema.core :as sc :include-macros true]))
+  #?(:clj (:import [clara.rules.engine.sessions.local LocalSession])))
 
-(defn fire-rules*
-  "Fire rules for the given nodes."
-  [rulebase nodes transient-memory transport listener get-alphas-fn]
-  (binding [state/*current-session* {:rulebase rulebase
-                                     :transient-memory transient-memory
-                                     :transport transport
-                                     :insertions (atom 0)
-                                     :get-alphas-fn get-alphas-fn
-                                     :pending-updates (atom [])
-                                     :listener listener}]
 
-    (loop [next-group (mem/next-activation-group transient-memory)
-           last-group nil]
+(defn assemble
+  "Assembles a session from the given components, which must be a map
+   containing the following:
 
-      (if next-group
+   :rulebase A recorec matching the clara.rules.compiler.codegen/Rulebase structure.
+   :memory An implementation of the clara.rules.memory/IMemoryReader protocol
+   :transport An implementation of the clara.rules.engine/ITransport protocol
+   :listeners A vector of listeners implementing the clara.rules.listener/IPersistentListener protocol
+   :get-alphas-fn The function used to return the alpha nodes for a fact of the given type."
 
-        (if (and last-group (not= last-group next-group))
+  [{:keys [rulebase memory transport listeners get-alphas-fn]}]
+  (LocalSession. rulebase memory transport
+                 (if (> (count listeners) 0)
+                   (l/delegating-listener listeners)
+                   l/default-listener)
+                 get-alphas-fn))
 
-          ;; We have changed groups, so flush the updates from the previous
-          ;; group before continuing.
-          (do
-            (hlp/flush-updates state/*current-session*)
-            (recur (mem/next-activation-group transient-memory) next-group))
+(defn local-memory
+  "Returns a local, in-process working memory."
+  [rulebase transport activation-group-sort-fn activation-group-fn]
+  (let [memory (mem/to-transient (mem/local-memory rulebase activation-group-sort-fn activation-group-fn))]
+    (doseq [beta-node (:beta-roots rulebase)]
+      (impl/left-activate beta-node {} [wme/empty-token] memory transport l/default-listener))
+    (mem/to-persistent! memory)))
 
-          (do
+(sc/defn mk-session*
+  "Compile the rules into a rete network and return the given session."
+  [productions :- [schema/Production]
+   options :- {sc/Keyword sc/Any}]
+  (let [rulebase (comp/compile->rulebase productions)
+        transport (transport/->transport :local)
+        
+        ;; The fact-type uses Clojure's type function unless overridden.
+        fact-type-fn (get options :fact-type-fn type)
 
-            ;; If there are activations, fire them.
-            (when-let [{:keys [node token]} (mem/pop-activation! transient-memory)]
+        ;; The ancestors for a logical type uses Clojure's ancestors function unless overridden.
+        ancestors-fn (get options :ancestors-fn ancestors)
 
-              (binding [state/*rule-context* {:token token :node node}]
+        ;; Default sort by higher to lower salience.
+        activation-group-sort-fn (get options :activation-group-sort-fn >)
 
-                ;; Fire the rule itself.
-                ((:rhs node) token (:env (:production node)))
+        ;; Activation groups use salience, with zero
+        ;; as the default value.
+        activation-group-fn (get options
+                                 :activation-group-fn
+                                 (fn [production]
+                                   (or (some-> production :props :salience)
+                                       0)))
 
-                ;; Explicitly flush updates if we are in a no-loop rule, so the no-loop
-                ;; will be in context for child rules.
-                (when (some-> node :production :props :no-loop)
-                  (hlp/flush-updates state/*current-session*))))
+        ;; Create a function that groups a sequence of facts by the collection
+        ;; of alpha nodes they target.
+        ;; We cache an alpha-map for facts of a given type to avoid computing
+        ;; them for every fact entered.
+        get-alphas-fn (codegen/create-get-alphas-fn fact-type-fn ancestors-fn rulebase)]
 
-            (recur (mem/next-activation-group transient-memory) next-group)))
+    (assemble {:rulebase rulebase
+              :memory (local-memory rulebase transport activation-group-sort-fn activation-group-fn)
+              :transport transport
+              :listeners (get options :listeners  [])
+              :get-alphas-fn get-alphas-fn})))
 
-        ;; There were no items to be activated, so flush any pending
-        ;; updates and recur with a potential new activation group
-        ;; since a flushed item may have triggered one.
-        (when (hlp/flush-updates state/*current-session*)
-          (recur (mem/next-activation-group transient-memory) next-group))))))
-
-(deftype LocalSession [rulebase memory transport listener get-alphas-fn]
-  impl/ISession
-  (insert [session facts]
-    (let [transient-memory (mem/to-transient memory)
-          transient-listener (l/to-transient listener)]
-
-      (l/insert-facts! transient-listener facts)
-
-      (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
-              root alpha-roots]
-        (impl/alpha-activate root fact-group transient-memory transport transient-listener))
-
-      (LocalSession. rulebase
-                     (mem/to-persistent! transient-memory)
-                     transport
-                     (l/to-persistent! transient-listener)
-                     get-alphas-fn)))
-
-  (retract [session facts]
-
-    (let [transient-memory (mem/to-transient memory)
-          transient-listener (l/to-transient listener)]
-
-      (l/retract-facts! transient-listener facts)
-
-      (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
-              root alpha-roots]
-        (impl/alpha-retract root fact-group transient-memory transport transient-listener))
-
-      (LocalSession. rulebase
-                     (mem/to-persistent! transient-memory)
-                     transport
-                     (l/to-persistent! transient-listener)
-                     get-alphas-fn)))
-
-  (fire-rules [session]
-
-    (let [transient-memory (mem/to-transient memory)
-          transient-listener (l/to-transient listener)]
-      (fire-rules* rulebase
-                   (:production-nodes rulebase)
-                   transient-memory
-                   transport
-                   transient-listener
-                   get-alphas-fn)
-
-      (LocalSession. rulebase
-                     (mem/to-persistent! transient-memory)
-                     transport
-                     (l/to-persistent! transient-listener)
-                     get-alphas-fn)))
-
-  ;; TODO: queries shouldn't require the use of transient memory.
-  (query [session query params]
-    (let [query-node (get-in rulebase [:query-nodes query])]
-      (when (= nil query-node)
-        (platform/throw-error (str "The query " query " is invalid or not included in the rule base.")))
-
-      (->> (mem/get-tokens (mem/to-transient memory) query-node params)
-
-           ;; Get the bindings for each token and filter generate symbols.
-           (map (fn [{bindings :bindings}]
-
-                  ;; Filter generated symbols. We check first since this is an uncommon flow.
-                  (if (some #(re-find #"__gen" (name %)) (keys bindings) )
-
-                    (into {} (remove (fn [[k v]] (re-find #"__gen"  (name k)))
-                                     bindings))
-                    bindings))))))
-
-  (components [session]
-    {:rulebase rulebase
-     :memory memory
-     :transport transport
-     :listeners (if (l/null-listener? listener)
-                  []
-                  (l/get-children listener))
-     :get-alphas-fn get-alphas-fn}))

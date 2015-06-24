@@ -2,24 +2,19 @@
   "The Clara rules compiler, translating raw data structures into compiled versions and functions.
    Most users should use only the clara.rules namespace."
   (:require
-    [clara.rules.engine :as eng]
     [clara.rules.compiler.helpers :as hlp]
-    [clara.rules.compiler.codegen :as codegen]
     [clara.rules.compiler.expressions :as expr]
     [clara.rules.compiler.trees :as trees]
-    [clara.rules.platform :as platform]
+    [clara.rules.compiler.codegen :as codegen]
     [clara.rules.schema :as schema]
-    [clara.rules.engine :as eng]
     [clara.rules.engine.nodes :as nodes]
     [clara.rules.engine.nodes.accumulators :as accs]
-    [clara.rules.engine.transports :as transports]
     [clojure.set :as s] [clojure.string :as string]
     [schema.core :as sc] [schema.macros :as sm])
 
   (:import [clara.rules.engine.nodes ProductionNode QueryNode JoinNode NegationNode TestNode
                                 AlphaNode]
            [clara.rules.engine.nodes.accumulators AccumulateNode]
-           [clara.rules.engine.transports LocalTransport]
            [clara.rules.engine.wme Accumulator]))
 
 (defn- compile-constraints [exp-seq assigment-set]
@@ -47,7 +42,7 @@
        :else
        (list (list 'if exp (cons 'do compiled-rest) nil))))))
 
-(defn compile-condition
+(defn- compile-condition
   "Returns a function definition that can be used in alpha nodes to test the condition."
   [type destructured-fact constraints result-binding env]
   (let [;; Get a map of fieldnames to access function symbols.
@@ -79,7 +74,7 @@
          (do ~@(compile-constraints constraints (set binding-keys)))))))
 
 ;; FIXME: add env...
-(defn compile-test [tests]
+(defn- compile-test [tests]
   (let [binding-keys (expr/variables-as-keywords tests)
         assignments (mapcat #(list (symbol (name %)) (list 'get-in '?__token__ [:bindings %])) binding-keys)]
 
@@ -87,7 +82,7 @@
       (let [~@assignments]
         (and ~@tests)))))
 
-(defn compile-action
+(defn- compile-action
   "Compile the right-hand-side action of a rule, returning a function to execute it."
   [binding-keys rhs env]
   (let [assignments (mapcat #(list (symbol (name %)) (list 'get-in '?__token__ [:bindings %])) binding-keys)
@@ -100,7 +95,7 @@
        (let [~@assignments]
          ~rhs))))
 
-(defn compile-accum
+(defn- compile-accum
   "Used to create accumulators that take the environment into account."
   [accum env]
   (let [destructured-env
@@ -110,7 +105,7 @@
     `(fn [~destructured-env]
        ~accum)))
 
-(defn compile-join-filter
+(defn- compile-join-filter
   "Compiles to a predicate function that ensures the given items can be unified. Returns a ready-to-eval
    function that accepts a token, a fact, and an environment, and returns truthy if the given fact satisfies
    the criteria."
@@ -284,117 +279,15 @@
           (nodes/->QueryNode
            id
            query
-           (:params query))
-          )))))
+           (:params query)))))))
 
-
-
-(defn- create-get-alphas-fn
-  "Returns a function that given a sequence of facts,
-  returns a map associating alpha nodes with the facts they accept."
-  [fact-type-fn ancestors-fn merged-rules]
-
-  ;; We preserve a map of fact types to alpha nodes for efficiency,
-  ;; effectively memoizing this operation.
-  (let [alpha-map (atom {})]
-    (fn [facts]
-      (for [[fact-type facts] (platform/tuned-group-by fact-type-fn facts)]
-
-        (if-let [alpha-nodes (get @alpha-map fact-type)]
-
-          ;; If the matching alpha nodes are cached, simply return them.
-          [alpha-nodes facts]
-
-          ;; The alpha nodes weren't cached for the type, so get them now.
-          (let [ancestors (conj (ancestors-fn fact-type) fact-type)
-
-                ;; Get all alpha nodes for all ancestors.
-                new-nodes (distinct
-                           (reduce
-                            (fn [coll ancestor]
-                              (concat
-                               coll
-                               (get-in merged-rules [:alpha-roots ancestor])))
-                            []
-                            ancestors))]
-
-            (swap! alpha-map assoc fact-type new-nodes)
-            [new-nodes facts]))))))
-
-
-;; Cache of sessions for fast reloading.
-(def ^:private session-cache (atom {}))
-
-(defn clear-session-cache!
-  "Clears the cache of reusable Clara sessions, so any subsequent sessions
-   will be re-compiled from the rule definitions. This is intended for use
-   by tooling or specialized needs; most users can simply specify the :cache false
-   option when creating sessions."
-  []
-  (reset! session-cache {}))
-
-(sc/defn mk-session*
-  "Compile the rules into a rete network and return the given session."
-  [productions :- [schema/Production]
-   options :- {sc/Keyword sc/Any}]
+(defn compile->rulebase
+  "Main entry point to the compiler, accepts productions, return a rule base
+   usable by the engien runtime."
+  [productions]
   (let [beta-struct (trees/to-beta-tree productions)
         beta-tree (compile-beta-tree beta-struct #{} true)
         alpha-nodes (compile-alpha-nodes (trees/to-alpha-tree beta-struct))
-        rulebase (codegen/build-network beta-tree alpha-nodes productions)
-        transport (LocalTransport.)
-
-        ;; The fact-type uses Clojure's type function unless overridden.
-        fact-type-fn (get options :fact-type-fn type)
-
-        ;; The ancestors for a logical type uses Clojure's ancestors function unless overridden.
-        ancestors-fn (get options :ancestors-fn ancestors)
-
-        ;; Default sort by higher to lower salience.
-        activation-group-sort-fn (get options :activation-group-sort-fn >)
-
-        ;; Activation groups use salience, with zero
-        ;; as the default value.
-        activation-group-fn (get options
-                                 :activation-group-fn
-                                 (fn [production]
-                                   (or (some-> production :props :salience)
-                                       0)))
-
-        ;; Create a function that groups a sequence of facts by the collection
-        ;; of alpha nodes they target.
-        ;; We cache an alpha-map for facts of a given type to avoid computing
-        ;; them for every fact entered.
-        get-alphas-fn (create-get-alphas-fn fact-type-fn ancestors-fn rulebase)]
-
-    (eng/assemble {:rulebase rulebase
-                  :memory (eng/local-memory rulebase transport activation-group-sort-fn activation-group-fn)
-                  :transport transport
-                  :listeners (get options :listeners  [])
-                  :get-alphas-fn get-alphas-fn})))
-
-(defn mk-session
-  "Creates a new session using the given rule source. Thew resulting session
-   is immutable, and can be used with insert, retract, fire-rules, and query functions."
-  ([sources-and-options]
-
-     ;; If an equivalent session has been created, simply reuse it.
-     ;; This essentially memoizes this function unless the caller disables caching.
-     (if-let [session (get @session-cache [sources-and-options])]
-       session
-
-       ;; Separate sources and options, then load them.
-       (let [sources (take-while (complement keyword?) sources-and-options)
-             options (apply hash-map (drop-while (complement keyword?) sources-and-options))
-             productions (mapcat
-                          #(if (satisfies? codegen/IRuleSource %)
-                             (codegen/load-rules %)
-                             %)
-                          sources) ; Load rules from the source, or just use the input as a seq.
-             session (mk-session* productions options)]
-
-         ;; Cache the session unless instructed not to.
-         (when (get options :cache true)
-           (swap! session-cache assoc [sources-and-options] session))
-
-         ;; Return the session.
-         session))))
+        rulebase (codegen/build-network beta-tree alpha-nodes productions)]
+    rulebase))
+  

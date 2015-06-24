@@ -2,7 +2,6 @@
   "Forward-chaining rules for Clojure. The primary API is in this namespace."
   (:require [clara.rules.engine :as eng]
             [clara.rules.memory :as mem] [clara.rules.engine.state :as state]
-            [clara.rules.compiler :as com]
             [clara.rules.schema :as schema]
             [clara.rules.compiler.codegen :as codegen]
             [clara.rules.engine :as eng]
@@ -160,20 +159,8 @@
    users must use pre-defined rulesessions using defsession."
   [& args]
   (if (and (seq args) (not (keyword? (first args))))
-    `(com/mk-session ~(vec args)) ; At least one namespace given, so use it.
-    `(com/mk-session (concat [(ns-name *ns*)] ~(vec args))))) ; No namespace given, so use the current one.
-
-;; Treate a symbol as a rule source, loading all items in its namespace.
-(extend-type clojure.lang.Symbol
-  codegen/IRuleSource
-  (load-rules [sym]
-
-    ;; Find the rules and queries in the namespace, shred them,
-    ;; and compile them into a rule base.
-    (->> (ns-interns sym)
-         (vals) ; Get the references in the namespace.
-         (filter #(or (:rule (meta %)) (:query (meta %)))) ; Filter down to rules and queries.
-         (map deref))))  ; Get the rules from the symbols.
+    `(eng/mk-session ~(vec args)) ; At least one namespace given, so use it.
+    `(eng/mk-session (concat [(ns-name *ns*)] ~(vec args))))) ; No namespace given, so use the current one.
 
 (defmacro defsession
   "Creates a sesson given a list of sources and keyword-style options, which are typically Clojure namespaces.
@@ -194,7 +181,7 @@ use it as follows:
    "
   [name & sources-and-options]
 
-  `(def ~name (com/mk-session ~(vec sources-and-options))))
+  `(def ~name (eng/mk-session ~(vec sources-and-options))))
 
 (defmacro defrule
   "Defines a rule and stores it in the given var. For instance, a simple rule would look like this:
