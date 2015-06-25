@@ -79,13 +79,6 @@
 
     (swap! (:pending-updates state/*current-session*) into [(wme/->PendingUpdate :insert facts)])))
 
-(defn conj-rulebases
-  "DEPRECATED. Simply concat sequences of rules and queries.
-
-   Conjoin two rulebases, returning a new one with the same rules."
-  [base1 base2]
-  (concat base1 base2))
-
 #?(:clj
     (defn compile->session
       "Creates a new session using the given rule source(s). Compiles the productions into a rule base.
@@ -100,11 +93,8 @@
            ;; Separate sources and options, then load them.
            (let [sources (take-while (complement keyword?) sources-and-options)
                  options (apply hash-map (drop-while (complement keyword?) sources-and-options))
-                 productions (mapcat
-                              #(if (satisfies? codegen/IRuleSource %)
-                                 (codegen/load-rules %)
-                                 %)
-                              sources) ; Load rules from the source, or just use the input as a seq.
+                 productions (codegen/get-productions sources :clj)
+                             ; Load rules from the source, or just use the input as a seq.
                  rulebase  (comp/compile->rulebase productions)
                  session (sessions/mk-session* rulebase options)]
 
@@ -114,3 +104,23 @@
 
              ;; Return the session.
              session)))))
+
+(defn rulebase->session
+  "Creates a new session using the given rule base.
+   The resulting session is immutable, and can be used with insert, retract, fire-rules, and query functions."
+  [rulebase sources-and-options]
+  ;; If an equivalent session has been created, simply reuse it.
+  ;; This essentially memoizes this function unless the caller disables caching.
+  (if-let [session (get @session-cache [sources-and-options])]
+    session
+    (let [options (apply hash-map (drop-while (complement keyword?) sources-and-options))
+           session (sessions/mk-session* rulebase options)]
+      ;; Cache the session unless instructed not to.
+      (when (get options :cache true)
+        (swap! session-cache assoc [sources-and-options] session))
+      
+      ;; Return the session.
+      session)))      
+
+
+
