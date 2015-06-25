@@ -74,7 +74,7 @@
          (do ~@(compile-constraints constraints (set binding-keys)))))))
 
 ;; FIXME: add env...
-(defn- compile-test [tests]
+(defn compile-test [tests]
   (let [binding-keys (expr/variables-as-keywords tests)
         assignments (mapcat #(list (symbol (name %)) (list 'get-in '?__token__ [:bindings %])) binding-keys)]
 
@@ -82,7 +82,7 @@
       (let [~@assignments]
         (and ~@tests)))))
 
-(defn- compile-action
+(defn compile-action
   "Compile the right-hand-side action of a rule, returning a function to execute it."
   [binding-keys rhs env]
   (let [assignments (mapcat #(list (symbol (name %)) (list 'get-in '?__token__ [:bindings %])) binding-keys)
@@ -157,6 +157,69 @@
                                  (meta condition))))
              :children beta-children}
             env (assoc :env env))))
+
+(sc/defn generate-beta-tree-expr
+  "Generates the beta network nodes from the beta tree as an expression.
+   It should mimic closely the compile-beta-tree fn but spits out an expression
+   that will be evaluated by ClojureScript instead of a fully formed beta tree."
+  [beta-nodes  :- [schema/BetaNode]
+   parent-bindings]
+  (vec
+   (for [beta-node beta-nodes
+         :let [{:keys [condition children id production query join-bindings]} beta-node
+
+               constraint-bindings (expr/variables-as-keywords (:constraints condition))
+
+               ;; Get all bindings from the parent, condition, and returned fact.
+               all-bindings (cond-> (s/union parent-bindings constraint-bindings)
+                                    ;; Optional fact binding from a condition.
+                                    (:fact-binding condition) (conj (:fact-binding condition))
+                                    ;; Optional accumulator result.
+                                    (:result-binding beta-node) (conj (:result-binding beta-node)))]]
+
+     (case (:node-type beta-node)
+
+       :join
+       `(clara.rules.engine.nodes/->JoinNode
+         ~id
+         '~condition
+         ~(clara.rules.compiler/generate-beta-tree-expr children all-bindings)
+         ~join-bindings)
+
+       :negation
+       `(clara.rules.engine.nodes/->NegationNode
+         ~id
+         '~condition
+         ~(clara.rules.compiler/generate-beta-tree-expr children all-bindings)
+         ~join-bindings)
+          
+       :test
+       `(clara.rules.engine.nodes/->TestNode
+         ~id
+         ~(clara.rules.compiler/compile-test (:constraints condition))
+         ~(clara.rules.compiler/generate-beta-tree-expr children all-bindings))
+
+       :accumulator
+       `(clara.rules.engine.nodes.accumulators/->AccumulateNode
+         ~id
+         {:accumulator '~(:accumulator beta-node)
+          :from '~condition}
+         ~(:accumulator beta-node)
+         ~(:result-binding beta-node)
+         ~(clara.rules.compiler/generate-beta-tree-expr children all-bindings)
+         ~join-bindings)
+
+       :production
+       `(clara.rules.engine.nodes/->ProductionNode
+        ~id
+        '~production
+        ~(clara.rules.compiler/compile-action all-bindings (:rhs production) (:env production)))
+
+       :query
+       `(clara.rules.engine.nodes/->QueryNode
+        ~id
+        '~query
+        ~(:params query))))))
 
 (sc/defn compile-beta-tree
   "Compile the beta tree to the nodes used at runtime."
@@ -290,4 +353,12 @@
         alpha-nodes (compile-alpha-nodes (trees/to-alpha-tree beta-struct))
         rulebase (codegen/build-network beta-tree alpha-nodes productions)]
     rulebase))
+
+(defn compile->ast
+  "Compile to AST. Return AST as a map."
+  [productions]
+  (let [beta-trees (trees/to-beta-tree productions)]
+    {:beta-trees beta-trees
+     :alpha-trees(trees/to-alpha-tree beta-trees)}))
+
   
