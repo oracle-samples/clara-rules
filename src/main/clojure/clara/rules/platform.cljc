@@ -1,5 +1,5 @@
 (ns clara.rules.platform
-  "Code specific to the JVM platform.")
+  "Platform unified code Clojure/ClojureScript.")
 
 (defn throw-error
   "Throw an error with the given description string."
