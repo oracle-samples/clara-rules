@@ -1,4 +1,5 @@
 (ns clara.rules.compiler.codegen
+  "Code generation and source utility fns"
   (:require
     [clara.rules.platform :as platform] [clara.rules.listener :as l]
     #?(:clj [clara.rules.engine.nodes :as nodes]
@@ -37,6 +38,41 @@
                         query-nodes :- {sc/Any QueryNode}
                         ;; May of id to one of the beta nodes (join, accumulate, etc)
                         id-to-node :- {sc/Num nodes/BetaNode}])
+
+
+(defn- get-productions-from-namespace 
+  "Returns a map of names to productions in the given CLJS namespace."
+  [namespace env]
+  ;; TODO: remove need for ugly eval by changing our quoting strategy.
+  (let [productions (get-in env [::productions namespace])]
+    (map eval (vals productions))))
+  
+(defn- get-cljs-productions
+  "Return the productions from the source in CLJS space.
+   We need the CLJS compiler environment."
+  [source env]
+  (cond
+    (symbol? source) (get-productions-from-namespace source env)
+    (coll? source) (seq source)
+    :else (throw (IllegalArgumentException. "Unknown source value type passed to defsession"))))
+
+(defn get-productions 
+  "Returns a sequence of productions from the given sources."
+  ([sources runtime]
+    (get-productions sources runtime {}))
+  ([sources runtime env]
+    (case runtime
+      :clj
+      (mapcat
+        #(if (satisfies? IRuleSource %)
+           (load-rules %)
+           %) sources)
+      :cljs
+      (vec (for [source sources
+                 production (get-cljs-productions source env)]
+             production))
+      (throw #?(:clj (Exception. (format "No such runtime %s") runtime)
+                     :cljs (js/Error. (str "No such runtime " runtime)))))))
 
 (defn create-get-alphas-fn
   "Returns a function that given a sequence of facts,
@@ -116,3 +152,4 @@
       :production-nodes production-nodes
       :query-nodes query-map
       :id-to-node id-to-node})))
+
