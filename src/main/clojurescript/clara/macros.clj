@@ -1,11 +1,12 @@
 (ns clara.macros
   "Forward-chaining rules for Clojure. The primary API is in this namespace"
-  (:require [clara.rules.engine :as eng]
+  (:require [clara.rules.engine.sessions :as session]
             [clara.rules.engine.nodes :as nodes]
             [clara.rules.engine.nodes.accumulators :as accs]
             [clara.rules.memory :as mem]
-            [clara.rules.compiler :as com]
-            [clara.rules.compiler.expressions :as expr] [clara.rules.compiler.helpers :as hlp] [clara.rules.compiler.trees :as trees]
+            [clara.rules.compiler.codegen :as codegen] 
+            [clara.rules.compiler.expressions :as expr] [clara.rules.compiler.helpers :as hlp]
+            [clara.rules.compiler.trees :as trees]
             [clara.rules.dsl :as dsl]            
             [cljs.analyzer :as ana]
             [cljs.env :as env]
@@ -16,20 +17,6 @@
 (defn- add-production [name production]
   (swap! env/*compiler* assoc-in [::productions (hlp/cljs-ns) name] production))
 
-(defn- get-productions-from-namespace 
-  "Returns a map of names to productions in the given namespace."
-  [namespace]
-  ;; TODO: remove need for ugly eval by changing our quoting strategy.
-  (let [productions (get-in @env/*compiler* [::productions namespace])]
-    (map eval (vals productions))))
-
-(defn- get-productions
-  "Return the productions from the source"
-  [source]
-  (cond
-   (symbol? source) (get-productions-from-namespace source)
-   (coll? source) (seq source)
-   :else (throw (IllegalArgumentException. "Unknown source value type passed to defsession"))))
 
 (defmacro defrule 
   [name & body]
@@ -58,79 +45,6 @@
     (add-production name query)
     `(def ~name
        ~query)))
-
-(defn- gen-beta-network
-  "Generates the beta network from the beta tree. "
-  ([beta-nodes
-    parent-bindings]
-     (vec
-      (for [beta-node beta-nodes
-            :let [{:keys [condition children id production query join-bindings]} beta-node
-
-                  constraint-bindings (expr/variables-as-keywords (:constraints condition))
-
-                  ;; Get all bindings from the parent, condition, and returned fact.
-                  all-bindings (cond-> (s/union parent-bindings constraint-bindings)
-                                       ;; Optional fact binding from a condition.
-                                       (:fact-binding condition) (conj (:fact-binding condition))
-                                       ;; Optional accumulator result.
-                                       (:result-binding beta-node) (conj (:result-binding beta-node)))]]
-
-        (case (:node-type beta-node)
-
-          :join
-          `(nodes/->JoinNode
-            ~id
-            '~condition
-            ~(gen-beta-network children all-bindings)
-            ~join-bindings)
-
-          :negation
-          `(nodes/->NegationNode
-            ~id
-            '~condition
-            ~(gen-beta-network children all-bindings)
-            ~join-bindings)
-          
-          :test
-          `(nodes/->TestNode
-            ~id
-            ~(com/compile-test (:constraints condition))
-            ~(gen-beta-network children all-bindings))
-
-          :accumulator
-          `(accs/->AccumulateNode
-            ~id
-            {:accumulator '~(:accumulator beta-node)
-             :from '~condition}
-            ~(:accumulator beta-node)
-            ~(:result-binding beta-node)
-            ~(gen-beta-network children all-bindings)
-            ~join-bindings)
-
-          :production
-          `(nodes/->ProductionNode
-           ~id
-           '~production
-           ~(com/compile-action all-bindings (:rhs production) (:env production)))
-
-          :query
-          `(nodes/->QueryNode
-           ~id
-           '~query
-           ~(:params query))
-          )))))
-
-(defn- compile-alpha-nodes
-  [alpha-nodes]
-  (vec
-   (for [{:keys [condition beta-children env]} alpha-nodes
-         :let [{:keys [type constraints fact-binding args]} condition]]
-
-     {:type (hlp/effective-type type)
-      :alpha-fn (com/compile-condition type (first args) constraints fact-binding env)
-      :children (vec beta-children)
-      })))
 
 (defmacro defsession 
   "Creates a sesson given a list of sources and keyword-style options, which are typically ClojureScript namespaces.
@@ -166,19 +80,9 @@ use it as follows:
         ;; Eval to unquote ns symbols, and to eval exprs to look up
         ;; explicit rule sources
         sources (eval (vec sources))
-        productions (vec (for [source sources
-                               production (get-productions source)]
-                           production))
-
-        beta-tree (trees/to-beta-tree productions) 
-        beta-network (gen-beta-network beta-tree #{})
-
-        alpha-tree (trees/to-alpha-tree beta-tree)
-        alpha-nodes (compile-alpha-nodes alpha-tree)]
-
-    `(let [beta-network# ~beta-network
-           alpha-nodes# ~alpha-nodes
-           productions# '~productions
-           options# ~options]
-       (def ~name (clara.rules/assemble-session beta-network# alpha-nodes# productions# options#)))))
+        productions (codegen/get-productions sources :cljs @env/*compiler*)
+        {:keys [beta-trees alpha-trees]} (comp/compile->ast productions)
+        beta-trees (comp/generate-beta-tree-expr beta-trees #{})]
+    `(let [rulebase# (clara.rules.compiler.codegen/build-network ~beta-trees alpha-trees productions)]
+       (def ~name (clara.rules.engine/rulebase->session rulebase# options#)))))
 
