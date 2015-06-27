@@ -82,7 +82,8 @@
 #?(:clj
     (defn compile->session
       "Creates a new session using the given rule source(s). Compiles the productions into a rule base.
-       The resulting session is immutable, and can be used with insert, retract, fire-rules, and query functions."
+       The resulting session is immutable, and can be used with insert, retract, fire-rules, and query functions.
+       Not possible in ClojureScript."
       ([sources-and-options]
 
          ;; If an equivalent session has been created, simply reuse it.
