@@ -1,10 +1,12 @@
 (ns clara.rules.compiler.codegen
-  "Code generation and source utility fns"
+  "Code generation and source code support fns"
   (:require
     [clara.rules.platform :as platform] [clara.rules.listener :as l]
+    #?(:clj [clara.rules.compiler.helpers :as hlp])
     #?(:clj [clara.rules.engine.nodes :as nodes]
             :cljs [clara.rules.engine.nodes :as nodes :refer [AlphaNode ProductionNode QueryNode]])
     [clara.rules.schema :as schema]
+    #?(:clj [clara.tools.dev :as dev])
     #?(:clj [schema.core :as sc] :cljs [schema.core :as sc :include-macros true]))
   #?(:clj
       (:import [clara.rules.engine.nodes AlphaNode ProductionNode QueryNode])))
@@ -38,41 +40,61 @@
                         query-nodes :- {sc/Any QueryNode}
                         ;; May of id to one of the beta nodes (join, accumulate, etc)
                         id-to-node :- {sc/Num nodes/BetaNode}])
+#?(:clj
+    (defn add-production [env name production]
+      "Add a production to the given environment, normally cljs.env/*compiler* under ::productions seq?.
+       Beware, this fn and get-productions need to be
+       in the same name space (qualified ::production keyword)"
+      #_(dev/println->stderr "Adding production" production "to name space" (hlp/cljs-ns) "for rule" name
+                            "in cljs compiler environment")
+      (swap! env assoc-in [::productions (hlp/cljs-ns) name] production)
+      #_(if (nil? (get-in env [::productions (hlp/cljs-ns) name]))
+         (dev/println->stderr "Production was not registred in CLJS compiler environment !"))))
 
-
-(defn- get-productions-from-namespace 
-  "Returns a map of names to productions in the given CLJS namespace."
-  [namespace env]
-  ;; TODO: remove need for ugly eval by changing our quoting strategy.
-  (let [productions (get-in env [::productions namespace])]
-    (map eval (vals productions))))
+#?(:clj
+    (defn- get-productions-from-namespace 
+      "Returns a map of names to productions in the given CLJS namespace."
+      [namespace env]
+      #_(dev/println->stderr namespace (get-in env [::productions]))
+      ;; TODO: remove need for ugly eval by changing our quoting strategy.
+      (let [productions (get-in env [::productions namespace])]
+        (map eval (vals productions)))))
   
-(defn- get-cljs-productions
-  "Return the productions from the source in CLJS space.
-   We need the CLJS compiler environment."
-  [source env]
-  (cond
-    (symbol? source) (get-productions-from-namespace source env)
-    (coll? source) (seq source)
-    :else (throw (IllegalArgumentException. "Unknown source value type passed to defsession"))))
+#?(:clj
+    (defn- get-cljs-productions
+      "Return the productions from the source in CLJS space.
+        We need the CLJS compiler environment."
+      [source env]
+      #_(dev/println->stderr "Getting productions from" source)
+      (cond
+        (symbol? source) (get-productions-from-namespace source env)
+        (coll? source) (seq source)
+        :else (throw (IllegalArgumentException. "Unknown source value type passed to defsession")))))
 
-(defn get-productions 
-  "Returns a sequence of productions from the given sources."
-  ([sources runtime]
-    (get-productions sources runtime {}))
-  ([sources runtime env]
-    (case runtime
-      :clj
-      (mapcat
-        #(if (satisfies? IRuleSource %)
-           (load-rules %)
-           %) sources)
-      :cljs
-      (vec (for [source sources
-                 production (get-cljs-productions source env)]
-             production))
-      (throw #?(:clj (Exception. (format "No such runtime %s") runtime)
-                     :cljs (js/Error. (str "No such runtime " runtime)))))))
+#?(:clj
+    (defn get-productions 
+      "Returns a sequence of productions from the given runtime.
+       Not doable directly in ClojureScript, only from Clojure macros.
+       While compiling CLJS, productions need to be added the compiler environment.
+       Beware, this fn and add-production need to be
+       in the same name space (qualified ::production keyword)."
+      ([sources runtime]
+        (get-productions sources runtime {}))
+      ([sources runtime env]
+        #_(dev/println->stderr sources runtime)
+        (case runtime
+          :clj
+          (mapcat
+            #(if (satisfies? IRuleSource %)
+               (load-rules %)
+               %) sources)
+          :cljs
+          (vec (for [source sources
+                     production (get-cljs-productions source env)]
+                 (do 
+                 production)))
+          (throw #?(:clj (Exception. (format "No such runtime %s") runtime)
+                         :cljs (js/Error. (str "No such runtime " runtime))))))))
 
 (defn create-get-alphas-fn
   "Returns a function that given a sequence of facts,
@@ -109,7 +131,6 @@
 (sc/defn build-network
   "Constructs the network from compiled beta tree and condition functions."
   [beta-roots alpha-fns productions]
-
   (let [beta-nodes (for [root beta-roots
                          node (tree-seq :children :children root)]
                      node)
@@ -144,7 +165,6 @@
                      (update-in alpha-map [type] conj alpha-node))
                    {}
                    alpha-nodes)]
-
     (strict-map->Rulebase
      {:alpha-roots alpha-map
       :beta-roots beta-roots
