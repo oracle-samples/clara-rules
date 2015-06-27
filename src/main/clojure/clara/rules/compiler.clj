@@ -359,6 +359,6 @@
   [productions]
   (let [beta-trees (trees/to-beta-tree productions)]
     {:beta-trees beta-trees
-     :alpha-trees(trees/to-alpha-tree beta-trees)}))
+     :alpha-nodes (compile-alpha-nodes (trees/to-alpha-tree beta-trees))}))
 
   
