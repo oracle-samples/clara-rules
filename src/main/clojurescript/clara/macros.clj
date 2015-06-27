@@ -3,20 +3,12 @@
   (:require [clara.rules.engine.sessions :as session]
             [clara.rules.engine.nodes :as nodes]
             [clara.rules.engine.nodes.accumulators :as accs]
-            [clara.rules.memory :as mem]
+            [clara.rules.memory :as mem] [clara.rules.compiler :as comp]
             [clara.rules.compiler.codegen :as codegen] 
             [clara.rules.compiler.expressions :as expr] [clara.rules.compiler.helpers :as hlp]
             [clara.rules.compiler.trees :as trees]
-            [clara.rules.dsl :as dsl]            
-            [cljs.analyzer :as ana]
-            [cljs.env :as env]
-            [clojure.set :as s]))
-
-
-;; Store production in cljs.env/*compiler* under ::productions seq?
-(defn- add-production [name production]
-  (swap! env/*compiler* assoc-in [::productions (hlp/cljs-ns) name] production))
-
+            [clara.rules.dsl :as dsl] [clara.tools.dev :as dev]
+            [cljs.analyzer :as ana] [cljs.env :as env] [clojure.set :as s]))
 
 (defmacro defrule 
   [name & body]
@@ -25,11 +17,11 @@
         properties (if (map? (first body)) (first body) nil)
         definition (if properties (rest body) body)
         {:keys [lhs rhs]} (dsl/split-lhs-rhs definition)
-
         production (cond-> (dsl/parse-rule* lhs rhs properties {})
                            name (assoc :name (str (clojure.core/name (hlp/cljs-ns)) "/" (clojure.core/name name)))
                            doc (assoc :doc doc))]
-    (add-production name production)
+    (codegen/add-production env/*compiler* name production)
+;    (dev/println->stderr "About to expand defrule" production)
     `(def ~name
        ~production)))
 
@@ -38,11 +30,10 @@
   (let [doc (if (string? (first body)) (first body) nil)
         binding (if doc (second body) (first body))
         definition (if doc (drop 2 body) (rest body) )
-
         query (cond-> (dsl/parse-query* binding definition {})
                       name (assoc :name (str (clojure.core/name (hlp/cljs-ns)) "/" (clojure.core/name name)))
                       doc (assoc :doc doc))]
-    (add-production name query)
+    (codegen/add-production env/*compiler* name query)
     `(def ~name
        ~query)))
 
@@ -81,8 +72,13 @@ use it as follows:
         ;; explicit rule sources
         sources (eval (vec sources))
         productions (codegen/get-productions sources :cljs @env/*compiler*)
-        {:keys [beta-trees alpha-trees]} (comp/compile->ast productions)
+        {:keys [beta-trees alpha-nodes]} (comp/compile-cljs->ast productions)
         beta-trees (comp/generate-beta-tree-expr beta-trees #{})]
-    `(let [rulebase# (clara.rules.compiler.codegen/build-network ~beta-trees alpha-trees productions)]
+    `(let [beta-trees# ~beta-trees
+           alpha-nodes# '~alpha-nodes
+           productions# '~productions
+           options# ~options
+           x# (println "About to create rulebase")
+           rulebase# (clara.rules.compiler.codegen/build-network beta-trees# alpha-nodes# productions#)]
        (def ~name (clara.rules.engine/rulebase->session rulebase# options#)))))
 

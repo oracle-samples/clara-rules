@@ -158,6 +158,16 @@
              :children beta-children}
             env (assoc :env env))))
 
+(defn cljs-compile-alpha-nodes
+  [alpha-nodes]
+  (vec
+   (for [{:keys [condition beta-children env]} alpha-nodes
+         :let [{:keys [type constraints fact-binding args]} condition]]
+
+     {:type (hlp/effective-type type)
+      :alpha-fn (compile-condition type (first args) constraints fact-binding env)
+      :children (vec beta-children)})))
+
 (sc/defn generate-beta-tree-expr
   "Generates the beta network nodes from the beta tree as an expression.
    It should mimic closely the compile-beta-tree fn but spits out an expression
@@ -354,11 +364,10 @@
         rulebase (codegen/build-network beta-tree alpha-nodes productions)]
     rulebase))
 
-(defn compile->ast
+(defn compile-cljs->ast
   "Compile to AST. Return AST as a map."
   [productions]
   (let [beta-trees (trees/to-beta-tree productions)]
     {:beta-trees beta-trees
-     :alpha-nodes (compile-alpha-nodes (trees/to-alpha-tree beta-trees))}))
+     :alpha-nodes (cljs-compile-alpha-nodes (trees/to-alpha-tree beta-trees))}))
 
-  
