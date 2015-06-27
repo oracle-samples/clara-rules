@@ -318,6 +318,7 @@
 
       [conditions-with-env production])))
 
+
 (defn non-equality-unification? [expression]
   "Returns true if the given expression does a non-equality unification against a variable,
    indicating it can't be solved by simple unification."
