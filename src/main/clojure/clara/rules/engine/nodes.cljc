@@ -8,8 +8,8 @@
     [clara.rules.memory :as mem] [clara.rules.listener :as l]
     #?(:clj [schema.core :as sc] :cljs [schema.core :as sc :include-macros true])
     #?(:clj [clara.rules.engine.nodes.accumulators]
-            :cljs [clara.rules.engine.nodes.accumulators :refer [AccumulateNode]]))
-    #?(:clj (:import [clara.rules.engine.nodes.accumulators AccumulateNode])))
+            :cljs [clara.rules.engine.nodes.accumulators :refer [AccumulateNode AccumulateWithJoinFilterNode]]))
+    #?(:clj (:import [clara.rules.engine.nodes.accumulators AccumulateNode AccumulateWithJoinFilterNode])))
 
 (defn- retract-facts!
   "Perform the fact retraction."
@@ -354,7 +354,8 @@
 
 
 ;; These nodes exist in the beta network.
-(def BetaNode (sc/either ProductionNode QueryNode JoinNode
-                         NegationNode TestNode AccumulateNode))
+(def BetaNode (sc/either ProductionNode QueryNode JoinNode RootJoinNode
+                         NegationNode NegationWithJoinFilterNode
+                         TestNode AccumulateNode AccumulateWithJoinFilterNode))
 
 
