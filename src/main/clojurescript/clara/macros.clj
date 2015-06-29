@@ -75,10 +75,9 @@ use it as follows:
         {:keys [beta-trees alpha-nodes]} (comp/compile-cljs->ast productions)
         beta-trees (comp/generate-beta-tree-expr beta-trees #{})]
     `(let [beta-trees# ~beta-trees
-           alpha-nodes# '~alpha-nodes
+           alpha-nodes# ~alpha-nodes
+           options# ~options 
            productions# '~productions
-           options# ~options
-           x# (println "About to create rulebase")
            rulebase# (clara.rules.compiler.codegen/build-network beta-trees# alpha-nodes# productions#)]
        (def ~name (clara.rules.engine/rulebase->session rulebase# options#)))))
 
