@@ -8,7 +8,6 @@
 (deftype LocalTransport []
   impl/ITransport
   (send-elements [transport memory listener nodes elements]
-
     (doseq [node nodes
             :let [join-keys (impl/get-join-keys node)]]
 
