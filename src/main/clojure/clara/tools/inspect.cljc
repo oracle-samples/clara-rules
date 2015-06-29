@@ -103,7 +103,6 @@
         ;; Map of rules to their nodes in the network.
         rule-to-nodes (into {} (for [rule-node production-nodes]
                                  [(:production rule-node) rule-node]))]
-#?(:clj (clojure.pprint/pprint rulebase) :cljs (cljs.pprint/pprint rulebase))
     {:rule-matches (into {}
                           (for [[rule rule-node] rule-to-nodes]
                             [rule (to-explanations session
