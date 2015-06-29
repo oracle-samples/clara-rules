@@ -2,7 +2,8 @@
   "Schema definition of Clara data structures using Prismatic's Schema library. This includes structures for rules and queries, as well as the schema
    for the underlying Rete network itself. This can be used by tools or other libraries working with rules."
   (:require
-    [schema.core :as s] #?(:clj [schema.macros :as sm]))
+    [schema.core :as s]
+    #?(:clj [schema.macros :as sm]))
   #?(:cljs 
       (:require-macros [schema.macros :as sm])))
 
