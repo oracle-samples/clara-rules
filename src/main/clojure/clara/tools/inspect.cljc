@@ -5,11 +5,11 @@
    * explain-activations, which uses inspect and prints a human-readable description covering
      why each rule activation or query match occurred."
   (:require 
-    #?(:clj [clara.rules.compiler.trees :as trees])
+    #?@(:clj [[clara.rules.compiler.trees :as trees] [schema.core :as sc]])
     [clara.rules.engine :as eng]
     [clara.rules.schema :as schema]
     [clara.rules.memory :as mem]
-    #?(:clj [schema.core :as sc] :cljs [schema.core :as sc :include-macros true])))
+    #?(:cljs [schema.core :as sc :include-macros true])))
 
 ;; A structured explanation of why a rule or query matched.
 ;; This is derived from the Rete-style tokens, but this token

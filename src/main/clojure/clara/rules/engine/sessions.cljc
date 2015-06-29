@@ -2,14 +2,14 @@
   "The purpose of this name space is to support session creation"
   (:require
     [clara.rules.memory :as mem]
-     #?(:clj [clara.rules.compiler.codegen :as codegen] 
-             :cljs [clara.rules.compiler.codegen :as codegen :refer [Rulebase]])
+    #?@(:clj [[clara.rules.compiler.codegen :as codegen] [clara.rules.engine.sessions.local :as local]
+              [schema.core :as sc]])
+    #?@(:cljs [[clara.rules.compiler.codegen :as codegen :refer [Rulebase]]
+               [clara.rules.engine.sessions.local :as local :refer [LocalSession]]
+               [schema.core :as sc :include-macros true]])
     [clara.rules.engine.protocols :as impl] [clara.rules.engine.wme :as wme]
     [clara.rules.listener :as l]
-    [clara.rules.schema :as schema] [clara.rules.engine.transports :as transport]
-    #?(:clj [clara.rules.engine.sessions.local :as local]
-            :cljs [clara.rules.engine.sessions.local :as local :refer [LocalSession]])
-    #?(:clj [schema.core :as sc] :cljs [schema.core :as sc :include-macros true]))
+    [clara.rules.schema :as schema] [clara.rules.engine.transports :as transport])
   #?(:clj (:import [clara.rules.engine.sessions.local LocalSession]
                    [clara.rules.compiler.codegen Rulebase])))
 
@@ -64,7 +64,7 @@
         ;; Create a function that groups a sequence of facts by the collection
         ;; of alpha nodes they target.
         ;; We cache an alpha-map for facts of a given type to avoid computing
-        ;; them for every fact entered.
+        ;; them for every fact entered. This needs to be overriden in CLJS at macro expansion time
         get-alphas-fn (codegen/create-get-alphas-fn fact-type-fn ancestors-fn rulebase)]
     (assemble {:rulebase rulebase
                :memory (local-memory rulebase transport activation-group-sort-fn activation-group-fn)

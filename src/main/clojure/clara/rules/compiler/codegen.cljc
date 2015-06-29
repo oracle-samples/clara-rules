@@ -1,13 +1,9 @@
 (ns clara.rules.compiler.codegen
   "Code generation and source code support fns"
   (:require
-    [clara.rules.platform :as platform] [clara.rules.listener :as l]
-    #?(:clj [clara.rules.compiler.helpers :as hlp])
-    #?(:clj [clara.rules.engine.nodes :as nodes]
-            :cljs [clara.rules.engine.nodes :as nodes :refer [AlphaNode ProductionNode QueryNode]])
-    [clara.rules.schema :as schema]
-    #?(:clj [clara.tools.dev :as dev])
-    #?(:clj [schema.core :as sc] :cljs [schema.core :as sc :include-macros true]))
+    [clara.rules.platform :as platform] [clara.rules.listener :as l] [clara.rules.schema :as schema]
+    #?@(:clj [[clara.rules.compiler.helpers :as hlp] [clara.rules.engine.nodes :as nodes] [schema.core :as sc]])
+    #?@(:cljs [[clara.rules.engine.nodes :as nodes :refer [AlphaNode ProductionNode QueryNode]] [schema.core :as sc :include-macros true]]))
   #?(:clj
       (:import [clara.rules.engine.nodes AlphaNode ProductionNode QueryNode])))
 
@@ -45,17 +41,12 @@
       "Add a production to the given environment, normally cljs.env/*compiler* under ::productions seq?.
        Beware, this fn and get-productions need to be
        in the same name space (qualified ::production keyword)"
-      #_(dev/println->stderr "Adding production" production "to name space" (hlp/cljs-ns) "for rule" name
-                            "in cljs compiler environment")
-      (swap! env assoc-in [::productions (hlp/cljs-ns) name] production)
-      #_(if (nil? (get-in env [::productions (hlp/cljs-ns) name]))
-         (dev/println->stderr "Production was not registred in CLJS compiler environment !"))))
+      (swap! env assoc-in [::productions (hlp/cljs-ns) name] production)))
 
 #?(:clj
     (defn- get-productions-from-namespace 
       "Returns a map of names to productions in the given CLJS namespace."
       [namespace env]
-      #_(dev/println->stderr namespace (get-in env [::productions]))
       ;; TODO: remove need for ugly eval by changing our quoting strategy.
       (let [productions (get-in env [::productions namespace])]
         (map eval (vals productions)))))
@@ -65,7 +56,6 @@
       "Return the productions from the source in CLJS space.
         We need the CLJS compiler environment."
       [source env]
-      #_(dev/println->stderr "Getting productions from" source)
       (cond
         (symbol? source) (get-productions-from-namespace source env)
         (coll? source) (seq source)
@@ -81,7 +71,6 @@
       ([sources runtime]
         (get-productions sources runtime {}))
       ([sources runtime env]
-        #_(dev/println->stderr sources runtime)
         (case runtime
           :clj
           (mapcat

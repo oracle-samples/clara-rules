@@ -6,10 +6,10 @@
     [clara.rules.engine.helpers :as hlp]
     [clara.rules.engine.wme :as wme]
     [clara.rules.memory :as mem] [clara.rules.listener :as l]
-    #?(:clj [schema.core :as sc] :cljs [schema.core :as sc :include-macros true])
-    #?(:clj [clara.rules.engine.nodes.accumulators]
-            :cljs [clara.rules.engine.nodes.accumulators :refer [AccumulateNode AccumulateWithJoinFilterNode]]))
-    #?(:clj (:import [clara.rules.engine.nodes.accumulators AccumulateNode AccumulateWithJoinFilterNode])))
+    #?@(:clj [[schema.core :as sc] [clara.rules.engine.nodes.accumulators]])
+    #?@(:cljs [[schema.core :as sc :include-macros true]
+               [clara.rules.engine.nodes.accumulators :refer [AccumulateNode AccumulateWithJoinFilterNode]]]))
+  #?(:clj (:import [clara.rules.engine.nodes.accumulators AccumulateNode AccumulateWithJoinFilterNode])))
 
 (defn- retract-facts!
   "Perform the fact retraction."
