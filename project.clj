@@ -21,14 +21,14 @@
   :test-paths ["src/test/clojure"]
   :target-path "target"
   :java-source-paths ["src/main/java"]
-  :hooks [leiningen.cljsbuild]
+  
   :cljsbuild {:builds {:dev
                        {:source-paths ["src/main/clojurescript" "src/main/clojure"]
-                        :jar true
                         :compiler {:pretty-print true
                                    :output-to "target/js/clara.js"
                                    :optimizations :whitespace}}}}
-  :profiles {:dev {:dependencies [[cljsbuild "1.0.6"]]}
+  :profiles {:dev {:dependencies [[cljsbuild "1.0.6"]]
+                   :hooks [leiningen.cljsbuild]}
              :test-cljs {:cljsbuild {:builds 
                                      {:test {:source-paths ["src/main/clojurescript" "src/test/clojurescript" "test"]
                                              :notify-command ["phantomjs" "phantom/unit-test.js" "phantom/unit-test.html"]
@@ -36,7 +36,15 @@
                                                         :pretty-print true
                                                         :optimizations :whitespace}}}}}
              
+             :jar {:env {:production true}
+                   :jar true
+                   :cljsbuild {:builds {:dev
+                                         {:compiler
+                                          {:optimizations :advanced
+                                           :pretty-print false}}}}}
+             
              :aot {:aliases {"check" ["do" "clean," "compile"]}
+                   :hooks [leiningen.cljsbuild]
                    :resource-paths ["/tmp/clara.rules/target/js/out"]
                    :target-path "/tmp/clara.rules/target/%s"
                    :compile-path "/tmp/clara.rules/target/classes"
