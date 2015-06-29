@@ -85,26 +85,25 @@
        The resulting session is immutable, and can be used with insert, retract, fire-rules, and query functions.
        Not possible in ClojureScript."
       ([sources-and-options]
-
-         ;; If an equivalent session has been created, simply reuse it.
-         ;; This essentially memoizes this function unless the caller disables caching.
-         (if-let [session (get @session-cache [sources-and-options])]
-           session
-
-           ;; Separate sources and options, then load them.
-           (let [sources (take-while (complement keyword?) sources-and-options)
-                 options (apply hash-map (drop-while (complement keyword?) sources-and-options))
-                 productions (codegen/get-productions sources :clj)
-                             ; Load rules from the source, or just use the input as a seq.
-                 rulebase  (comp/compile->rulebase productions)
-                 session (sessions/mk-session* rulebase options)]
-
-             ;; Cache the session unless instructed not to.
-             (when (get options :cache true)
-               (swap! session-cache assoc [sources-and-options] session))
-
-             ;; Return the session.
-             session)))))
+        ;; If an equivalent session has been created, simply reuse it.
+        ;; This essentially memoizes this function unless the caller disables caching.
+        (if-let [session (get @session-cache [sources-and-options])]
+          session
+          
+          ;; Separate sources and options, then load them.
+          (let [sources (take-while (complement keyword?) sources-and-options)
+                options (apply hash-map (drop-while (complement keyword?) sources-and-options))
+                productions (codegen/get-productions sources :clj)
+                ; Load rules from the source, or just use the input as a seq.
+                rulebase (comp/compile->rulebase productions)
+                session (sessions/mk-session* rulebase options)]
+            
+            ;; Cache the session unless instructed not to.
+            (when (get options :cache true)
+              (swap! session-cache assoc [sources-and-options] session))
+              
+            ;; Return the session.
+            session)))))
 
 (defn rulebase->session
   "Creates a new session using the given rule base.
@@ -121,7 +120,7 @@
         (swap! session-cache assoc [sources-and-options] session))
       
       ;; Return the session.
-      session)))      
+      session)))    
 
 
 
