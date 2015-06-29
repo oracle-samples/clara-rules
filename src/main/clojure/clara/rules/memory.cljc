@@ -458,22 +458,31 @@
                                  (java.util.TreeMap. ^java.util.Comparator activation-group-sort-fn)
                                  activation-map))
         :cljs
-        (TransientLocalMemory. rulebase
-                               activation-group-sort-fn
-                               activation-group-fn
-                               (transient alpha-memory)
-                               (transient beta-memory)
-                               (transient accum-memory)
-                               (transient production-memory)
-                               (reduce
-                                 (fn [treemap [activation-group activations]]
-                                   (let [previous (get treemap activation-group)]
-                                     (assoc treemap activation-group
-                                            (if previous
-                                              (into previous activations)
-                                              activations))))
-                                 (sorted-map-by activation-group-sort-fn)
-                                 activation-map)))))
+        (let [activation-map (reduce
+                               (fn [treemap [activation-group activations]]
+                                 (let [previous (get treemap activation-group)]
+                                   (assoc treemap activation-group
+                                          (if previous
+                                            (into previous activations)
+                                            activations))))
+                               (sorted-map-by activation-group-sort-fn)
+                               activation-map)]
+          (TransientLocalMemory. rulebase
+                                 activation-group-sort-fn
+                                 activation-group-fn
+                                 (transient alpha-memory)
+                                 (transient beta-memory)
+                                 (transient accum-memory)
+                                 (transient production-memory)
+                                 (reduce
+                                   (fn [treemap [activation-group activations]]
+                                     (let [previous (get treemap activation-group)]
+                                       (assoc treemap activation-group
+                                              (if previous
+                                                (into previous activations)
+                                                activations))))
+                                   (sorted-map-by activation-group-sort-fn)
+                                   activation-map))))))
 
 (defn local-memory
   "Creates an persistent local memory for the given rule base."
