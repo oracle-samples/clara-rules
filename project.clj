@@ -29,12 +29,12 @@
                                    :output-to "target/js/clara.js"
                                    :optimizations :whitespace}}}}
   :profiles {:dev {:dependencies [[cljsbuild "1.0.6"]]}
-             :test {:cljsbuild {:builds 
-                                {:test {:source-paths ["src/main/clojurescript" "src/test/clojurescript" "test"]
-                                        :notify-command ["phantomjs" "phantom/unit-test.js" "phantom/unit-test.html"]
-                                        :compiler {:output-to "target/cljs-test/testable.js"
-                                                   :pretty-print true
-                                                   :optimizations :whitespace}}}}}
+             :test-cljs {:cljsbuild {:builds 
+                                     {:test {:source-paths ["src/main/clojurescript" "src/test/clojurescript" "test"]
+                                             :notify-command ["phantomjs" "phantom/unit-test.js" "phantom/unit-test.html"]
+                                             :compiler {:output-to "target/cljs-test/testable.js"
+                                                        :pretty-print true
+                                                        :optimizations :whitespace}}}}}
              
              :aot {:aliases {"check" ["do" "clean," "compile"]}
                    :resource-paths ["/tmp/clara.rules/target/js/out"]
