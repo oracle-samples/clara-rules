@@ -25,8 +25,9 @@
   :cljsbuild {:builds {:dev
                        {:source-paths ["src/main/clojurescript" "src/main/clojure"]
                         :compiler {:pretty-print true
-                                   :output-to "target/js/clara.js"
+                                   :output-to "resources/js/clara.js"
                                    :optimizations :whitespace}}}}
+  :resource-paths ["resources/js"]
   :profiles {:dev {:dependencies [[cljsbuild "1.0.6"]]
                    :hooks [leiningen.cljsbuild]}
              :test-cljs {:cljsbuild {:builds 
@@ -36,9 +37,7 @@
                                                         :pretty-print true
                                                         :optimizations :whitespace}}}}}
              
-             :jar {:env {:production true}
-                   :jar true
-                   :cljsbuild {:builds {:dev
+             :jar {:cljsbuild {:builds {:dev
                                          {:compiler
                                           {:optimizations :advanced
                                            :pretty-print false}}}}}
