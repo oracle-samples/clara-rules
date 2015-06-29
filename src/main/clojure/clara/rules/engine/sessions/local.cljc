@@ -14,25 +14,18 @@
                                      :get-alphas-fn get-alphas-fn
                                      :pending-updates (atom [])
                                      :listener listener}]
-
     (loop [next-group (mem/next-activation-group transient-memory)
            last-group nil]
-
       (if next-group
-
         (if (and last-group (not= last-group next-group))
-
           ;; We have changed groups, so flush the updates from the previous
           ;; group before continuing.
           (do
             (hlp/flush-updates state/*current-session*)
             (recur (mem/next-activation-group transient-memory) next-group))
-
           (do
-
             ;; If there are activations, fire them.
             (when-let [{:keys [node token]} (mem/pop-activation! transient-memory)]
-
               (binding [state/*rule-context* {:token token :node node}]
 
                 ;; Fire the rule itself.
@@ -42,7 +35,6 @@
                 ;; will be in context for child rules.
                 (when (some-> node :production :props :no-loop)
                   (hlp/flush-updates state/*current-session*))))
-
             (recur (mem/next-activation-group transient-memory) next-group)))
 
         ;; There were no items to be activated, so flush any pending
@@ -56,13 +48,10 @@
   (insert [session facts]
     (let [transient-memory (mem/to-transient memory)
           transient-listener (l/to-transient listener)]
-
       (l/insert-facts! transient-listener facts)
-
       (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
               root alpha-roots]
         (impl/alpha-activate root fact-group transient-memory transport transient-listener))
-
       (LocalSession. rulebase
                      (mem/to-persistent! transient-memory)
                      transport
@@ -87,7 +76,6 @@
                      get-alphas-fn)))
 
   (fire-rules [session]
-
     (let [transient-memory (mem/to-transient memory)
           transient-listener (l/to-transient listener)]
       (fire-rules* rulebase
