@@ -98,33 +98,28 @@
 
 (defn create-get-alphas-fn
   "Returns a function that given a sequence of facts,
-  returns a map associating alpha nodes with the facts they accept."
+   returns a map associating alpha nodes with the facts they accept."
   [fact-type-fn ancestors-fn merged-rules]
-
   ;; We preserve a map of fact types to alpha nodes for efficiency,
   ;; effectively memoizing this operation.
   (let [alpha-map (atom {})]
     (fn [facts]
       (for [[fact-type facts] (platform/tuned-group-by fact-type-fn facts)]
-
         (if-let [alpha-nodes (get @alpha-map fact-type)]
 
           ;; If the matching alpha nodes are cached, simply return them.
           [alpha-nodes facts]
 
           ;; The alpha nodes weren't cached for the type, so get them now.
-          (let [ancestors (conj (ancestors-fn fact-type) fact-type)
-
-                ;; Get all alpha nodes for all ancestors.
+          (let [parents (conj (ancestors-fn fact-type) fact-type)
+                alpha-roots (get merged-rules :alpha-roots)
+                ;; Get all alpha nodes for all parents.
                 new-nodes (distinct
                            (reduce
-                            (fn [coll ancestor]
-                              (concat
-                               coll
-                               (get-in merged-rules [:alpha-roots ancestor])))
+                            (fn [coll parent]
+                              (concat coll (get alpha-roots parent)))
                             []
-                            ancestors))]
-
+                            parents))]
             (swap! alpha-map assoc fact-type new-nodes)
             [new-nodes facts]))))))
 
@@ -157,7 +152,7 @@
         ;; type, alpha node tuples.
         alpha-nodes (for [{:keys [type alpha-fn children env]} alpha-fns
                           :let [beta-children (map id-to-node children)]]
-                      [type (nodes/->AlphaNode env beta-children alpha-fn)])
+                        [type (nodes/->AlphaNode env beta-children alpha-fn)])
 
         ;; Merge the alpha nodes into a multi-map
         alpha-map (reduce
@@ -166,10 +161,7 @@
                    {}
                    alpha-nodes)]
     (strict-map->Rulebase
-     {:alpha-roots alpha-map
-      :beta-roots beta-roots
-      :productions productions
-      :production-nodes production-nodes
-      :query-nodes query-map
-      :id-to-node id-to-node})))
+      {:alpha-roots alpha-map :beta-roots beta-roots
+       :productions productions :production-nodes production-nodes
+       :query-nodes query-map :id-to-node id-to-node})))
 
