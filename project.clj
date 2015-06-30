@@ -3,7 +3,7 @@
   :url "https://github.com/rbrush/clara-rules"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[org.clojure/clojure "1.7.0-RC2"]
+  :dependencies [[org.clojure/clojure "1.7.0"]
                  [org.clojure/tools.trace "0.7.8"]                  
                  [org.codehaus.jsr166-mirror/jsr166y "1.7.0"]
                  [org.clojure/clojurescript "0.0-3308"]
