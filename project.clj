@@ -21,13 +21,13 @@
   :test-paths ["src/test/clojure"]
   :target-path "target"
   :java-source-paths ["src/main/java"]
+  :jar-exclusions [#"js/.*\.js"]
   
   :cljsbuild {:builds {:dev
                        {:source-paths ["src/main/clojurescript" "src/main/clojure"]
                         :compiler {:pretty-print true
-                                   :output-to "resources/js/clara.js"
+                                   :output-to "target/js/clara.js"
                                    :optimizations :whitespace}}}}
-  :resource-paths ["resources/js"]
   :profiles {:dev {:dependencies [[cljsbuild "1.0.6"]]
                    :hooks [leiningen.cljsbuild]}
              :test-cljs {:cljsbuild {:builds 
@@ -37,14 +37,15 @@
                                                         :pretty-print true
                                                         :optimizations :whitespace}}}}}
              
-             :jar {:cljsbuild {:builds {:dev
-                                         {:compiler
-                                          {:optimizations :advanced
-                                           :pretty-print false}}}}}
-             
+             :jar {:cljsbuild {:builds 
+                               {:dev {:compiler
+                                      {:output-to "/tmp/clara.rules/target/js/out/clara.js"
+                                       :output-dir "/tmp/clara.rules/target/js/out"
+                                       :pretty-print false
+                                       :optimizations :advanced}}}}}
+
              :aot {:aliases {"check" ["do" "clean," "compile"]}
                    :hooks [leiningen.cljsbuild]
-                   :resource-paths ["/tmp/clara.rules/target/js/out"]
                    :target-path "/tmp/clara.rules/target/%s"
                    :compile-path "/tmp/clara.rules/target/classes"
                    :clean-targets ^{:protect false} ["/tmp/clara.rules/target"]
@@ -53,7 +54,8 @@
                                {:dev {:compiler
                                       {:output-to "/tmp/clara.rules/target/js/out/clara.js"
                                        :output-dir "/tmp/clara.rules/target/js/out"
-                                       :optimizations :whitespace}}}}}}
+                                       :pretty-print false
+                                       :optimizations :advanced}}}}}}
   
   :scm {:name "git"
         :url "https://github.com/rbrush/clara-rules.git"}
