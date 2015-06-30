@@ -24,14 +24,14 @@
   :jar-exclusions [#"js/.*\.js"]
   
   :cljsbuild {:builds {:dev
-                       {:source-paths ["src/main/clojurescript" "src/main/clojure"]
+                       {:source-paths ["src/main/clojure"]
                         :compiler {:pretty-print true
                                    :output-to "target/js/clara.js"
                                    :optimizations :whitespace}}}}
   :profiles {:dev {:dependencies [[cljsbuild "1.0.6"]]
                    :hooks [leiningen.cljsbuild]}
              :test-cljs {:cljsbuild {:builds 
-                                     {:test {:source-paths ["src/main/clojurescript" "src/test/clojurescript" "test"]
+                                     {:test {:source-paths ["src/test/clojurescript" "test"]
                                              :notify-command ["phantomjs" "phantom/unit-test.js" "phantom/unit-test.html"]
                                              :compiler {:output-to "target/cljs-test/testable.js"
                                                         :pretty-print true
