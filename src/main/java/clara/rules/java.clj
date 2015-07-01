@@ -1,12 +1,10 @@
 (ns clara.rules.java
   "Java support. Users should use the Java API, or the clara.rules namespace from Clojure."
-  (:require [clara.rules :as clara]
-            [clara.rules.engine :as eng]
-            [clara.rules.compiler :as com]
-            [clara.rules.memory :as mem])
+  (:require
+    [clara.rules :as clara]
+    [clara.rules.engine :as eng] [clara.rules.memory :as mem])
   (:refer-clojure :exclude [==])
-  (:import [clara.rules.engine LocalTransport]
-           [clara.rules WorkingMemory QueryResult]))
+  (:import [clara.rules WorkingMemory QueryResult]))
 
 (deftype JavaQueryResult [result]
   QueryResult
@@ -48,5 +46,5 @@
 
 (defn mk-java-session [rulesets]
   (JavaWorkingMemory. 
-   (com/mk-session (map symbol rulesets))))
+   (eng/compile->session (map symbol rulesets))))
 

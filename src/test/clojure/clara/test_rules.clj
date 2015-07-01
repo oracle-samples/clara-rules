@@ -5,7 +5,8 @@
             [clojure.test :refer :all]
             [clara.rules.testfacts :refer :all]
             [clara.rules.engine :as eng]
-            [clara.rules.compiler :as com]
+            [clara.rules.compiler.expressions :as expr]
+            [clara.rules.compiler.trees :as tree]
             [clara.rules.accumulators :as acc]
             [clara.rules.dsl :as dsl]
             [clara.tools.tracing :as t]
@@ -707,7 +708,7 @@
            (set two-groups-no-init)))))
 
 (deftest test-retract-initial-value
-  (clara.rules.compiler/clear-session-cache!)
+  (clara.rules.engine/clear-session-cache!)
 
   (let [get-temp-history (dsl/parse-query [] [[?his <- TemperatureHistory]])
 
@@ -1240,18 +1241,18 @@
 
   ;; Test simple condition.
   (is (= {:type Temperature :constraints []}
-         (com/to-dnf {:type Temperature :constraints []})))
+         (expr/to-dnf {:type Temperature :constraints []})))
 
   ;; Test single-item conjunction removes unnecessary operator.
   (is (=  {:type Temperature :constraints []}
-          (com/to-dnf [:and {:type Temperature :constraints []}])))
+          (expr/to-dnf [:and {:type Temperature :constraints []}])))
 
   ;; Test multi-item conjunction.
   (is (= [:and
           {:type Temperature :constraints ['(> 2 1)]}
           {:type Temperature :constraints ['(> 3 2)]}
           {:type Temperature :constraints ['(> 4 3)]}]
-         (com/to-dnf
+         (expr/to-dnf
           [:and
            {:type Temperature :constraints ['(> 2 1)]}
            {:type Temperature :constraints ['(> 3 2)]}
@@ -1262,7 +1263,7 @@
            {:type Temperature :constraints ['(> 2 1)]}
            {:type Temperature :constraints ['(> 3 2)]}
            {:type Temperature :constraints ['(> 4 3)]}]
-         (com/to-dnf
+         (expr/to-dnf
           [:or
            {:type Temperature :constraints ['(> 2 1)]}
            {:type Temperature :constraints ['(> 3 2)]}
@@ -1275,7 +1276,7 @@
           [:and
            {:type Temperature :constraints ['(> 3 2)]}
            {:type Temperature :constraints ['(> 4 3)]}]]
-         (com/to-dnf
+         (expr/to-dnf
           [:or
            {:type Temperature :constraints ['(> 2 1)]}
            [:and
@@ -1290,7 +1291,7 @@
           [:and
            {:type Temperature :constraints ['(> 3 2)]}
            {:type Temperature :constraints ['(> 4 3)]}]]
-         (com/to-dnf
+         (expr/to-dnf
           [:and
            [:or
             {:type Temperature :constraints ['(> 2 1)]}
@@ -1302,7 +1303,7 @@
           [:not {:type Temperature :constraints ['(> 2 1)]}]
           [:not {:type Temperature :constraints ['(> 3 2)]}]
           [:not {:type Temperature :constraints ['(> 4 3)]}]]
-         (com/to-dnf
+         (expr/to-dnf
           [:not
            [:or
             {:type Temperature :constraints ['(> 2 1)]}
@@ -1314,7 +1315,7 @@
           [:not {:type Temperature :constraints ['(> 2 1)]}]
           [:not {:type Temperature :constraints ['(> 3 2)]}]
           [:not {:type Temperature :constraints ['(> 4 3)]}]]
-         (com/to-dnf
+         (expr/to-dnf
           [:and
            [:not
             [:or
@@ -1328,7 +1329,7 @@
              {:type Temperature :constraints ['(> 3 2)]}
              {:type Temperature :constraints ['(> 4 3)]}]]
 
-         (com/to-dnf
+         (expr/to-dnf
           [:and
            [:or
             {:type Temperature :constraints ['(> 2 1)]}
@@ -1341,7 +1342,7 @@
           [:not {:type Temperature :constraints ['(> 2 1)]}]
           [:not {:type Temperature :constraints ['(> 3 2)]}]
           [:not {:type Temperature :constraints ['(> 4 3)]}]]
-         (com/to-dnf
+         (expr/to-dnf
           [:not
            [:and
             {:type Temperature :constraints ['(> 2 1)]}
@@ -1352,7 +1353,7 @@
   (is (= [:or
           [:not {:type Temperature :constraints ['(> 2 1)]}]
           [:not {:type Temperature :constraints ['(> 3 2)]}]]
-         (com/to-dnf
+         (expr/to-dnf
           [:or
            [:not {:type Temperature :constraints ['(> 2 1)]}]
            [:not {:type Temperature :constraints ['(> 3 2)]}]])))
@@ -1371,7 +1372,7 @@
            {:type Temperature :constraints ['(> 4 3)]}
            {:type Temperature :constraints ['(> 5 4)]}
            {:type Temperature :constraints ['(> 6 5)]}]]
-         (com/to-dnf
+         (expr/to-dnf
           [:and
            [:or
             {:type Temperature :constraints ['(> 2 1)]}
@@ -1830,7 +1831,7 @@
         cold-windy-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]
                                               [WindSpeed (> windspeed 25)]])
 
-        beta-roots (com/to-beta-tree [cold-query cold-windy-query])]
+        beta-roots (tree/to-beta-tree [cold-query cold-windy-query])]
 
     ;; Since the conditions are shared, there should only be one beta root in the network.
     (is (= 1 (count beta-roots)))))
@@ -2428,7 +2429,7 @@
                               :beta-roots
                               first
                               :children
-                              (filter (partial instance? clara.rules.engine.AccumulateNode)))
+                              (filter (partial instance? clara.rules.engine.nodes.accumulators.AccumulateNode)))
 
         with-qualified-accum-nodes (get-accum-nodes
                                     (mk-session [(dsl/parse-query [] [[Temperature (= ?t temperature)]

@@ -8,16 +8,24 @@
    be easily serialized via EDN or Fressian. Sessions can then be recovered with the restore-session-state function.
 
    TODO: diff support is pending -- functions for obtaining a diff of state from a previous point, allowing for a write-ahead log."
-  (:require [clara.rules :refer :all]
-            [clara.rules.listener :as l]
-            [clara.rules.engine :as eng]
-            [clara.rules.memory :as mem]
-            [clojure.set :as set]
-            [schema.core :as s]
-            [schema.macros :as sm])
-
-  (:import [clara.rules.engine JoinNode RootJoinNode Token AccumulateNode ProductionNode]))
-
+  (:require
+    [clara.rules :refer [insert-all]]
+    [clara.rules.listener :as l]
+    [clara.rules.engine :as eng] [clara.rules.engine.sessions :as session]
+    [clara.rules.engine.wme :as wme]
+    [clara.rules.memory :as mem]
+    [clojure.set :as set]
+    [schema.core :as s]
+    #?(:clj [schema.macros :as sm])
+    #?@(:cljs
+         [[clara.rules.engine.nodes :refer [JoinNode RootJoinNode Token AccumulateNode ProductionNode]]
+          [clara.rules.engine.nodes.accumulators :refer [AccumulateNode]]
+          [clara.rules.engine.wme :refer [Token]]]))
+  #?(:clj 
+      (:import [clara.rules.engine.nodes JoinNode RootJoinNode ProductionNode]
+               [clara.rules.engine.nodes.accumulators AccumulateNode]
+               [clara.rules.engine.wme Token]))
+  #?(:cljs (:require-macros [schema.macros :as sm])))
 
 ;; A schema representing a minimal representation of a rule session's state.
 ;; This allows for efficient storage, particularly when serialized with Fressian or a similar format
@@ -90,7 +98,7 @@
 
         restored-activations (for [[node-id tokens] activations
                                    token tokens]
-                               (eng/->Activation (id-to-node node-id) token))
+                               (wme/->Activation (id-to-node node-id) token))
 
         grouped-by-production (group-by (fn [activation]
                                           (-> activation :node :production)) restored-activations)
@@ -103,7 +111,7 @@
       (mem/add-activations! transient-memory production activations))
 
     ;; Create a new session with the given activations.
-    (eng/assemble (assoc components :memory (mem/to-persistent! transient-memory)))))
+    (session/assemble (assoc components :memory (mem/to-persistent! transient-memory)))))
 
 (defn- restore-accum-results
   [session {:keys [accum-results] :as session-state}]
@@ -122,7 +130,7 @@
                                   transport
                                   (l/to-transient l/default-listener)))
 
-    (eng/assemble (assoc components :memory (mem/to-persistent! transient-memory)))))
+    (session/assemble (assoc components :memory (mem/to-persistent! transient-memory)))))
 
 (defn- restore-insertions
   [session {:keys [insertions] :as session-state}]
@@ -135,7 +143,7 @@
 
       (mem/add-insertions! transient-memory (id-to-node id) token inserted-facts))
 
-    (eng/assemble (assoc components :memory (mem/to-persistent! transient-memory)))))
+    (session/assemble (assoc components :memory (mem/to-persistent! transient-memory)))))
 
 (s/defn restore-session-state
   " Restore the given session to have the provided session state. The given session should be

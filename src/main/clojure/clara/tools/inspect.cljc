@@ -4,41 +4,42 @@
    * inspect, which returns a data structure describing the session that can be used by tooling.
    * explain-activations, which uses inspect and prints a human-readable description covering
      why each rule activation or query match occurred."
-  (:require [clara.rules.compiler :as com]
-            [clara.rules.engine :as eng]
-            [clara.rules.schema :as schema]
-            [clara.rules.memory :as mem]
-            [schema.core :as s]
-            [schema.macros :as sm]))
+  (:require 
+    #?@(:clj [[clara.rules.compiler.trees :as trees] [schema.core :as sc]])
+    [clara.rules.engine :as eng]
+    [clara.rules.schema :as schema]
+    [clara.rules.memory :as mem]
+    #?(:cljs [schema.core :as sc :include-macros true])))
 
 ;; A structured explanation of why a rule or query matched.
 ;; This is derived from the Rete-style tokens, but this token
 ;; is designed to propagate all context needed to easily inspect
 ;; the state of rules.
-(s/defrecord Explanation [matches :- [[(s/one s/Any "fact") (s/one schema/Condition "condition")]] ; Fact, condition tuples
-                           bindings :- {s/Keyword s/Any}]) ; Bound variables
+(sc/defrecord Explanation [matches :- [[(sc/one sc/Any "fact") (sc/one schema/Condition "condition")]] ; Fact, condition tuples
+                            bindings :- {sc/Keyword sc/Any}]) ; Bound variables
 
 ;; Schema of an inspected rule session.
 (def InspectionSchema
   {:rule-matches {schema/Rule [Explanation]}
    :query-matches {schema/Query [Explanation]}
-   :condition-matches {schema/Condition [s/Any]}
-   :insertions {schema/Rule [{:explanation Explanation :fact s/Any}]}})
+   :condition-matches {schema/Condition [sc/Any]}
+   :insertions {schema/Rule [{:explanation Explanation :fact sc/Any}]}})
 
 (defn- get-condition-matches
   "Returns facts matching each condition"
   [beta-roots memory]
-  (let [join-nodes (for [beta-root beta-roots
-                         beta-node (tree-seq :children :children beta-root)
-                         :when (= :join (:node-type beta-node))]
-                     beta-node)]
-    (reduce
-     (fn [matches node]
-       (update-in matches
-                  [(:condition node)]
-                  concat (map :fact (mem/get-elements-all memory node))))
-     {}
-     join-nodes)))
+  (if (empty? beta-roots) {}
+    (let [join-nodes (for [beta-root beta-roots
+                           beta-node (tree-seq :children :children beta-root)
+                           :when (= :join (:node-type beta-node))]
+                       beta-node)]
+      (reduce
+       (fn [matches node]
+         (update-in matches
+                    [(:condition node)]
+                    concat (map :fact (mem/get-elements-all memory node))))
+       {}
+       join-nodes))))
 
 (defn- to-explanations
   "Helper function to convert tokens to explanation records."
@@ -65,7 +66,7 @@
        ;; Remove generated bindings from user-facing explanation.
        (into {} (remove (fn [[k v]] (.startsWith (name k) "?__gen__")) bindings))))))
 
-(s/defn inspect
+(sc/defn inspect
   " Returns a representation of the given rule session useful to understand the
    state of the underlying rules.
 
@@ -93,8 +94,7 @@
   [session] :- InspectionSchema
   (let [{:keys [memory rulebase]} (eng/components session)
         {:keys [productions production-nodes query-nodes]} rulebase
-
-        beta-tree (com/to-beta-tree productions)
+        beta-tree #?(:clj (trees/to-beta-tree productions) :cljs [])
 
         ;; Map of queries to their nodes in the network.
         query-to-nodes (into {} (for [[query-name query-node] query-nodes]
@@ -103,7 +103,6 @@
         ;; Map of rules to their nodes in the network.
         rule-to-nodes (into {} (for [rule-node production-nodes]
                                  [(:production rule-node) rule-node]))]
-
     {:rule-matches (into {}
                           (for [[rule rule-node] rule-to-nodes]
                             [rule (to-explanations session

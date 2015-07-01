@@ -1,13 +1,10 @@
 (ns clara.rules
-  "Forward-chaining rules for Clojure. The primary API is in this namespace."
-  (:require [clara.rules.engine :as eng]
-            [clara.rules.memory :as mem]
-            [clara.rules.compiler :as com]
-            [clara.rules.schema :as schema]
-            [clara.rules.dsl :as dsl]
-            [clara.rules.listener :as l]
-            [schema.core :as sc])
-  (import [clara.rules.engine LocalTransport LocalSession]))
+  "Forward-chaining rules for Clojure. The primary API is in this namespace.
+   Usable from CLJ or CLJS, in the CLJ space, clara.macros needs to be
+   included by the caller with (:require-macros [clara.macros :refer [....]])."
+  (:require [clara.rules.engine :as eng] [clara.rules.engine.state :as state]
+            [clara.rules.engine.wme :as wme]
+            #?(:clj [clara.rules.dsl :as dsl])))
 
 (defn insert
   "Inserts one or more facts into a working session. It does not modify the given
@@ -47,8 +44,6 @@
    "
   [session query & params]
   (eng/query session query (apply hash-map params)))
-
-
 
 (defn insert!
   "To be executed within a rule's right-hand side, this inserts a new fact or facts into working memory.
@@ -105,7 +100,7 @@
    have a specific need, it is better to simply do inserts on the rule's right-hand side, and let
    Clara's underlying truth maintenance retract inserted items if their support becomes false."
   [& facts]
-  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} eng/*current-session*]
+  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} state/*current-session*]
 
     ;; Update the count so the rule engine will know when we have normalized.
     (swap! insertions + (count facts))
@@ -126,7 +121,7 @@
      Simply uses identity by default.
     "
   [& {:keys [initial-value reduce-fn combine-fn retract-fn convert-return-fn] :as args}]
-  (eng/map->Accumulator
+  (wme/map->Accumulator
    (merge
     {:combine-fn reduce-fn ; Default combine function is simply the reduce.
      :convert-return-fn identity ; Default conversion does nothing, so use identity.
@@ -134,112 +129,97 @@
      }
     args)))
 
+#?(:clj
+    (defmacro mk-session
+       "Creates a new session using the given rule sources. Thew resulting session
+        is immutable, and can be used with insert, retract, fire-rules, and query functions.
 
-;; Cache of sessions for fast reloading.
-(def ^:private session-cache (atom {}))
+        If no sources are provided, it will attempt to load rules from the caller's namespace.
 
-(defmacro mk-session
-   "Creates a new session using the given rule sources. Thew resulting session
-   is immutable, and can be used with insert, retract, fire-rules, and query functions.
+        The caller may also specify keyword-style options at the end of the parameters. Currently four
+        options are supported:
 
-   If no sources are provided, it will attempt to load rules from the caller's namespace.
+        * :fact-type-fn, which must have a value of a function used to determine the logical type of a given
+          cache. Defaults to Clojures type function.
+        * :cache, indicating whether the session creation can be cached, effectively memoizing mk-session.
+          Defaults to true. Callers may wish to set this to false when needing to dynamically reload rules.
+        * :activation-group-fn, a function applied to production structures and returns the group they should be activated with.
+          It defaults to checking the :salience property, or 0 if none exists.
+        * :activation-group-sort-fn, a comparator function used to sort the values returned by the above :activation-group-fn.
+          defaults to >, so rules with a higher salience are executed first.
 
-   The caller may also specify keyword-style options at the end of the parameters. Currently four
-   options are supported:
+        This is not supported in ClojureScript, since it requires eval to dynamically build a session. ClojureScript
+        users must use pre-defined rulesessions using defsession."
+       [& args]
+       (if (and (seq args) (not (keyword? (first args))))
+         `(eng/compile->session ~(vec args)) ; At least one namespace given, so use it.
+         `(eng/compile->session (concat [(ns-name *ns*)] ~(vec args)))))) ; No namespace given, so use the current one.
 
-   * :fact-type-fn, which must have a value of a function used to determine the logical type of a given
-     cache. Defaults to Clojures type function.
-   * :cache, indicating whether the session creation can be cached, effectively memoizing mk-session.
-     Defaults to true. Callers may wish to set this to false when needing to dynamically reload rules.
-   * :activation-group-fn, a function applied to production structures and returns the group they should be activated with.
-     It defaults to checking the :salience property, or 0 if none exists.
-   * :activation-group-sort-fn, a comparator function used to sort the values returned by the above :activation-group-fn.
-     defaults to >, so rules with a higher salience are executed first.
+#?(:clj
+    (defmacro defsession
+      "Creates a sesson given a list of sources and keyword-style options, which are typically Clojure namespaces.
 
-   This is not supported in ClojureScript, since it requires eval to dynamically build a session. ClojureScript
-   users must use pre-defined rulesessions using defsession."
-  [& args]
-  (if (and (seq args) (not (keyword? (first args))))
-    `(com/mk-session ~(vec args)) ; At least one namespace given, so use it.
-    `(com/mk-session (concat [(ns-name *ns*)] ~(vec args))))) ; No namespace given, so use the current one.
+      Typical usage would be like this, with a session defined as a var:
 
-;; Treate a symbol as a rule source, loading all items in its namespace.
-(extend-type clojure.lang.Symbol
-  com/IRuleSource
-  (load-rules [sym]
+      (defsession my-session 'example.namespace)
 
-    ;; Find the rules and queries in the namespace, shred them,
-    ;; and compile them into a rule base.
-    (->> (ns-interns sym)
-         (vals) ; Get the references in the namespace.
-         (filter #(or (:rule (meta %)) (:query (meta %)))) ; Filter down to rules and queries.
-         (map deref))))  ; Get the rules from the symbols.
+      That var contains an immutable session that then can be used as a starting point to create sessions with
+      caller-provided data. Since the session itself is immutable, it can be safely used from multiple threads
+      and will not be modified by callers. So a user might grab it, insert facts, and otherwise
+      use it as follows:
 
-(defmacro defsession
-  "Creates a sesson given a list of sources and keyword-style options, which are typically Clojure namespaces.
+      (-> my-session
+       (insert (->Temperature 23))
+       (fire-rules))"
+      [name & sources-and-options]
+     
+      `(def ~name (eng/compile->session ~(vec sources-and-options)))))
+   
+#?(:clj
+    (defmacro defrule
+      "Defines a rule and stores it in the given var. For instance, a simple rule would look like this:
 
-  Typical usage would be like this, with a session defined as a var:
-
-(defsession my-session 'example.namespace)
-
-That var contains an immutable session that then can be used as a starting point to create sessions with
-caller-provided data. Since the session itself is immutable, it can be safely used from multiple threads
-and will not be modified by callers. So a user might grab it, insert facts, and otherwise
-use it as follows:
-
-   (-> my-session
-     (insert (->Temperature 23))
-     (fire-rules))
-
-   "
-  [name & sources-and-options]
-
-  `(def ~name (com/mk-session ~(vec sources-and-options))))
-
-(defmacro defrule
-  "Defines a rule and stores it in the given var. For instance, a simple rule would look like this:
-
-(defrule hvac-approval
-  \"HVAC repairs need the appropriate paperwork, so insert a validation error if approval is not present.\"
-  [WorkOrder (= type :hvac)]
-  [:not [ApprovalForm (= formname \"27B-6\")]]
-  =>
-  (insert! (->ValidationError
+      (defrule hvac-approval
+      \"HVAC repairs need the appropriate paperwork, so insert a validation error if approval is not present.\"
+      [WorkOrder (= type :hvac)]
+      [:not [ApprovalForm (= formname \"27B-6\")]]
+      =>
+      (insert! (->ValidationError
             :approval
             \"HVAC repairs must include a 27B-6 form.\")))
 
-  See the guide at https://github.com/rbrush/clara-rules/wiki/Guide for details."
-
-  [name & body]
-  (let [doc (if (string? (first body)) (first body) nil)
-        body (if doc (rest body) body)
-        properties (if (map? (first body)) (first body) nil)
-        definition (if properties (rest body) body)
-        {:keys [lhs rhs]} (dsl/split-lhs-rhs definition)]
-    (when-not rhs
-      (throw (ex-info (str "Invalid rule " name ". No RHS (missing =>?).")
-                      {})))
-    `(def ~(vary-meta name assoc :rule true :doc doc)
-       (cond-> ~(dsl/parse-rule* lhs rhs properties {})
-           ~name (assoc :name ~(str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name)))
-           ~doc (assoc :doc ~doc)))))
-
-(defmacro defquery
-  "Defines a query and stored it in the given var. For instance, a simple query that accepts no
-   parameters would look like this:
-
-(defquery check-job
-  \"Checks the job for validation errors.\"
-  []
-  [?issue <- ValidationError])
-
-   See the guide at https://github.com/rbrush/clara-rules/wiki/Guide for details."
-
-  [name & body]
-  (let [doc (if (string? (first body)) (first body) nil)
-        binding (if doc (second body) (first body))
-        definition (if doc (drop 2 body) (rest body) )]
-    `(def ~(vary-meta name assoc :query true :doc doc)
-       (cond-> ~(dsl/parse-query* binding definition {})
+      See the guide at https://github.com/rbrush/clara-rules/wiki/Guide for details."
+      [name & body]
+      (let [doc (if (string? (first body)) (first body) nil)
+            body (if doc (rest body) body)
+            properties (if (map? (first body)) (first body) nil)
+            definition (if properties (rest body) body)
+            {:keys [lhs rhs]} (dsl/split-lhs-rhs definition)]
+        (when-not rhs
+          (throw (ex-info (str "Invalid rule " name ". No RHS (missing =>?).")
+                          {})))
+        `(def ~(vary-meta name assoc :rule true :doc doc)
+           (cond-> ~(dsl/parse-rule* lhs rhs properties {})
                ~name (assoc :name ~(str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name)))
-                ~doc (assoc :doc ~doc)))))
+               ~doc (assoc :doc ~doc))))))
+
+#?(:clj
+    (defmacro defquery
+      "Defines a query and stored it in the given var. For instance, a simple query that accepts no
+        parameters would look like this:
+
+        (defquery check-job
+        \"Checks the job for validation errors.\"
+        []
+        [?issue <- ValidationError])
+
+       See the guide at https://github.com/rbrush/clara-rules/wiki/Guide for details."
+      [name & body]
+      (let [doc (if (string? (first body)) (first body) nil)
+            binding (if doc (second body) (first body))
+            definition (if doc (drop 2 body) (rest body) )]
+        `(def ~(vary-meta name assoc :query true :doc doc)
+           (cond-> ~(dsl/parse-query* binding definition {})
+                   ~name (assoc :name ~(str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name)))
+                    ~doc (assoc :doc ~doc))))))
+

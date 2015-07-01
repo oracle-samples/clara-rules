@@ -1,21 +1,15 @@
 (ns clara.tools.viz
   "Simple visualizations of Clara rules. This namespace should be considered experimental."
-  (require [dorothy.core :as dot]
-		   [clara.rules :refer :all]
-           [clara.rules.schema :as schema]
-           [clara.rules.engine :as eng]
-           [hiccup.core :as h]
-           [clara.rules.compiler :as com]
-           [clojure.string :as string]))
+  (require
+    [dorothy.core :as dot]
+    [clara.rules :refer :all]
+    [clara.rules.schema :as schema]
+    [clara.rules.engine :as eng]
+    [hiccup.core :as h]
+    [clara.rules.compiler.codegen :as codegen]
+    [clara.rules.compiler.trees :as trees]
+    [clojure.string :as string]))
 
-(defn get-productions 
-  "Returns a sequence of productions from the given sources."
-  [sources]
-  (mapcat
-   #(if (satisfies? com/IRuleSource %)
-      (com/load-rules %)
-      %)
-   sources))
 
 (defn- condition-to-html 
   "Returns an HTML-based description of the given condition. "
@@ -45,12 +39,12 @@
 (defn show-network! 
   "Opens a window that contains a visualization of the Rete network associated with the rules."
   [& sources]
-  (let [productions (get-productions sources)
-        beta-tree (com/to-beta-tree productions)
+  (let [productions (codegen/get-productions sources :clj)
+        beta-tree (trees/to-beta-tree productions)
         beta-nodes (for [beta-root beta-tree
                          beta-node (tree-seq :children :children beta-root)]
                      beta-node)
-        alpha-nodes (com/to-alpha-tree beta-tree)]
+        alpha-nodes (trees/to-alpha-tree beta-tree)]
     
     (-> 
 
@@ -225,7 +219,7 @@
 
 (defn logic-to-dot
   [sources]
-  (let [productions (get-productions sources)]
+  (let [productions (codegen/get-productions sources :clj)]
     
     (->
      (concat
