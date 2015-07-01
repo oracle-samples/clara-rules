@@ -1,14 +1,11 @@
 (ns clara.rules.dsl
   "Implementation of the defrule-style DSL for Clara. Most users should simply use the clara.rules namespace."
-  (:require [clojure.reflect :as reflect]
-            [clojure.core.reducers :as r]
-            [clojure.set :as s]
-            [clojure.string :as string]
-            [clojure.walk :as walk]
-            [clara.rules.engine :as eng]
-            [clara.rules.compiler :as com]
-            [clara.rules.schema :as schema]
-            [schema.core :as sc]))
+  (:require
+    [clara.rules.compiler.helpers :as hlp]
+    [clara.rules.compiler.expressions :as expr]
+    [clara.rules.schema :as schema] [schema.core :as sc]
+    [clojure.set :as s] [clojure.string :as string]
+    [clojure.walk :as walk]))
 
 
 ;; Let operators be symbols or keywords.
@@ -31,12 +28,12 @@
   [condition result-binding]
   (let [type (if (symbol? (first condition))
                (if-let [resolved (resolve (first condition))]
-
                  ;; If the type resolves to a var, grab its contents for the match.
                  (if (var? resolved)
                    (deref resolved)
-                   resolved)
-
+                   (if (hlp/compiling-cljs?)
+                     (hlp/resolve-cljs-sym (hlp/cljs-ns) (first condition))
+                     resolved))
                  (first condition)) ; For ClojureScript compatibility, we keep the symbol if we can't resolve it.
                (first condition))
         ;; Args is an optional vector of arguments following the type.
@@ -106,12 +103,12 @@
    if we can't qualify it for any reason."
   [env sym]
   (let [env (set env)]
-    (if (com/compiling-cljs?)
+    (if (hlp/compiling-cljs?)
 
       ;; Qualify the symbol using the CLJS analyzer.
       (if-let [resolved (and (symbol? sym)
                              (not (env sym))
-                             (com/resolve-cljs-sym (com/cljs-ns) sym))]
+                             (hlp/resolve-cljs-sym (hlp/cljs-ns) sym))]
         resolved
         sym)
 
@@ -205,7 +202,7 @@
 
                            (assoc (meta rhs) :file *file*)))}
 
-        symbols (set (filter symbol? (com/flatten-expression (concat lhs rhs))))
+        symbols (set (filter symbol? (expr/flatten-expression (concat lhs rhs))))
         matching-env (into {} (for [sym (keys env)
                                     :when (symbols sym)
                                     ]
@@ -227,7 +224,7 @@
                                        conditions))
                :params (set params)}
 
-        symbols (set (filter symbol? (com/flatten-expression lhs)))
+        symbols (set (filter symbol? (expr/flatten-expression lhs)))
         matching-env (into {}
                            (for [sym (keys env)
                                  :when (symbols sym)]

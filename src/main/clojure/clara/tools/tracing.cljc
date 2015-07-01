@@ -1,7 +1,8 @@
 (ns clara.tools.tracing
   "Support for tracing state changes in a Clara session."
-  (:require [clara.rules.listener :as l]
-            [clara.rules.engine :as eng]))
+  (:require
+    [clara.rules.listener :as l]
+    [clara.rules.engine :as eng] [clara.rules.engine.sessions :as session]))
 
 (declare to-tracing-listener)
 
@@ -83,7 +84,7 @@
   (if (is-tracing? session)
     session
     (let [{:keys [listeners] :as components} (eng/components session)]
-      (eng/assemble (assoc components
+      (session/assemble (assoc components
                       :listeners
                       (conj listeners (PersistentTracingListener. [])))))))
 
@@ -93,7 +94,7 @@
   [session]
   (if (is-tracing? session)
     (let [{:keys [listeners] :as components} (eng/components session)]
-      (eng/assemble (assoc components
+      (session/assemble (assoc components
                       :listeners
                       (remove #(instance? PersistentTracingListener %) listeners))))
     session))
@@ -106,4 +107,6 @@
                          (filter #(instance? PersistentTracingListener %) )
                          (first))]
     (.-trace ^PersistentTracingListener listener)
-    (throw (IllegalStateException. "No tracing listener attached to session."))))
+    (throw #?(:clj (IllegalStateException. "No tracing listener attached to session.")
+                   :cljs (js/Error. "No tracing listener attached to session.")))))
+

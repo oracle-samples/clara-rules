@@ -4,7 +4,7 @@
   (:require [clara.sample-ruleset :as sample]
             [clara.other-ruleset :as other])
   (import [clara.rules.testfacts Temperature WindSpeed Cold ColdAndWindy LousyWeather First Second Third Fourth]
-          [clara.rules QueryResult RuleLoader WorkingMemory]))
+          [clara.rules QueryResult WorkingMemory RuleLoader]))
 
 (defn- java-namespace-args 
   "The java API expects an arra of strings containing namespace names, so create that."
