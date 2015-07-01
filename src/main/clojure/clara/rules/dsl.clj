@@ -28,12 +28,12 @@
   [condition result-binding]
   (let [type (if (symbol? (first condition))
                (if-let [resolved (resolve (first condition))]
-
                  ;; If the type resolves to a var, grab its contents for the match.
                  (if (var? resolved)
                    (deref resolved)
-                   resolved)
-
+                   (if (hlp/compiling-cljs?)
+                     (hlp/resolve-cljs-sym (hlp/cljs-ns) (first condition))
+                     resolved))
                  (first condition)) ; For ClojureScript compatibility, we keep the symbol if we can't resolve it.
                (first condition))
         ;; Args is an optional vector of arguments following the type.
