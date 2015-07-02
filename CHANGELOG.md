@@ -1,5 +1,10 @@
 This is a history of changes to clara-rules.
 
+### 0.8.8
+* Upgrade to Prismatic Schema 0.4.3
+* Handle use of Clojure .. macro in rule expressions. See [issue 108](https://github.com/rbrush/clara-rules/pull/108).
+* Fix edge case yielding an NPE when analysis some expressions. See [issue 109](https://github.com/rbrush/clara-rules/pull/109).
+
 ### 0.8.7
 * Properly qualify references to Java classes on the RHS of rules, supporting try/catch and static method calls. See [issue 104](https://github.com/rbrush/clara-rules/issues/104).
 * Fix bug when retracting a subset of facts blocked by a negation rule. See [issue 105](https://github.com/rbrush/clara-rules/issues/105).

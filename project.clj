@@ -1,4 +1,4 @@
-(defproject org.toomuchcode/clara-rules "0.8.8-SNAPSHOT"
+(defproject org.toomuchcode/clara-rules "0.8.8"
   :description "Clara Rules Engine"
   :url "https://github.com/rbrush/clara-rules"
   :license {:name "Eclipse Public License"
@@ -6,7 +6,7 @@
   :dependencies [[org.clojure/clojure "1.6.0"]
                  [org.codehaus.jsr166-mirror/jsr166y "1.7.0"]
                  [org.clojure/clojurescript "0.0-2727" :scope "provided"]
-                 [prismatic/schema "0.4.0"]
+                 [prismatic/schema "0.4.3"]
                  [dorothy "0.0.4"]
                  [hiccup "1.0.4"]]
   :plugins [[codox "0.8.10"]
