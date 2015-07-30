@@ -75,7 +75,7 @@
     (if (namespace sym)
 
       ;; Symbol qualified by a namespace, so look it up in the requires info.
-      (if-let [source-ns (get-in ns-info [:requires (namespace sym)])]
+      (if-let [source-ns (get-in ns-info [:requires (symbol (namespace sym))])]
         (symbol (name source-ns) (name sym))
         ;; Not in the requires block, so assume the qualified name is a refers and simply return the symbol.
         sym)
