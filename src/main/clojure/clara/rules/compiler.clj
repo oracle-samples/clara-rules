@@ -571,7 +571,7 @@
 
    (nil? right)
    1
-    
+
    ;; Ignore functions for our comparison purposes,
    ;; since we won't distinguish rules by them.
    (and (fn? left) (fn? right))
@@ -1126,7 +1126,7 @@
         get-alphas-fn (create-get-alphas-fn fact-type-fn ancestors-fn rulebase)]
 
     (eng/assemble {:rulebase rulebase
-                   :memory (eng/local-memory rulebase transport activation-group-sort-fn activation-group-fn)
+                   :memory (eng/local-memory rulebase transport activation-group-sort-fn activation-group-fn get-alphas-fn)
                    :transport transport
                    :listeners (get options :listeners  [])
                    :get-alphas-fn get-alphas-fn})))

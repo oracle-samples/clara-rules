@@ -278,9 +278,11 @@
 
         ;; The retraction is occuring outside of a rule-firing phase,
         ;; so simply retract them as an external caller would.
-        (doseq [[cls fact-group] (group-by type insertions)
-                root (get-in (mem/get-rulebase memory) [:alpha-roots cls])]
-          (alpha-retract root fact-group memory transport listener)))))
+        (let [get-alphas-fn (mem/get-alphas-fn memory)]
+        
+          (doseq [[alpha-roots fact-group] (get-alphas-fn insertions)
+                  root alpha-roots]
+            (alpha-retract root fact-group memory transport listener))))))
 
   (get-join-keys [node] [])
 
@@ -1071,8 +1073,8 @@
 
 (defn local-memory
   "Returns a local, in-process working memory."
-  [rulebase transport activation-group-sort-fn activation-group-fn]
-  (let [memory (mem/to-transient (mem/local-memory rulebase activation-group-sort-fn activation-group-fn))]
+  [rulebase transport activation-group-sort-fn activation-group-fn alphas-fn]
+  (let [memory (mem/to-transient (mem/local-memory rulebase activation-group-sort-fn activation-group-fn alphas-fn))]
     (doseq [beta-node (:beta-roots rulebase)]
       (left-activate beta-node {} [empty-token] memory transport l/default-listener))
     (mem/to-persistent! memory)))

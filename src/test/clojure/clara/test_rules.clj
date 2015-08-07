@@ -1133,7 +1133,11 @@
 
         session (-> (mk-session [cold-rule cold-query])
                     (insert (->Temperature 10 "MCI"))
-                    (fire-rules))]
+                    (fire-rules))
+
+        retracted (-> session
+                      (retract (->Temperature 10 "MCI"))
+                      (fire-rules))]
 
     (is (= #{{:?c 10}}
            (set (query session cold-query))))
@@ -1141,7 +1145,31 @@
     ;; Ensure retracting the temperature also removes the logically inserted fact.
     (is (empty?
          (query
-          (fire-rules (retract session (->Temperature 10 "MCI")))
+          retracted
+          cold-query)))))
+
+(deftest test-insert-and-retract-custom-type
+  (let [;; Insert a new fact and ensure it exists.
+        cold-rule (dsl/parse-rule [[:temperature [{value :value}] (< value 20) (= ?t value)]]
+                                  (insert! {:type :cold :value ?t}))
+
+        cold-query (dsl/parse-query [] [[:cold [{value :value}] (= ?c value)]])
+
+        session (-> (mk-session [cold-rule cold-query] :fact-type-fn :type :cache false)
+                    (insert {:type :temperature :value 10})
+                    (fire-rules))
+
+        retracted (-> session
+                      (retract {:type :temperature :value 10})
+                      (fire-rules))]
+
+    (is (= #{{:?c 10}}
+           (set (query session cold-query))))
+
+    ;; Ensure retracting the temperature also removes the logically inserted fact.
+    (is (empty?
+         (query
+          retracted
           cold-query)))))
 
 (deftest test-insert-retract-join ;; Test for issue #67
@@ -1640,6 +1668,20 @@
                             {:type :temperature :value 80 :location "MCI"}))]
 
     (is (= #{{:?t 15} {:?t 10}}
+           (set (query session cold-query))))))
+
+(deftest test-retract-general-map
+  (let [cold-query (dsl/parse-query []
+                             [[:temperature [{temp :value}] (< temp 20) (= ?t temp)]])
+
+        session (-> (mk-session [cold-query] :fact-type-fn :type)
+                    (insert {:type :temperature :value 15 :location "MCI"}
+                            {:type :temperature :value 10 :location "MCI"}
+                            {:type :windspeed :value 5 :location "MCI"}
+                            {:type :temperature :value 80 :location "MCI"})
+                    (retract {:type :temperature :value 15 :location "MCI"}))]
+
+    (is (= #{{:?t 10}}
            (set (query session cold-query))))))
 
 (defrecord RecordWithDash [test-field])
