@@ -263,7 +263,8 @@
       (mem/remove-activations! memory production activations))
 
     ;; Retract any insertions that occurred due to the retracted token.
-    (let [insertions (mem/remove-insertions! memory node tokens)]
+    (let [token-insertion-map (mem/remove-insertions! memory node tokens)
+          insertions (apply concat (vals token-insertion-map))]
 
       ;; If there is current session with rules firing, add these items to the queue
       ;; to be retracted so they occur in the same order as facts being inserted.
@@ -274,12 +275,21 @@
         (when (or (not (get-in production [:props :no-loop]))
                   (not (= production (get-in *rule-context* [:node :production]))))
 
-          (retract-facts! insertions))
+          (do
+            ;; Notify the listener of logical retractions.
+            (doseq [[token token-insertions] token-insertion-map]
+              (l/retract-facts-logical! listener node token token-insertions))
+
+            (retract-facts! insertions)))
 
         ;; The retraction is occuring outside of a rule-firing phase,
         ;; so simply retract them as an external caller would.
         (let [get-alphas-fn (mem/get-alphas-fn memory)]
-        
+
+          ;; Notify the listener of logical retractions.
+          (doseq [[token token-insertions] token-insertion-map]
+            (l/retract-facts-logical! listener node token token-insertions))
+
           (doseq [[alpha-roots fact-group] (get-alphas-fn insertions)
                   root alpha-roots]
             (alpha-retract root fact-group memory transport listener))))))

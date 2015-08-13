@@ -71,6 +71,8 @@
 
   ;; Removes all records of facts that were inserted at the given node
   ;; due to the given token. Used for truth maintenance.
+  ;; This function returns a map of each token to the associated facts
+  ;; it removed.
   (remove-insertions! [memory node token])
 
   ;; Add a sequence of activations.
@@ -282,10 +284,7 @@
     ;; Remove the facts inserted from the given token.
     (let [token-facts-map (get production-memory (:id node) {})
           ;; Get removed tokens for the caller.
-          results (doall
-                   (flatten
-                    (for [token tokens]
-                      (get token-facts-map token))))]
+          results (select-keys token-facts-map tokens)]
 
       ;; Clear the tokens and update the memory.
       (set! production-memory

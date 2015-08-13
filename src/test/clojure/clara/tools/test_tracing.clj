@@ -71,3 +71,26 @@
     ;; Ensure expected events occur in order.
     (is (= [:add-facts :right-activate :left-activate :add-activations :add-facts-logical]
            (map :type (t/get-trace session))))))
+
+(deftest test-insert-and-retract-trace
+ (let [cold-rule (dsl/parse-rule [[Temperature (= ?temperature temperature) (< temperature 20)]]
+                                  (insert! (->Cold ?temperature)))
+
+        session (-> (mk-session [cold-rule] :cache false)
+                    (t/with-tracing)
+                    (insert (->Temperature 10 "MCI")
+                            (->Temperature 20 "MCI"))
+                    (fire-rules)
+                    (retract (->Temperature 10 "MCI"))
+                    (fire-rules))
+
+       session-trace (t/get-trace session)]
+
+    ;; Ensure expected events occur in order.
+   (is (= [:add-facts :right-activate :left-activate :add-activations :add-facts-logical
+           :retract-facts :right-retract :left-retract :remove-activations :retract-facts-logical]
+          (map :type session-trace)))
+
+   ;; Ensure only the expected fact was indicated as retracted.
+   (let [retraction (first (filter #(= :retract-facts-logical (:type %)) session-trace))]
+     (is (= [(->Cold 10)] (:facts retraction))))))
