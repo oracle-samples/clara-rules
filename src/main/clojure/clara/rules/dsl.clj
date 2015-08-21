@@ -21,10 +21,11 @@
 (defn split-lhs-rhs
  "Given a rule with the =>, splits the left- and right-hand sides."
  [rule-body]
- (let [[lhs [sep rhs]] (split-with #(not (separator? %))  rule-body)]
+ (let [[lhs [sep & rhs]] (split-with #(not (separator? %)) rule-body)]
 
    {:lhs lhs
-    :rhs rhs}))
+    :rhs (when-not (empty? rhs)
+           (conj rhs 'do))}))
 
 (defn- construct-condition
   "Creates a condition with the given optional result binding when parsing a rule."

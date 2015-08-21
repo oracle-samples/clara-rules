@@ -24,12 +24,8 @@
 (defrule test-rule 
   [Temperature (< temperature 20)]
   =>
+  (reset! other-defrule-side-effect ?__token__)
   (reset! simple-defrule-side-effect ?__token__))
-
-(defrule test-other-rule 
-  [Temperature (< temperature 20)]
-  =>
-  (reset! other-defrule-side-effect ?__token__))
 
 (defquery cold-query
   []
@@ -90,7 +86,8 @@
     
     (fire-rules session)
 
-    (is (has-fact? @simple-defrule-side-effect (->Temperature 10 "MCI")))))
+    (is (has-fact? @simple-defrule-side-effect (->Temperature 10 "MCI")))
+    (is (has-fact? @other-defrule-side-effect (->Temperature 10 "MCI")))))
 
 (deftest test-simple-query
   (let [session (-> my-session
