@@ -1409,10 +1409,12 @@
            {:type Temperature :constraints ['(> 6 5)]}]))))
 
 (def simple-defrule-side-effect (atom nil))
+(def other-defrule-side-effect (atom nil))
 
 (defrule test-rule
   [Temperature (< temperature 20)]
   =>
+  (reset! other-defrule-side-effect ?__token__)
   (reset! simple-defrule-side-effect ?__token__))
 
 (deftest test-simple-defrule
@@ -1421,7 +1423,8 @@
 
     (fire-rules session)
 
-    (is (has-fact? @simple-defrule-side-effect (->Temperature 10 "MCI") ))))
+    (is (has-fact? @simple-defrule-side-effect (->Temperature 10 "MCI")))
+    (is (has-fact? @other-defrule-side-effect (->Temperature 10 "MCI")))))
 
 (defquery cold-query
   [:?l]
