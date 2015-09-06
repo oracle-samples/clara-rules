@@ -2545,3 +2545,31 @@
                 .rulebase
                 :id-to-node
                 count)))))
+
+(deftest test-rule-schema-accepts-seq-forms
+  (let [list-constraint (list `= 'this "abc")
+        cons-constraint (cons `= ['this "abc"])
+        qlist {:lhs [{:fact-binding :?s
+                      :type String
+                      :constraints [list-constraint]}]
+               :params #{}}
+        qcons {:lhs [{:fact-binding :?s
+                      :type String
+                      :constraints [cons-constraint]}]
+               :params #{}}
+
+        ;; Do not allow the session caching since both rules above are
+        ;; equivalent from a clj perspective.
+        qlist-result (-> (mk-session [qlist] :cache false)
+                         (insert "abc")
+                         fire-rules
+                         (query qlist)
+                         set)
+        qcons-result (-> (mk-session [qcons] :cache false)
+                         (insert "abc")
+                         fire-rules
+                         (query qlist)
+                         set)]
+    (is (= #{{:?s "abc"}}
+           qlist-result
+           qcons-result))))

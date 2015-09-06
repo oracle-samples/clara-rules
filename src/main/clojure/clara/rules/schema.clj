@@ -22,11 +22,14 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Rule and query structure schema.
 
+(def SExpr
+  (s/pred seq? "s-expression"))
+
 (def FactCondition
   {:type s/Any ;(s/either s/Keyword (s/pred symbol?))
-   :constraints [(s/pred list? "s-expression")]
+   :constraints [SExpr]
    ;; Original constraints preserved for tooling in case a transformation was applied to the condition.
-   (s/optional-key :original-constraints) [(s/pred list? "s-expression")]
+   (s/optional-key :original-constraints) [SExpr]
    (s/optional-key :fact-binding) s/Keyword
    (s/optional-key :args) s/Any
    })
@@ -37,7 +40,7 @@
    (s/optional-key :result-binding) s/Keyword})
 
 (def TestCondition
-  {:constraints [(s/pred list? "s-expression")]})
+  {:constraints [SExpr]})
 
 (def LeafCondition
   (s/conditional
