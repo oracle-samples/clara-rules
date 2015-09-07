@@ -14,7 +14,7 @@
             [clojure.walk :as walk]
             schema.test)
   (import [clara.rules.testfacts Temperature WindSpeed Cold TemperatureHistory
-           ColdAndWindy LousyWeather First Second Third Fourth]
+           ColdAndWindy LousyWeather First Second Third Fourth FlexibleFields]
           [java.util TimeZone]))
 
 (use-fixtures :once schema.test/validate-schemas)
@@ -2573,3 +2573,27 @@
     (is (= #{{:?s "abc"}}
            qlist-result
            qcons-result))))
+
+(deftest test-record-fields-with-munged-names
+  (let [ff (map->FlexibleFields {:it-works? true
+                                 :a->b {:a :b}
+                                 :x+y [:x :y]
+                                 :bang! :bang!})
+        q (dsl/parse-query []
+                           [[?ff <- FlexibleFields (= ?it-works? it-works?)
+                             (= ?a->b a->b)
+                             (= ?x+y x+y)
+                             (= ?bang! bang!)]])
+
+        s (-> (mk-session [q])
+              (insert ff)
+              fire-rules
+              (query q)
+              set)]
+
+    (is (= #{{:?ff ff}
+             {:?it-works? true}
+             {:?a->b {:a :b}}
+             {:?x+y [:x :y]}
+             {:?bang! :bang!}}))))
+

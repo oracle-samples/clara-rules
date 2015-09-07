@@ -16,3 +16,9 @@
 (defrecord Second [])
 (defrecord Third [])
 (defrecord Fourth [])
+
+;; Record utilizing clj flexible field names.
+(defrecord FlexibleFields [it-works?
+                           a->b
+                           x+y
+                           bang!])
