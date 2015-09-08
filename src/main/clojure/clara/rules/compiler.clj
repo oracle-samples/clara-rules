@@ -107,16 +107,18 @@
 
 
 (defn- get-field-accessors
-  "Returns a map of field name to a symbol representing the function used to access it."
+  "Given a clojure.lang.IRecord subclass, returns a map of field name to a
+   symbol representing the function used to access it."
   [cls]
   (into {}
-        (for [member (:members (reflect/type-reflect cls :reflector reflector))
-              :when  (and (:type member)
-                          (not (#{'__extmap '__meta} (:name member)))
-                          (:public (:flags member))
-                          (not (:static (:flags member))))]
-          [(symbol (string/replace (:name member) #"_" "-")) ; Replace underscore with idiomatic dash.
-           (symbol (str ".-" (:name member)))])))
+        (for [field-name (clojure.lang.Reflector/invokeStaticMethod ^Class cls
+                                                                    "getBasis"
+                                                                    ^"[Ljava.lang.Object;" (make-array Object 0))]
+          ;; Do not preserve the metadata on the field names returned from
+          ;; IRecord.getBasis() since it may not be safe to eval this metadata
+          ;; in other contexts.  This mostly applies to :tag metadata that may
+          ;; be unqualified class names symbols at this point.
+          [(with-meta field-name {}) (symbol (str ".-" field-name))])))
 
 (defn- get-bean-accessors
   "Returns a map of bean property name to a symbol representing the function used to access it."
