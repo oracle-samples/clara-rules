@@ -22,6 +22,19 @@
 (defn- has-fact? [token fact]
   (some #{fact} (map first (:matches token))))
 
+(defmacro assert-ex-data [expected-ex-data form]
+  `(try
+     ~form
+     (is false
+         (str "Exception expected to be thrown when evaluating: " \newline
+              '~form))
+     (catch Exception e#
+       (is (instance? clojure.lang.ExceptionInfo e#))
+       (is (= ~expected-ex-data
+              (ex-data e#))
+           (str "Exception message: " \newline
+                e#)))))
+
 (deftest test-simple-rule
   (let [rule-output (atom nil)
         cold-rule (dsl/parse-rule [[Temperature (< temperature 20)]]
@@ -2448,8 +2461,65 @@
                                             [[WindSpeed (or (= "MCI" location)
                                                             (= ?w windspeed))]])]
 
-    (is (thrown? clojure.lang.ExceptionInfo
-                 (mk-session [same-wind-and-temp])))))
+    (assert-ex-data {:variables #{'?w}}
+                    (mk-session [same-wind-and-temp]))))
+
+(deftest test-unbound-bindings
+  (let [accum-condition (dsl/parse-query []
+                                         [[?ts <- (acc/all) :from [Temperature (and ?bogus (< ?bogus temperature))]]])
+        negation-condition (dsl/parse-query []
+                                        [[:not [WindSpeed (not= ?invalid location)]]])
+        test-condition (dsl/parse-query []
+                                    [[:test (< ?missing 10)]])
+        multi-conditions (dsl/parse-query []
+                                            [[Temperature (= ?temp temperature)
+                                              (= ?loc location)]
+                                             [Temperature (= ?loc location)
+                                              (< ?temp temperature)]
+                                             [Cold (< ?extra1 ?temp ?extra2)]])
+        nested-conditions (dsl/parse-query []
+                                           [[?t <- Temperature (= ?temp temperature)
+                                              (= ?loc location)]
+                                             [Cold (= ?temp temperature)
+                                              ;; Demonstrating using an available :fact-binding
+                                              (some? (:location ?t)) 
+                                              (and (< ?unbound temperature 10))]])
+
+        nested-accum-conditions (dsl/parse-query []
+                                                 [[Temperature (= ?loc location)]
+                                                  [?ts <- (acc/all) :from [Temperature (= ?loc location) (< ?invalid temperature)]]])
+        bool-conditions (dsl/parse-query []
+                                         [[?t <- Temperature (= ?temp temperature)
+                                              (= ?loc location)]
+
+                                          [:or
+                                           [Cold (= ?temp temperature)
+                                            (< temperature 10)]
+                                           [Windspeed (= ?loc location)
+                                            (< windspeed 50)]
+                                           [:not [Windspeed (= ?loc location)
+                                                  (< windspeed ?unbound)]]]])]
+    
+    (assert-ex-data {:variables #{'?bogus}}
+                    (mk-session [accum-condition]))
+
+    (assert-ex-data {:variables #{'?invalid}}
+                    (mk-session [negation-condition]))
+
+    (assert-ex-data {:variables #{'?missing}}
+                    (mk-session [test-condition]))
+
+    (assert-ex-data {:variables #{'?extra1 '?extra2}}
+                    (mk-session [multi-conditions]))
+
+    (assert-ex-data {:variables #{'?unbound}}
+                    (mk-session [nested-conditions]))
+
+    (assert-ex-data {:variables #{'?invalid}}
+                    (mk-session [nested-accum-conditions]))
+
+    (assert-ex-data {:variables #{'?unbound}}
+                    (mk-session [bool-conditions]))))
 
 ;; Test for: https://github.com/rbrush/clara-rules/issues/96
 (deftest test-destructured-binding
