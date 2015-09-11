@@ -8,6 +8,7 @@
             [clara.rules.listener :as listener]
             [clara.rules.platform :as platform]
             [clojure.string :as string]
+            [clojure.walk :as walk]
             [clara.rules.schema :as schema]
             [schema.core :as sc]
             [schema.macros :as sm])
@@ -158,20 +159,26 @@
        (class? type) (get-bean-accessors type) ; Treat unrecognized classes as beans.
        :default []))))
 
-(defn- is-equals?
-  [cmp]
-  (and (symbol? cmp)
-       (let [cmp-str (name cmp)]
-         (or (= cmp-str "=")
-             (= cmp-str "==")))))
+(defn- equality-expression? [expression]
+  (let [qualify-when-sym #(when-let [resolved (and (symbol? %)
+                                                   (resolve %))]
+                            (and (var? resolved)
+                                 (symbol (-> resolved meta :ns ns-name name)
+                                         (-> resolved meta :name name))))
+        op (first expression)]
+    ;; Check for unqualified = or == to support original Clara unification
+    ;; syntax where clojure.core/== was supposed to be excluded explicitly.
+    (boolean (or (#{'= '== 'clojure.core/= 'clojure.core/==} op)
+                 (#{'clojure.core/= 'clojure.core/==} (qualify-when-sym op))))))
 
 (defn- compile-constraints [exp-seq assigment-set]
   (if (empty? exp-seq)
     `((deref ~'?__bindings__))
     (let [ [[cmp a b :as exp] & rest] exp-seq
            compiled-rest (compile-constraints rest assigment-set)
-           a-in-assigment (and is-equals? (and (symbol? a) (assigment-set (keyword a))))
-           b-in-assigment (and is-equals? (and (symbol? b) (assigment-set (keyword b))))]
+           eq-expr? (equality-expression? exp) 
+           a-in-assigment (and eq-expr? (and (symbol? a) (assigment-set (keyword a))))
+           b-in-assigment (and eq-expr? (and (symbol? b) (assigment-set (keyword b))))]
       (cond
        a-in-assigment
        (if b-in-assigment
@@ -389,15 +396,9 @@
   "Returns true if the given expression does a non-equality unification against a variable,
    indicating it can't be solved by simple unification."
   (let [found-complex (atom false)
-        qualify-when-sym #(when-let [resolved (and (symbol? %)
-                                                   (resolve %))]
-                            (and (var? resolved)
-                                 (symbol (-> resolved meta :ns ns-name name)
-                                         (-> resolved meta :name name))))
         process-form (fn [form]
                        (when (and (list? form)
-                                  (not (#{'clojure.core/= 'clojure.core/==}
-                                        (qualify-when-sym (first form))))
+                                  (not (equality-expression? form))
                                   (some (fn [sym] (and (symbol? sym)
                                                       (.startsWith (name sym) "?")))
                                         (flatten-expression form)))
@@ -407,7 +408,7 @@
                        form)]
 
     ;; Walk the expression to find use of a symbol that can't be solved by equality-based unificaiton.
-    (doall (clojure.walk/postwalk process-form expression))
+    (doall (walk/postwalk process-form expression))
 
     @found-complex))
 
@@ -630,8 +631,8 @@
 
 (defn- extract-from-constraint
   "Process and extract a test expression from the constraint. Returns a pair of [processed-constraint, test-constraint],
-   which can be expanded into correspoding join and test nodes.
-  The test may be nil if no extraction is necessary."
+   which can be expanded into corresponding join and test nodes.
+   The test may be nil if no extraction is necessary."
   [[op arg & rest :as constraint]]
 
   (let [has-variable? (fn [expr]
@@ -656,7 +657,7 @@
     ;; If the constraint is a simple binding or an expression without variables,
     ;; there is no test expression to extract.
     (if (or (not (has-variable? constraint))
-            (and (is-equals? op)
+            (and (equality-expression? constraint)
                  ;; Handle bindings where variable is first.
                  (or (and (is-variable? arg)
                           (not (has-variable? rest)))
@@ -680,11 +681,11 @@
 
            ;; Create a test condition that is the same as the original, but
            ;; with nested expressions replaced by the binding map.
-           [(clojure.walk/postwalk (fn [form]
-                                      (if-let [sym (get @binding-map form)]
-                                        sym
-                                        form))
-                                    constraint)]]
+           [(walk/postwalk (fn [form]
+                             (if-let [sym (get @binding-map form)]
+                               sym
+                               form))
+                           constraint)]]
 
           ;; No test bindings found, so simply keep the constraint as is.
           [[constraint] []])))))
@@ -717,13 +718,47 @@
         expanded (if (or (= :test (condition-type condition))
                          (empty? test-constraints))
                    [condition]
-                   ;; There were test constraints created, so the processed constraints
-                   ;; and generated test condition.
+                   ;; There were test constraints created, so add the processed
+                   ;; constraints along with the generated test condition.
                    [(assoc condition :constraints processed-constraints
                            :original-constraints constraints)
-                    {:constraints test-constraints}  ])]
+                    {:constraints test-constraints}])]
 
     expanded))
+
+(defn- classify-variables
+  "Classifies the variables found in the given contraints into 'bound' vs 'free' 
+   variables.  Bound variables are those that are found in a valid
+   equality-based, top-level binding form.  All other variables encountered are
+   considered free.  Returns a tuple of the form
+   [bound-variables free-variables]
+   where bound-variables and free-variables are the sets of bound and free
+   variables found in the constraints respectively."
+  [constraints]
+  (reduce (fn [[bound-variables free-variables] constraint]
+            ;; Only top-level constraint forms can introduce new variable bindings.
+            ;; If the top-level constraint is an equality expression, add the
+            ;; bound variables to the set of bound variables.
+            (if (and (seq? constraint) (equality-expression? constraint))
+              [(->> (rest constraint)
+                    (filterv is-variable?)
+                    (into bound-variables))
+               ;; Any other variables in a nested form are now considered "free".
+               (->> (rest constraint)
+                    ;; We already have checked this level symbols for bound variables.
+                    (remove symbol?)
+                    flatten-expression
+                    (filterv is-variable?)
+                    (into free-variables))]
+
+              ;; Binding forms are not supported nested within other forms, so
+              ;; any variables that occur now are considered "free" variables.
+              [bound-variables
+               (->> (flatten-expression constraint)
+                    (filterv is-variable?)
+                    (into free-variables))]))
+          [#{} #{}]
+          constraints))
 
 (defn- check-unbound-variables
   "Checks the expanded condition to see if there are any potentially unbound
@@ -732,32 +767,30 @@
   (loop [ancestor-variables #{}
          [condition & rest] expanded-conditions]
 
-    (let [variables (set (filter is-variable?
-                                 (flatten-expression
-                                  (if (= :accumulator (condition-type condition))
-                                    (get-in condition [:from :constraints])
-                                    (:constraints condition)))))]
+    (let [constraints (condp = (condition-type condition)
+                             :accumulator (get-in condition [:from :constraints])
+                             :negation (:constraints (second condition))
+                             (:constraints condition))
+          [bound-variables free-variables] (classify-variables constraints)]
 
-      ;; Check only test expressions, since they don't bind variables.
-      (when (and (= :test (condition-type condition))
-                 (not (s/subset? variables ancestor-variables)))
-        (throw (ex-info (str "Using variable that is not previously bound. This can happen "
-                             "when a test expression uses a previously unbound variable, "
-                             "or if a variable is referenced in a nested part of a parent "
-                             "expression, such as (or (= ?my-expression my-field) ...). "
-                             "Unbound variables: "
-                             (s/difference variables ancestor-variables ))
-                        {:variables (s/difference variables ancestor-variables )}) ))
+      (when-not (s/subset? free-variables ancestor-variables)
+        (let [invalid-variables (s/difference free-variables ancestor-variables)]
+          (throw (ex-info (str "Using variable that is not previously bound. This can happen "
+                               "when an expression uses a previously unbound variable, "
+                               "or if a variable is referenced in a nested part of a parent "
+                               "expression, such as (or (= ?my-expression my-field) ...). " \newline
+                               "Unbound variables: "
+                               invalid-variables)
+                          {:variables invalid-variables}))))
 
-      (when (seq? rest)
+      (when (seq rest)
 
         ;; Recur with bound variables and fact and accumulator result bindings visible to children.
-        (recur (cond-> (into ancestor-variables variables)
+        (recur (cond-> (into ancestor-variables bound-variables)
                        (:fact-binding condition) (conj (symbol (name (:fact-binding condition))))
                        (:result-binding condition) (conj (symbol (name (:result-binding condition)))))
 
                rest)))))
-
 
 (defn- get-conds
   "Returns a sequence of [condition environment] tuples and their corresponding productions."
@@ -770,7 +803,7 @@
                        [expression])]
 
     ;; Now we've split the production into one ore more disjunctions that
-    ;; can be processed independently. Commonality between disjunctions willl
+    ;; can be processed independently. Commonality between disjunctions will
     ;; be merged when building the Rete network.
     (for [disjunction disjunctions
 
