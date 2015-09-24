@@ -377,18 +377,22 @@
         (condp = (expr-type expression)
 
           :and
-          (let [disjunctions (map rest (filter #(= :or (expr-type %)) children))]
+          (let [disjunctions (map rest (filter #(= :or (expr-type %)) children))
+                ;; Merge all child conjunctions into a single conjunction.
+                combine-conjunctions (fn [children]
+                                       (into [:and]
+                                             (apply concat
+                                                    (for [child children]
+                                                      (if (= :and (expr-type child))
+                                                        (rest child)
+                                                        [child])))))]
             (if (empty? disjunctions)
-              (into [:and] (apply concat
-                                  (for [child children]
-                                    (if (= :and (expr-type child))
-                                      (rest child)
-                                      [child]))))
+              (combine-conjunctions children)
               (into [:or]
                     (for [c (cartesian-join disjunctions conjunctions)]
-                      (into [:and] c)))))
+                      (combine-conjunctions c)))))
           :or
-          ;; Merge all child disjunctions into a single list.
+          ;; Merge all child disjunctions into a single disjunction.
           (let [disjunctions (mapcat rest (filter #(#{:or} (expr-type %)) children))]
             (into [:or] (concat disjunctions conjunctions))))))))
 

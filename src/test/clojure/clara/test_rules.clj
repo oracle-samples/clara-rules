@@ -1102,6 +1102,42 @@
     (is (= #{{:?w 50 :?t 15}}
            (set (query windy-session really-cold-or-cold-and-windy))))))
 
+(deftest test-multi-conditions-with-nested-conjunction-inside-disjunction
+
+  (let [find-conditions (dsl/parse-query []
+                                         [[?tmp <- Temperature (= ?t temperature)
+                                           (= ?loc location)]
+                                          [:or
+                                           [:and
+                                            [?w <- WindSpeed (= ?loc location)]
+                                            [?c <- Cold (= ?t temperature)]]
+                                           [?cw <- ColdAndWindy (= ?t temperature) (> windspeed 50)]]])
+        temp (->Temperature 10 "MCI")
+        cold (->Cold 10)
+        wind-speed (->WindSpeed 50 "MCI")
+        cold-and-windy (->ColdAndWindy 10 80)
+
+        res (-> (mk-session [find-conditions]
+                            :cache true)
+                (insert temp
+                        cold
+                        wind-speed
+                        cold-and-windy)
+                fire-rules
+                (query find-conditions)
+                set)]
+
+    (is (= #{{:?tmp temp
+              :?t 10
+              :?loc "MCI"
+              :?w wind-speed
+              :?c cold}
+             {:?tmp temp
+              :?t 10
+              :?loc "MCI"
+              :?cw cold-and-windy}}
+           res))))
+
 (deftest test-simple-insert
 
   (let [rule-output (atom nil)
@@ -1298,7 +1334,7 @@
            {:type Temperature :constraints ['(> 3 2)]}
            {:type Temperature :constraints ['(> 4 3)]}])))
 
-   ;; Test simple disjunction
+  ;; Test simple disjunction.
   (is  (= [:or
            {:type Temperature :constraints ['(> 2 1)]}
            {:type Temperature :constraints ['(> 3 2)]}
@@ -1310,7 +1346,7 @@
            {:type Temperature :constraints ['(> 4 3)]}])))
 
 
-   ;; Test simple disjunction with nested conjunction.
+  ;; Test simple disjunction with nested conjunction.
   (is (= [:or
           {:type Temperature :constraints ['(> 2 1)]}
           [:and
@@ -1321,7 +1357,26 @@
            {:type Temperature :constraints ['(> 2 1)]}
            [:and
             {:type Temperature :constraints ['(> 3 2)]}
-            {:type Temperature :constraints ['(> 4 3)]}]])))
+            {:type Temperature :constraints ['(> 4 3)]}]]))) 
+
+  ;; Test disjunction nested inside of consecutive conjunctions.
+  (is (= [:or
+          [:and
+           {:constraints ['(> 4 3)] :type Temperature}
+           {:constraints ['(> 3 2)] :type Temperature}
+           {:constraints ['(> 2 1)] :type Temperature}]
+          [:and
+           {:constraints ['(> 5 4)] :type Temperature}
+           {:constraints ['(> 3 2)] :type Temperature}
+           {:constraints ['(> 2 1)] :type Temperature}]]
+         (com/to-dnf
+          [:and
+           {:type Temperature :constraints ['(> 2 1)]}
+           [:and
+            {:type Temperature :constraints ['(> 3 2)]}
+            [:or
+             {:type Temperature :constraints ['(> 4 3)]}
+             {:type Temperature :constraints ['(> 5 4)]}]]]))) 
 
   ;; Test simple distribution of a nested or expression.
   (is (= [:or
@@ -1337,7 +1392,7 @@
             {:type Temperature :constraints ['(> 2 1)]}
             {:type Temperature :constraints ['(> 3 2)]}]
            {:type Temperature :constraints ['(> 4 3)]}])))
-
+    
   ;; Test push negation to edges.
   (is (= [:and
           [:not {:type Temperature :constraints ['(> 2 1)]}]
@@ -2666,4 +2721,3 @@
              {:?a->b {:a :b}}
              {:?x+y [:x :y]}
              {:?bang! :bang!}}))))
-
