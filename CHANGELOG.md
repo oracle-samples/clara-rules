@@ -1,5 +1,16 @@
 This is a history of changes to clara-rules.
 
+### 0.8.9
+* Properly handle deeply nested conjunctions. See [issue 126](https://github.com/rbrush/clara-rules/pull/126).
+* Report error for unbound condition variables across all condition types. See [issue 124](https://github.com/rbrush/clara-rules/pull/124).
+* Support munged record field names. See [issue 121](https://github.com/rbrush/clara-rules/pull/121).
+* Generalize schema used for s-expressions in rules. See [issue 120](https://github.com/rbrush/clara-rules/pull/120).
+* Support multiple expressions on right-hand side of defrule. See [issue 118](https://github.com/rbrush/clara-rules/issues/118).
+* Properly call retract-facts-logical! listener. See [issue 117](https://github.com/rbrush/clara-rules/issues/117).
+* Fix retraction when using custom fact type. See [issue 116](https://github.com/rbrush/clara-rules/issues/116).
+* Support type ancestors in ClojureScript. See [issue 115](https://github.com/rbrush/clara-rules/pull/115).
+* Handle aliased symbols in ClojureScript. See [issue 113](https://github.com/rbrush/clara-rules/issues/113).
+
 ### 0.8.8
 * Upgrade to Prismatic Schema 0.4.3
 * Handle use of Clojure .. macro in rule expressions. See [issue 108](https://github.com/rbrush/clara-rules/pull/108).
