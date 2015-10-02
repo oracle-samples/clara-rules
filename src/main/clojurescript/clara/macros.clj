@@ -1,9 +1,9 @@
 (ns clara.macros
-  "Forward-chaining rules for Clojure. The primary API is in this namespace"
+  "Macros for ClojureScript users of Clara."
   (:require [clara.rules.engine :as eng]
             [clara.rules.memory :as mem]
             [clara.rules.compiler :as com]
-            [clara.rules.dsl :as dsl]            
+            [clara.rules.dsl :as dsl]
             [cljs.analyzer :as ana]
             [cljs.env :as env]
             [clojure.set :as s]))
@@ -13,7 +13,7 @@
 (defn- add-production [name production]
   (swap! env/*compiler* assoc-in [::productions (com/cljs-ns) name] production))
 
-(defn- get-productions-from-namespace 
+(defn- get-productions-from-namespace
   "Returns a map of names to productions in the given namespace."
   [namespace]
   ;; TODO: remove need for ugly eval by changing our quoting strategy.
@@ -28,7 +28,7 @@
    (coll? source) (seq source)
    :else (throw (IllegalArgumentException. "Unknown source value type passed to defsession"))))
 
-(defmacro defrule 
+(defmacro defrule
   [name & body]
   (let [doc (if (string? (first body)) (first body) nil)
         body (if doc (rest body) body)
@@ -43,7 +43,7 @@
     `(def ~name
        ~production)))
 
-(defmacro defquery 
+(defmacro defquery
   [name & body]
   (let [doc (if (string? (first body)) (first body) nil)
         binding (if doc (second body) (first body))
@@ -88,7 +88,7 @@
             '~condition
             ~(gen-beta-network children all-bindings)
             ~join-bindings)
-          
+
           :test
           `(eng/->TestNode
             ~id
@@ -129,7 +129,7 @@
       :children (vec beta-children)
       })))
 
-(defmacro defsession 
+(defmacro defsession
   "Creates a sesson given a list of sources and keyword-style options, which are typically ClojureScript namespaces.
 
   Each source is eval'ed at compile time, in Clojure (not ClojureScript.)
@@ -155,7 +155,7 @@ use it as follows:
 
    (-> my-session
      (insert (->Temperature 23))
-     (fire-rules))  
+     (fire-rules))
 "
   [name & sources-and-options]
   (let [sources (take-while #(not (keyword? %)) sources-and-options)
@@ -167,7 +167,7 @@ use it as follows:
                                production (get-productions source)]
                            production))
 
-        beta-tree (com/to-beta-tree productions) 
+        beta-tree (com/to-beta-tree productions)
         beta-network (gen-beta-network beta-tree #{})
 
         alpha-tree (com/to-alpha-tree beta-tree)

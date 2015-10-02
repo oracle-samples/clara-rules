@@ -1,17 +1,16 @@
-(defproject org.toomuchcode/clara-rules "0.8.10-SNAPSHOT"
+(defproject org.toomuchcode/clara-rules "0.9.0-SNAPSHOT"
   :description "Clara Rules Engine"
   :url "https://github.com/rbrush/clara-rules"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[org.clojure/clojure "1.6.0"]
-                 [org.codehaus.jsr166-mirror/jsr166y "1.7.0"]
-                 [org.clojure/clojurescript "0.0-2727" :scope "provided"]
+  :dependencies [[org.clojure/clojure "1.7.0"]
+                 [org.clojure/clojurescript "1.7.48" :scope "provided"]
                  [prismatic/schema "0.4.3"]
                  [dorothy "0.0.4"]
                  [hiccup "1.0.4"]]
   :plugins [[codox "0.8.10"]
-            [lein-cljsbuild "1.0.4"]
-            [com.cemerick/clojurescript.test "0.2.1"]]
+            [lein-cljsbuild "1.0.6"]
+            [com.cemerick/clojurescript.test "0.3.3"]]
   :codox {:exclude [clara.other-ruleset clara.sample-ruleset clara.test-java
                     clara.test-rules clara.rules.memory clara.test-accumulators
                     clara.rules.testfacts clara.rules.java clara.rules.engine
@@ -33,10 +32,7 @@
                                    :optimizations :whitespace}}]
               :test-commands {"unit-tests" ["phantomjs" :runner
                                             "window.literal_js_was_evaluated=true"
-                                            "target/cljs/testable.js"]}
-              :crossovers [clara.rules.engine clara.rules.accumulators clara.rules.listener]
-              :crossover-path "target/crossovers/clojurescript"
-              :crossover-jar true}
+                                            "target/cljs/testable.js"]}}
 
   :scm {:name "git"
         :url "https://github.com/rbrush/clara-rules.git"}
