@@ -1,8 +1,8 @@
 (ns clara.test-rules
-  (:require-macros [cemerick.cljs.test :refer (is deftest run-tests testing)]
+  (:require-macros [cljs.test :refer (is deftest run-tests testing)]
                    [clara.macros :refer [defrule defsession defquery]]
                    [clara.test-rules-data])
-  (:require [cemerick.cljs.test :as t]
+  (:require [cljs.test :as t]
             [clara.rules.engine :as eng]
             [clara.rules.accumulators :as acc]
             [clara.rules :refer (assemble-session insert fire-rules query insert!)]
@@ -21,7 +21,7 @@
 (def simple-defrule-side-effect (atom nil))
 (def other-defrule-side-effect (atom nil))
 
-(defrule test-rule 
+(defrule test-rule
   [Temperature (< temperature 20)]
   =>
   (reset! other-defrule-side-effect ?__token__)
@@ -83,7 +83,7 @@
 
 (deftest test-simple-defrule
   (let [session (insert my-session (->Temperature 10 "MCI"))]
-    
+
     (fire-rules session)
 
     (is (has-fact? @simple-defrule-side-effect (->Temperature 10 "MCI")))
@@ -116,8 +116,8 @@
                     (insert (->WindSpeed 45 "MCI"))
                     (fire-rules))]
 
-    (is (= #{{:?fact (->ColdAndWindy 15 45)}}  
-           (set 
+    (is (= #{{:?fact (->ColdAndWindy 15 45)}}
+           (set
             (query session find-cold-and-windy))))))
 
 (deftest test-simple-insert-map
@@ -136,29 +136,29 @@
                     (insert (->Temperature 15 "MCI"))
                     (insert (->WindSpeed 45 "MCI"))
                     (fire-rules))]
-    (is (= #{{:?fact (->ColdAndWindy 15 45)}}  
-           (set 
+    (is (= #{{:?fact (->ColdAndWindy 15 45)}}
+           (set
             (query session "clara.test-rules-data/find-cold-and-windy-data"))))))
 
 (deftest test-no-temperature
 
   ;; Test that a temperature cancels the match.
-  (let [session (-> my-session                 
+  (let [session (-> my-session
                     (insert (->Temperature 15 "MCI"))
                     (insert (->WindSpeed 45 "MCI"))
                     (fire-rules))]
 
-    (is (= #{}  
-           (set 
+    (is (= #{}
+           (set
             (query session wind-without-temperature)))))
 
   ;; Now test the no temperature scenario.
-  (let [session (-> my-session                 
+  (let [session (-> my-session
                     (insert (->WindSpeed 45 "MCI"))
                     (fire-rules))]
 
-    (is (= #{{:?w 45}}  
-           (set 
+    (is (= #{{:?w 45}}
+           (set
             (query session wind-without-temperature))))))
 
 
@@ -169,6 +169,6 @@
                     (insert (->WindSpeed 45 "MCI"))
                     (fire-rules))]
 
-    (is (= #{{:?w 45 :?t 15 :?loc "MCI"}}  
-           (set 
+    (is (= #{{:?w 45 :?t 15 :?loc "MCI"}}
+           (set
             (query session wind-with-temperature))))))

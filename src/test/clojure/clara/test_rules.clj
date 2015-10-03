@@ -1357,7 +1357,7 @@
            {:type Temperature :constraints ['(> 2 1)]}
            [:and
             {:type Temperature :constraints ['(> 3 2)]}
-            {:type Temperature :constraints ['(> 4 3)]}]]))) 
+            {:type Temperature :constraints ['(> 4 3)]}]])))
 
   ;; Test disjunction nested inside of consecutive conjunctions.
   (is (= [:or
@@ -1376,7 +1376,7 @@
             {:type Temperature :constraints ['(> 3 2)]}
             [:or
              {:type Temperature :constraints ['(> 4 3)]}
-             {:type Temperature :constraints ['(> 5 4)]}]]]))) 
+             {:type Temperature :constraints ['(> 5 4)]}]]])))
 
   ;; Test simple distribution of a nested or expression.
   (is (= [:or
@@ -1392,7 +1392,7 @@
             {:type Temperature :constraints ['(> 2 1)]}
             {:type Temperature :constraints ['(> 3 2)]}]
            {:type Temperature :constraints ['(> 4 3)]}])))
-    
+
   ;; Test push negation to edges.
   (is (= [:and
           [:not {:type Temperature :constraints ['(> 2 1)]}]
@@ -2537,7 +2537,7 @@
                                               (= ?loc location)]
                                              [Cold (= ?temp temperature)
                                               ;; Demonstrating using an available :fact-binding
-                                              (some? (:location ?t)) 
+                                              (some? (:location ?t))
                                               (and (< ?unbound temperature 10))]])
 
         nested-accum-conditions (dsl/parse-query []
@@ -2554,7 +2554,7 @@
                                             (< windspeed 50)]
                                            [:not [Windspeed (= ?loc location)
                                                   (< windspeed ?unbound)]]]])]
-    
+
     (assert-ex-data {:variables #{'?bogus}}
                     (mk-session [accum-condition]))
 

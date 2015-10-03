@@ -9,8 +9,7 @@
                  [dorothy "0.0.4"]
                  [hiccup "1.0.4"]]
   :plugins [[codox "0.8.10"]
-            [lein-cljsbuild "1.0.6"]
-            [com.cemerick/clojurescript.test "0.3.3"]]
+            [lein-cljsbuild "1.1.0"]]
   :codox {:exclude [clara.other-ruleset clara.sample-ruleset clara.test-java
                     clara.test-rules clara.rules.memory clara.test-accumulators
                     clara.rules.testfacts clara.rules.java clara.rules.engine
@@ -20,19 +19,22 @@
   :test-paths ["src/test/clojure"]
   :java-source-paths ["src/main/java"]
   :hooks [leiningen.cljsbuild]
-  :cljsbuild {:builds [{:source-paths ["src/main/clojurescript"]
-                        :jar true
-                        :compiler {:pretty-print true
-                                   :output-to "target/js/clara.js"
+  :cljsbuild {:builds [;; Simple mode compilation for tests.
+                       {:source-paths ["src/main/clojurescript" "src/test/clojurescript"]
+                        :compiler {:output-to "target/js/simple.js"
                                    :optimizations :whitespace}}
 
-                       ;; Build for unit tests.
+                       ;; Advanced mode compilation for tests.
                        {:source-paths ["src/main/clojurescript" "src/test/clojurescript"]
-                        :compiler {:output-to "target/cljs/testable.js"
-                                   :optimizations :whitespace}}]
-              :test-commands {"unit-tests" ["phantomjs" :runner
-                                            "window.literal_js_was_evaluated=true"
-                                            "target/cljs/testable.js"]}}
+                        :compiler {:output-to "target/js/advanced.js"
+                                   :optimizations :advanced}}]
+
+              :test-commands {"phantom-simple" ["phantomjs"
+                                                "src/test/js/runner.js"
+                                                "src/test/html/simple.html"]
+                              "phantom-advanced" ["phantomjs"
+                                                  "src/test/js/runner.js"
+                                                  "src/test/html/advanced.html"]}}
 
   :scm {:name "git"
         :url "https://github.com/rbrush/clara-rules.git"}
