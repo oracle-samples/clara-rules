@@ -16,11 +16,11 @@
                     clara.rules.compiler clara.rules.platform
                     clara.test-durability clara.tools.test-inspect clara.tools.test-tracing]}
   :source-paths ["src/main/clojure"]
-  :test-paths ["src/test/clojure"]
+  :test-paths ["src/test/clojure" "src/test/common"]
   :java-source-paths ["src/main/java"]
   :hooks [leiningen.cljsbuild]
   :cljsbuild {:builds [;; Simple mode compilation for tests.
-                       {:source-paths ["src/main/clojurescript" "src/test/clojurescript"]
+                       {:source-paths ["src/main/clojurescript" "src/test/clojurescript" "src/test/common"]
                         :compiler {:output-to "target/js/simple.js"
                                    :optimizations :whitespace}}
 
@@ -32,6 +32,7 @@
               :test-commands {"phantom-simple" ["phantomjs"
                                                 "src/test/js/runner.js"
                                                 "src/test/html/simple.html"]
+
                               "phantom-advanced" ["phantomjs"
                                                   "src/test/js/runner.js"
                                                   "src/test/html/advanced.html"]}}

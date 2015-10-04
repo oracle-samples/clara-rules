@@ -1,6 +1,7 @@
 (ns clara.test
   (:require-macros [cljs.test :as test])
-  (:require [clara.test-rules :as test-rules]))
+  (:require [clara.test-rules]
+            [clara.test-common]))
 
 (enable-console-print!)
 
@@ -10,4 +11,4 @@
     (println "FAIL")))
 
 (defn ^:export run []
-  (test/run-tests 'clara.test-rules))
+  (test/run-tests 'clara.test-rules 'clara.test-common))
