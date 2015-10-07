@@ -5,32 +5,36 @@
             [clara.rules :refer [accumulate]])
   (:refer-clojure :exclude [min max distinct count]))
 
+(defn- drop-one-of
+  "Removes one instance of the given value from the sequence."
+  [items value]
+  (let [pred #(not= value %)]
+    (into (take-while pred items)
+          (rest (drop-while pred items)))))
+
+(defn- comparison-based
+  "Creates a comparison-based result such as min or max"
+  [field comparator returns-fact]
+  (accumulate
+   :reduce-fn (fn [values item]
+                (conj values item))
+   :combine-fn into
+   :retract-fn (fn [values retracted] (drop-one-of values retracted))
+   :convert-return-fn (fn [values]
+                        (when-let [smallest (first (sort-by field comparator values))]
+                          (if returns-fact
+                            smallest
+                            (field smallest))))))
 
 (defn min
   "Returns an accumulator that returns the minimum value of a given field."
   [field & {:keys [returns-fact]}]
-  (accumulate
-   :reduce-fn (fn [value item]
-                (if (or (= value nil)
-                        (< (field item) (field value) ))
-                  item
-                  value))
-   :convert-return-fn (if returns-fact
-                        identity
-                        #(field %))))
+  (comparison-based field < returns-fact))
 
 (defn max
   "Returns an accumulator that returns the maximum value of a given field."
   [field & {:keys [returns-fact]}]
-  (accumulate
-   :reduce-fn (fn [value item]
-                (if (or (= value nil)
-                        (> (field item) (field value) ))
-                  item
-                  value))
-   :convert-return-fn (if returns-fact
-                        identity
-                        #(field %))))
+  (comparison-based field > returns-fact))
 
 (defn average
   "Returns an accumulator that returns the average value of a given field."
@@ -39,6 +43,8 @@
    :initial-value [0 0]
    :reduce-fn (fn [[value count] item]
                 [(+ value (field item)) (inc count)])
+   :retract-fn (fn [[value count] retracted]
+                 [(- value (field retracted)) (dec count)])
    :combine-fn (fn [[value1 count1] [value2 count2]]
                  [(+ value1 value2) (+ count1 count2)])
    :convert-return-fn (fn [[value count]]
@@ -53,6 +59,8 @@
    :initial-value 0
    :reduce-fn (fn [total item]
                 (+ total (field item)))
+   :retract-fn (fn [total item]
+                (- total (field item)))
    :combine-fn +))
 
 (defn count
@@ -61,6 +69,7 @@
   (accumulate
    :initial-value 0
    :reduce-fn (fn [count value] (inc count))
+   :retract-fn (fn [count retracted] (dec count))
    :combine-fn +))
 
 (defn distinct
@@ -70,11 +79,13 @@
      (accumulate
       :initial-value #{}
       :reduce-fn (fn [items value] (conj items value))
+      :retract-fn (fn [items retracted] (disj items retracted))
       :combine-fn set/union))
   ([field]
      (accumulate
       :initial-value #{}
       :reduce-fn (fn [items value] (conj items (field value)))
+      :retract-fn (fn [items retracted] (disj items (field retracted)))
       :combine-fn set/union)))
 
 (defn all
@@ -84,9 +95,11 @@
      (accumulate
       :initial-value []
       :reduce-fn (fn [items value] (conj items value))
+      :retract-fn (fn [items retracted] (drop-one-of items retracted))
       :combine-fn concat))
   ([field]
      (accumulate
       :initial-value []
       :reduce-fn (fn [items value] (conj items (field value)))
+      :retract-fn (fn [items retracted] (drop-one-of items (field retracted)))
       :combine-fn concat)))

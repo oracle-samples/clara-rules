@@ -28,22 +28,31 @@
 
         average-temp (dsl/parse-query [] [[?t <- (acc/average :temperature) from [Temperature]]])
 
-        session (-> (mk-session [coldest coldest-fact hottest hottest-fact average-temp])
+        empty-session (-> (mk-session [coldest coldest-fact hottest hottest-fact average-temp]))
+
+        session (-> empty-session
                     (insert (->Temperature 30 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI")))]
+                    (insert (->Temperature 80 "MCI")))
 
+        min-retracted (retract session (->Temperature 10 "MCI"))
+        max-retracted (retract session (->Temperature 80 "MCI"))]
+
+    (is (empty (query empty-session coldest)))
     (is (= {:?t 10} (first (query session coldest))))
     (is (= #{{:?t (->Temperature 10 "MCI")}}
            (set (query session coldest-fact))))
 
+    (is (empty (query empty-session hottest)))
     (is (= {:?t 80} (first (query session hottest))))
 
 
     (is (= #{{:?t (->Temperature 80 "MCI")}}
            (set (query session hottest-fact))))
 
-    (is (= (list {:?t 40}) (query session average-temp)))))
+    (is (empty (query empty-session average-temp)))
+    (is (= (list {:?t 40}) (query session average-temp)))
+    (is (= (list {:?t 20}) (query max-retracted average-temp)))))
 
 (deftest test-sum
   (let [sum (dsl/parse-query [] [[?t <- (acc/sum :temperature) from [Temperature]]])
@@ -51,9 +60,12 @@
         session (-> (mk-session [sum])
                     (insert (->Temperature 30 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI")))]
+                    (insert (->Temperature 80 "MCI")))
 
-    (is (= {:?t 120} (first (query session sum))))))
+        retracted (retract session (->Temperature 30 "MCI"))]
+
+    (is (= {:?t 120} (first (query session sum))))
+    (is (= {:?t 90} (first (query retracted sum))))))
 
 (deftest test-count
   (let [count (dsl/parse-query [] [[?c <- (acc/count) from [Temperature]]])
@@ -61,9 +73,12 @@
         session (-> (mk-session [count])
                     (insert (->Temperature 30 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI")))]
+                    (insert (->Temperature 80 "MCI")))
 
-    (is (= {:?c 3} (first (query session count))))))
+        retracted (retract session (->Temperature 30 "MCI"))]
+
+    (is (= {:?c 3} (first (query session count))))
+    (is (= {:?c 2} (first (query retracted count))))))
 
 (deftest test-distinct
   (let [distinct (dsl/parse-query [] [[?t <- (acc/distinct) from [Temperature]]])
@@ -72,14 +87,22 @@
         session (-> (mk-session [distinct distinct-field])
                     (insert (->Temperature 80 "MCI"))
                     (insert (->Temperature 80 "MCI"))
-                    (insert (->Temperature 90 "MCI")))]
+                    (insert (->Temperature 90 "MCI")))
+
+        retracted (retract session (->Temperature 90 "MCI"))]
 
     (is (= #{{:?t #{ (->Temperature 80 "MCI")
                      (->Temperature 90 "MCI")}}}
            (set (query session distinct))))
 
+    (is (= #{{:?t #{ (->Temperature 80 "MCI")}}}
+           (set (query retracted distinct))))
+
     (is (= #{{:?t #{ 80 90}}}
-           (set (query session distinct-field))))))
+           (set (query session distinct-field))))
+
+    (is (= #{{:?t #{ 80}}}
+           (set (query retracted distinct-field))))))
 
 (deftest test-max-min-avg
   ;; Tests a single query that gets the maximum, minimum, and average temperatures.
@@ -149,7 +172,9 @@
         session (-> (mk-session [all all-field])
                     (insert (->Temperature 80 "MCI"))
                     (insert (->Temperature 80 "MCI"))
-                    (insert (->Temperature 90 "MCI")))]
+                    (insert (->Temperature 90 "MCI")))
+
+        retracted (retract session (->Temperature 80 "MCI"))]
 
     ;; Ensure expected items are there. We sort the query results
     ;; since ordering isn't guaranteed.
@@ -157,8 +182,24 @@
                   (->Temperature 80 "MCI")
                   (->Temperature 90 "MCI")]}]
 
-           (sort-by :temperature (query session all))   ))
+           (sort-by :temperature (query session all))))
 
-    (is (= [{:?t [80 80 90]}]
+    (is (= [(->Temperature 80 "MCI")
+            (->Temperature 90 "MCI")]
 
-           (sort (query session all-field))))))
+           (->> (query retracted all)
+                (first)
+                (:?t)
+                (sort-by :temperature))))
+
+    (is (= [80 80 90]
+           (-> (query session all-field)
+               (first)
+               (:?t)
+               (sort))))
+
+    (is (= [80 90]
+           (-> (query retracted all-field)
+               (first)
+               (:?t)
+               (sort))))))

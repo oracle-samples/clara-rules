@@ -2,6 +2,7 @@
   (:require [clara.rules :refer :all]
             [clara.rules.dsl :as dsl]
             [clara.rules.durability :as d]
+            [clara.rules.accumulators :as acc]
             [clara.rules.testfacts :refer :all]
             [clojure.test :refer :all]
             schema.test)
@@ -83,13 +84,7 @@
     (is (nil? @rule-output))))
 
 (deftest test-restore-accum-result
-  (let [lowest-temp (accumulate
-                     :reduce-fn (fn [value item]
-                                  (if (or (= value nil)
-                                          (< (:temperature item) (:temperature value) ))
-                                    item
-                                    value)))
-
+  (let [lowest-temp (acc/min :temperature :returns-fact true)
         coldest-query (dsl/parse-query [] [[?t <- lowest-temp from [Temperature]]])
 
         session (-> (mk-session [coldest-query])

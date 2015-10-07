@@ -245,8 +245,14 @@
              {:?v 15, :?t (->Temperature 15 "MCI")}}
            (set (query session cold-query))))))
 
+(defn identity-retract
+  "Retract function that does nothing for testing purposes."
+  [state retracted]
+  state)
+
 (deftest test-simple-accumulator
   (let [lowest-temp (accumulate
+                     :retract-fn identity-retract
                      :reduce-fn (fn [value item]
                                   (if (or (= value nil)
                                           (< (:temperature item) (:temperature value) ))
@@ -267,6 +273,7 @@
   "Function to create a new accumulator for a test."
   [field]
   (accumulate
+   :retract-fn identity-retract
    :reduce-fn (fn [value item]
                 (if (or (= value nil)
                         (< (field item) (field value) ))
@@ -310,6 +317,7 @@
                 [(+ value (field item)) (inc count)])
    :combine-fn (fn [[value1 count1] [value2 count2]]
                  [(+ value1 value2) (+ count1 count2)])
+   :retract-fn identity-retract
    :convert-return-fn (fn [[value count]] (if (= 0 count)
                                             nil
                                             (/ value count)))))
@@ -370,6 +378,7 @@
   (let [coldest-query (dsl/parse-query []
                                 [(WindSpeed (= ?loc location))
                                  [?t <- (accumulate
+                                         :retract-fn identity-retract
                                          :reduce-fn (fn [value item]
                                                       (if (or (= value nil)
                                                               (< (:temperature item) (:temperature value) ))
@@ -396,7 +405,8 @@
 
 (deftest test-bound-accumulator-var
   (let [coldest-query (dsl/parse-query [:?loc]
-                                [[?t <- (accumulate
+                               [[?t <- (accumulate
+                                         :retract-fn identity-retract
                                          :reduce-fn (fn [value item]
                                                       (if (or (= value nil)
                                                               (< (:temperature item) (:temperature value) ))
@@ -420,6 +430,7 @@
         ;; Ensure accumulate works, even without a fact binding given in the rule.
         rule (dsl/parse-rule [[(accumulate :initial-value []
                                            :reduce-fn conj
+                                           :retract-fn identity-retract
                                            :combine-fn into)
                                from [WindSpeed]]]
                              (reset! fired? true))
@@ -2113,6 +2124,7 @@
     (is (= #{{:?count 6000}} (set (query session cold-temp-count-query))))))
 
 (def maybe-nil-min-temp (accumulate
+                         :retract-fn identity-retract
                          :reduce-fn (fn [value item]
                                       (let [t (:temperature item)]
                                         ;; When no :temperature return `value`.
@@ -2660,8 +2672,8 @@
   (let [q (dsl/parse-query []
                            ;; Make two conditions that are very similar, but differ
                            ;; where a nil will be compared to something else.
-                           [[(accumulate :reduce-fn (fn [x y] nil)) :from [Temperature]]
-                            [(accumulate :reduce-fn (fn [x y] 10)) :from [Temperature]]])
+                           [[(accumulate :retract-fn identity-retract :reduce-fn (fn [x y] nil)) :from [Temperature]]
+                            [(accumulate :retract-fn identity-retract :reduce-fn (fn [x y] 10)) :from [Temperature]]])
         s (mk-session [q])]
 
     ;; Mostly just ensuring the rulebase was compiled successfully.

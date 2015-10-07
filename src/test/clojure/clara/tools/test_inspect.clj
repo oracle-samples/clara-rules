@@ -4,6 +4,7 @@
             [clara.rules.testfacts :refer :all]
             [clara.rules.dsl :as dsl]
             [clara.rules.engine :as eng]
+            [clara.rules.accumulators :as acc]
             [clojure.test :refer :all]
             schema.test)
   (:import [clara.rules.testfacts Temperature WindSpeed Cold
@@ -57,12 +58,7 @@
 
 
 (deftest test-accum-inspect
-  (let [lowest-temp (accumulate
-                     :reduce-fn (fn [value item]
-                                  (if (or (= value nil)
-                                          (< (:temperature item) (:temperature value) ))
-                                    item
-                                    value)))
+  (let [lowest-temp (acc/min :temperature :returns-fact true)
         coldest-query (dsl/parse-query [] [[?t <- lowest-temp from [Temperature]]])
 
         session (-> (mk-session [coldest-query])
@@ -79,12 +75,7 @@
 
 
 (deftest test-accum-join-inspect
-  (let [lowest-temp (accumulate
-                     :reduce-fn (fn [value item]
-                                  (if (or (= value nil)
-                                          (< (:temperature item) (:temperature value) ))
-                                    item
-                                    value)))
+  (let [lowest-temp (acc/min :temperature :returns-fact true)
 
         ;; Get the coldest temperature at MCI that is warmer than the temperature in STL.
         colder-query (dsl/parse-query [] [[Temperature (= "STL" location) (= ?stl-temperature temperature)]

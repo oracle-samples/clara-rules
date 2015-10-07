@@ -1,6 +1,7 @@
 (ns clara.rules
   "Forward-chaining rules for Clojure. The primary API is in this namespace."
   (:require [clara.rules.engine :as eng]
+            [schema.core :as s]
             #?(:cljs [clara.rules.listener :as l])
             #?(:clj [clara.rules.compiler :as com])
             #?(:clj [clara.rules.dsl :as dsl])))
@@ -115,16 +116,24 @@
    * An initial-value to be used with the reduced operations.
    * A reduce-fn that can be used with the Clojure Reducers library to reduce items.
    * A combine-fn that can be used with the Clojure Reducers library to combine reduced items.
-   * An optional retract-fn that can remove a retracted fact from a previously reduced computation
+   * A retract-fn that can remove a retracted fact from a previously reduced computation
    * An optional convert-return-fn that converts the reduced data into something useful to the caller.
      Simply uses identity by default.
     "
   [& {:keys [initial-value reduce-fn combine-fn retract-fn convert-return-fn] :as args}]
+
+  ;; Validate expected arguments are present.
+  (s/validate {(s/optional-key :initial-value) s/Any
+               (s/optional-key :combine-fn) s/Any
+               (s/optional-key :convert-return-fn) s/Any
+               :reduce-fn s/Any
+               :retract-fn s/Any}
+              args)
+
   (eng/map->Accumulator
    (merge
     {:combine-fn reduce-fn ; Default combine function is simply the reduce.
      :convert-return-fn identity ; Default conversion does nothing, so use identity.
-     :retract-fn (fn [reduced retracted] reduced) ; Retractions do nothing by default.
      }
     args)))
 
