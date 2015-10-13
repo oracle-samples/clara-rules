@@ -6,7 +6,8 @@
             [clojure.set :as s]
             [clara.rules.accumulators :as acc]
             [clara.rules.dsl :as dsl])
-  (import [clara.rules.testfacts Temperature WindSpeed Cold ColdAndWindy LousyWeather First Second Third Fourth]))
+  (import [clara.rules.testfacts Temperature WindSpeed Cold ColdAndWindy
+           TemperatureHistory LousyWeather First Second Third Fourth]))
 
 (deftest test-max
   (let [hottest (dsl/parse-query [] [[?t <- (acc/max :temperature) from [Temperature]]])
@@ -16,6 +17,18 @@
                     (insert (->Temperature 10 "MCI"))
                     (insert (->Temperature 80 "MCI")))]
 
+    (is (= {:?t 80} (first (query session hottest))))))
+
+(deftest test-max-no-retract
+  (let [hottest (dsl/parse-query [] [[?t <- (acc/max :temperature :supports-retract false) :from [Temperature]]])
+
+        session (-> (mk-session [hottest])
+                    (insert (->Temperature 30 "MCI"))
+                    (insert (->Temperature 10 "MCI"))
+                    (insert (->Temperature 80 "MCI"))
+                    (retract (->Temperature 80 "MCI")))]
+
+    ;; The max value is still 80 since this version does nothing on retraction.
     (is (= {:?t 80} (first (query session hottest))))))
 
 
@@ -203,3 +216,71 @@
                (first)
                (:?t)
                (sort))))))
+
+(deftest test-reduce-to-accum-max
+  (let [max-accum (acc/reduce-to-accum
+                   (fn [previous value]
+                     (if previous
+                       (if (> (:temperature value) (:temperature previous))
+                         value
+                         previous)
+                       value)))
+
+        max-query (dsl/parse-query [] [[?t <- max-accum :from [Temperature]]])
+
+        session (-> (mk-session [max-query])
+                    (insert (->Temperature 30 "MCI"))
+                    (insert (->Temperature 10 "MCI"))
+                    (insert (->Temperature 80 "MCI")))
+
+        retracted (retract session (->Temperature 80 "MCI"))]
+
+    (is (= {:?t (->Temperature 80 "MCI")} (first (query session max-query))))
+    (is (= {:?t (->Temperature 30 "MCI")} (first (query retracted max-query))))))
+
+(deftest test-reduce-to-accum-sum
+  (let [sum-accum (acc/reduce-to-accum
+                   (fn [previous value]
+                     (+ previous (:temperature value)))
+                   0
+                   identity
+                   +)
+
+        sum (dsl/parse-query [] [[?t <- sum-accum :from [Temperature]]])
+
+        session (-> (mk-session [sum])
+                    (insert (->Temperature 30 "MCI"))
+                    (insert (->Temperature 10 "MCI"))
+                    (insert (->Temperature 80 "MCI")))
+
+        retracted (retract session (->Temperature 30 "MCI"))]
+
+    (is (= {:?t 120} (first (query session sum))))
+    (is (= {:?t 90} (first (query retracted sum))))))
+
+(deftest test-retract-initial-value
+
+  (let [get-temp-history (dsl/parse-query [] [[?his <- TemperatureHistory]])
+
+        get-temps-under-threshold (dsl/parse-rule [[?temps <- (acc/all) :from [Temperature (= ?loc location)]]]
+                                                  (insert! (->TemperatureHistory ?temps)))
+
+        temp-10-mci (->Temperature 10 "MCI")
+
+        temp-history (-> (mk-session [get-temp-history get-temps-under-threshold])
+
+                         (insert temp-10-mci)
+                         (fire-rules)
+                         (query get-temp-history))
+
+        empty-history (-> (mk-session [get-temp-history get-temps-under-threshold])
+                          (fire-rules)
+                          (query get-temp-history))]
+
+    (is (= 1 (count empty-history)))
+    (is (= [{:?his (->TemperatureHistory [])}]
+            empty-history))
+
+    (is (= 1 (count temp-history)))
+    (is (= [{:?his (->TemperatureHistory [temp-10-mci])}]
+            temp-history))))

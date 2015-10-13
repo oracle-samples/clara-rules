@@ -111,7 +111,9 @@
       (eng/alpha-retract root fact-group transient-memory transport listener))))
 
 (defn accumulate
-  "Creates a new accumulator based on the given properties:
+  "DEPRECATED. Use clara.rules.accumulators/accum instead.
+
+  Creates a new accumulator based on the given properties:
 
    * An initial-value to be used with the reduced operations.
    * A reduce-fn that can be used with the Clojure Reducers library to reduce items.
@@ -121,15 +123,6 @@
      Simply uses identity by default.
     "
   [& {:keys [initial-value reduce-fn combine-fn retract-fn convert-return-fn] :as args}]
-
-  ;; Validate expected arguments are present.
-  (s/validate {(s/optional-key :initial-value) s/Any
-               (s/optional-key :combine-fn) s/Any
-               (s/optional-key :convert-return-fn) s/Any
-               :reduce-fn s/Any
-               :retract-fn s/Any}
-              args)
-
   (eng/map->Accumulator
    (merge
     {:combine-fn reduce-fn ; Default combine function is simply the reduce.
