@@ -12,7 +12,7 @@
 
 
 ;; Let operators be symbols or keywords.
-(def ops #{'and 'or 'not :and :or :not})
+(def ops #{'and 'or 'not 'exists :and :or :not :exists})
 
 (defn- separator?
   "True iff `x` is a rule body separator symbol."
@@ -117,7 +117,7 @@
         sym)
 
       (if (and (symbol? sym)
-               (not= '.. sym) ; Skip the special .. host interop macro. 
+               (not= '.. sym) ; Skip the special .. host interop macro.
                (.endsWith (name sym) "."))
 
         ;; The . suffix indicates a type constructor, so we qualify the type instead, then

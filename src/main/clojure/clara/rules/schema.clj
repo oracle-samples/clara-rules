@@ -5,7 +5,7 @@
             [schema.macros :as sm]))
 
 
-(s/defn condition-type :- (s/enum :or :not :and :fact :accumulator :test)
+(s/defn condition-type :- (s/enum :or :not :and :exists :fact :accumulator :test)
   "Returns the type of node in a LHS condition expression."
   [condition]
   (if (map? condition) ; Leaf nodes are maps, per the schema
@@ -51,7 +51,7 @@
 (declare Condition)
 
 (def BooleanCondition
-  [(s/one (s/enum :or :not :and) "operator")
+  [(s/one (s/enum :or :not :and :exists) "operator")
    (s/recursive #'Condition)])
 
 (def Condition

@@ -2733,3 +2733,80 @@
              {:?a->b {:a :b}}
              {:?x+y [:x :y]}
              {:?bang! :bang!}}))))
+
+(deftest test-simple-exists
+  (let [has-windspeed (dsl/parse-query [] [[:exists [WindSpeed (= ?location location)]]])
+        session (mk-session [has-windspeed])]
+
+    ;; An empty session should produce no results.
+    (is (empty? (query session has-windspeed)))
+
+    ;; Should only match one windspeed despite multiple inserts.
+    (is (= [{:?location "MCI"}]
+           (-> session
+               (insert (->WindSpeed 50 "MCI"))
+               (insert (->WindSpeed 60 "MCI"))
+               (query has-windspeed))))
+
+    ;; Retraction should remove exists check.
+    (is (empty?
+           (-> session
+               (insert (->WindSpeed 50 "MCI"))
+               (insert (->WindSpeed 60 "MCI"))
+               (retract (->WindSpeed 50 "MCI"))
+               (retract (->WindSpeed 60 "MCI"))
+               (query has-windspeed))))
+
+    ;; There should be one location for each distinct binding.
+    (is (= #{{:?location "MCI"} {:?location "SFO"} {:?location "ORD"}}
+           (-> session
+               (insert (->WindSpeed 50 "MCI"))
+               (insert (->WindSpeed 60 "MCI"))
+               (insert (->WindSpeed 60 "SFO"))
+               (insert (->WindSpeed 80 "SFO"))
+               (insert (->WindSpeed 80 "ORD"))
+               (insert (->WindSpeed 90 "ORD"))
+               (query has-windspeed)
+               (set))))))
+
+(deftest test-exists-with-conjunction
+  (let [;; Find locations that have at least one Temperature and WindSpeed...
+        wind-and-temp (dsl/parse-query [] [[:exists [Temperature (= ?location location)]]
+                                           [:exists [WindSpeed (= ?location location)]]])
+        session (mk-session [wind-and-temp])]
+
+    ;; An empty session should produce no results.
+    (is (empty? (query session wind-and-temp)))
+
+    ;; A match of one exist but not the other should yield nothing.
+    (is (empty?
+           (-> session
+               (insert (->WindSpeed 50 "MCI"))
+               (insert (->WindSpeed 60 "MCI"))
+               (query wind-and-temp))))
+
+    ;; Differing locations should not yield a match.
+    (is (empty?
+           (-> session
+               (insert (->WindSpeed 50 "MCI"))
+               (insert (->Temperature 60 "ORD"))
+               (query wind-and-temp))))
+
+    ;; Simple match for both exists.
+    (is (= [{:?location "MCI"}]
+           (-> session
+               (insert (->WindSpeed 50 "MCI"))
+               (insert (->WindSpeed 60 "MCI"))
+               (insert (->Temperature 60 "MCI"))
+               (insert (->Temperature 70 "MCI"))
+               (query wind-and-temp))))
+
+    ;; There should be a match for each distinct city.
+    (is (= #{{:?location "MCI"} {:?location "ORD"}}
+           (-> session
+               (insert (->WindSpeed 50 "MCI"))
+               (insert (->WindSpeed 60 "ORD"))
+               (insert (->Temperature 60 "MCI"))
+               (insert (->Temperature 70 "ORD"))
+               (query wind-and-temp)
+               (set))))))

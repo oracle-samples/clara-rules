@@ -176,7 +176,7 @@
     `((deref ~'?__bindings__))
     (let [ [[cmp a b :as exp] & rest] exp-seq
            compiled-rest (compile-constraints rest assigment-set)
-           eq-expr? (equality-expression? exp) 
+           eq-expr? (equality-expression? exp)
            a-in-assigment (and eq-expr? (and (symbol? a) (assigment-set (keyword a))))
            b-in-assigment (and eq-expr? (and (symbol? b) (assigment-set (keyword b))))]
       (cond
@@ -344,6 +344,9 @@
     :test
     expression
 
+    :exists
+    expression
+
     ;; Apply de Morgan's law to push negation nodes to the leaves.
     :not
     (let [children (rest expression)
@@ -358,6 +361,8 @@
         :condition expression
 
         :test expression
+
+        :exists expression
 
         ;; DeMorgan's law converting conjunction to negated disjuctions.
         :and (to-dnf (into [:or] (for [grandchild (rest child)] [:not grandchild])))
@@ -418,9 +423,10 @@
 
 (defn condition-type
   "Returns the type of a single condition that has been transformed
-   to disjunctive normal form. The types are: :negation, :accumulator, :test, and :join"
+   to disjunctive normal form. The types are: :negation, :accumulator, :test, :exists, and :join"
   [condition]
   (let [is-negation (= :not (first condition))
+        is-exists (= :exists (first condition))
         accumulator (:accumulator condition)
         result-binding (:result-binding condition) ; Get the optional result binding used by accumulators.
         condition (cond
@@ -429,6 +435,7 @@
                    :default condition)
         node-type (cond
                    is-negation :negation
+                   is-exists :exists
                    accumulator :accumulator
                    (:type condition) :join
                    :else :test)]
@@ -730,8 +737,32 @@
 
     expanded))
 
+(defn- extract-exists
+  "Converts :exists operations into an accumulator to detect
+   the presence of a fact and a test to check that count is
+   greater than zero.
+
+   It may be possible to replace this conversion with a specialized
+   ExtractNode in the future, but this transformation is simple
+   and meets the functional needs."
+  [conditions]
+  (for [condition conditions
+        expanded (if (= :exists (condition-type condition))
+                   ;; This is an :exists condition, so expand it
+                   ;; into an accumulator and a test.
+                   (let [exists-count (gensym "?__gen__")]
+                       [{:accumulator '(clara.rules.accumulators/count)
+                         :from (second condition)
+                         :result-binding (keyword exists-count)}
+                        {:constraints [(list '> exists-count 0)]}])
+
+                   ;; This is not an :exists condition, so do not change it.
+                   [condition])]
+
+    expanded))
+
 (defn- classify-variables
-  "Classifies the variables found in the given contraints into 'bound' vs 'free' 
+  "Classifies the variables found in the given contraints into 'bound' vs 'free'
    variables.  Bound variables are those that are found in a valid
    equality-based, top-level binding form.  All other variables encountered are
    considered free.  Returns a tuple of the form
@@ -815,6 +846,8 @@
                                     (= :and (first disjunction)))
                              (rest disjunction)
                              [disjunction])
+
+                conditions (extract-exists conditions)
 
                 conditions (extract-tests conditions)
 
