@@ -1,5 +1,12 @@
 (ns clara.macros
-  "Macros for ClojureScript users of Clara."
+  "Direct use of this namespace is deprecated. Users can now
+   simply use the defrule, defquery, and defsession macros
+   in the clara.rules namespace. Users can simply pull those macros
+   in like any other, for instance:
+
+   (:require [clara.rules :refer [insert fire-rules query insert!]
+                          :refer-macros [defrule defsession defquery]])
+"
   (:require [clara.rules.engine :as eng]
             [clara.rules.memory :as mem]
             [clara.rules.compiler :as com]

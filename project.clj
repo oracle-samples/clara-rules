@@ -20,12 +20,12 @@
   :java-source-paths ["src/main/java"]
   :hooks [leiningen.cljsbuild]
   :cljsbuild {:builds [;; Simple mode compilation for tests.
-                       {:source-paths ["src/main/clojurescript" "src/test/clojurescript" "src/test/common"]
+                       {:source-paths ["src/test/clojurescript" "src/test/common"]
                         :compiler {:output-to "target/js/simple.js"
                                    :optimizations :whitespace}}
 
                        ;; Advanced mode compilation for tests.
-                       {:source-paths ["src/main/clojurescript" "src/test/clojurescript"]
+                       {:source-paths ["src/test/clojurescript"]
                         :compiler {:output-to "target/js/advanced.js"
                                    :optimizations :advanced}}]
 

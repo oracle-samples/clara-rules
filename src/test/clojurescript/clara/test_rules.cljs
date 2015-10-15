@@ -1,11 +1,11 @@
 (ns clara.test-rules
   (:require-macros [cljs.test :refer (is deftest run-tests testing)]
-                   [clara.macros :refer [defrule defsession defquery]]
                    [clara.test-rules-data])
   (:require [cljs.test :as t]
             [clara.rules.engine :as eng]
             [clara.rules.accumulators :as acc]
-            [clara.rules :refer (assemble-session insert fire-rules query insert!)]
+            [clara.rules :refer [insert fire-rules query insert!]
+                         :refer-macros [defrule defsession defquery]]
             [clara.rules.testfacts :refer [->Temperature Temperature
                                            ->WindSpeed WindSpeed
                                            ->ColdAndWindy ColdAndWindy]]))

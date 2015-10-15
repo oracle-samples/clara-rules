@@ -4,12 +4,10 @@
                :cljs [cljs.test :refer-macros [is deftest]])
 
             #?(:clj  [clara.rules :refer :all]
-               :cljs [clara.rules :refer [insert insert! fire-rules query]])
+               :cljs [clara.rules :refer [insert insert! fire-rules query]
+                                  :refer-macros [defrule defsession defquery]])
 
-            [clara.rules.accumulators :as acc])
-
-  ;; Load Clara's ClojureScript macros
-  #?(:cljs (:require-macros [clara.macros :refer [defrule defsession defquery]])))
+            [clara.rules.accumulators :as acc]))
 
 (defn- has-fact? [token fact]
   (some #{fact} (map first (:matches token))))

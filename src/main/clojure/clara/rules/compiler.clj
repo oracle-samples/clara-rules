@@ -53,6 +53,11 @@
   (boolean
    (when-let [n (find-ns 'cljs.analyzer)]
      (when-let [v (ns-resolve n '*cljs-file*)]
+
+       ;; We perform this require only if we are compiling ClojureScript
+       ;; so non-ClojureScript users do not need to pull in
+       ;; that dependency.
+       (require 'clara.macros)
        @v))))
 
 (defn get-namespace-info

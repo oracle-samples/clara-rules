@@ -308,8 +308,9 @@
      (insert (->Temperature 23))
      (fire-rules))"
     [name & sources-and-options]
-
-    `(def ~name (com/mk-session ~(vec sources-and-options)))))
+    (if (com/compiling-cljs?)
+      `(clara.macros/defsession ~name ~@sources-and-options)
+      `(def ~name (com/mk-session ~(vec sources-and-options))))))
 
 #?(:clj
   (defmacro defrule
@@ -326,18 +327,20 @@
 
     See the guide at https://github.com/rbrush/clara-rules/wiki/Guide for details."
     [name & body]
-    (let [doc (if (string? (first body)) (first body) nil)
-          body (if doc (rest body) body)
-          properties (if (map? (first body)) (first body) nil)
-          definition (if properties (rest body) body)
-          {:keys [lhs rhs]} (dsl/split-lhs-rhs definition)]
-      (when-not rhs
-        (throw (ex-info (str "Invalid rule " name ". No RHS (missing =>?).")
+    (if (com/compiling-cljs?)
+      `(clara.macros/defrule ~name ~@body)
+      (let [doc (if (string? (first body)) (first body) nil)
+            body (if doc (rest body) body)
+            properties (if (map? (first body)) (first body) nil)
+            definition (if properties (rest body) body)
+            {:keys [lhs rhs]} (dsl/split-lhs-rhs definition)]
+        (when-not rhs
+          (throw (ex-info (str "Invalid rule " name ". No RHS (missing =>?).")
                           {})))
-      `(def ~(vary-meta name assoc :rule true :doc doc)
-         (cond-> ~(dsl/parse-rule* lhs rhs properties {})
+        `(def ~(vary-meta name assoc :rule true :doc doc)
+           (cond-> ~(dsl/parse-rule* lhs rhs properties {})
              ~name (assoc :name ~(str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name)))
-             ~doc (assoc :doc ~doc))))))
+             ~doc (assoc :doc ~doc)))))))
 
 #?(:clj
   (defmacro defquery
@@ -351,10 +354,12 @@
 
      See the guide at https://github.com/rbrush/clara-rules/wiki/Guide for details."
     [name & body]
-    (let [doc (if (string? (first body)) (first body) nil)
-          binding (if doc (second body) (first body))
-          definition (if doc (drop 2 body) (rest body) )]
-      `(def ~(vary-meta name assoc :query true :doc doc)
-         (cond-> ~(dsl/parse-query* binding definition {})
-                 ~name (assoc :name ~(str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name)))
-                  ~doc (assoc :doc ~doc))))))
+    (if (com/compiling-cljs?)
+      `(clara.macros/defquery ~name ~@body)
+      (let [doc (if (string? (first body)) (first body) nil)
+            binding (if doc (second body) (first body))
+            definition (if doc (drop 2 body) (rest body) )]
+        `(def ~(vary-meta name assoc :query true :doc doc)
+           (cond-> ~(dsl/parse-query* binding definition {})
+             ~name (assoc :name ~(str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name)))
+             ~doc (assoc :doc ~doc)))))))
