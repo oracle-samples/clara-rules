@@ -25,7 +25,7 @@
   []
   [:temperature [{temperature :temperature}] (< temperature 20) (= ?t temperature)])
 
-(defsession my-session 'clara.test-common :fact-type-fn :type)
+(defsession my-session [test-rule cold-query] :fact-type-fn :type)
 
 (deftest test-simple-defrule
   (let [t {:type :temperature
@@ -54,3 +54,61 @@
     ;; expected criteria.
     (is (= #{{:?t 15} {:?t 10}}
            (set (query session cold-query))))))
+
+
+(defquery temps-below-threshold
+  []
+  [:threshold [{value :value}] (= ?threshold value)]
+  [?low-temps <- (acc/all) :from [:temperature [{value :value}] (< value ?threshold)]])
+
+(defsession accum-with-filter-session [temps-below-threshold] :fact-type-fn :type)
+
+(deftest test-accum-with-filter
+
+  (is (= [{:?threshold 0, :?low-temps []}]
+       (-> accum-with-filter-session
+           (insert {:type :temperature :value 20})
+           (insert {:type :threshold :value 0})
+           (insert {:type :temperature :value 10})
+           (query temps-below-threshold))))
+
+  (let [results (-> accum-with-filter-session
+                    (insert {:type :temperature :value 20})
+                    (insert {:type :threshold :value 40})
+                    (insert {:type :temperature :value 10})
+                    (insert {:type :temperature :value 60})
+                    (query temps-below-threshold))
+
+        [{threshold :?threshold low-temps :?low-temps }] results]
+
+    (is (= 1 (count results)))
+
+    (is (= 40 threshold))
+
+    (is (= #{{:type :temperature :value 10} {:type :temperature :value 20}}
+           (set low-temps)))))
+
+(defquery none-below-threshold
+  []
+  [:threshold [{value :value}] (= ?threshold value)]
+  [:not [:temperature [{value :value}] (< value ?threshold)]])
+
+(defsession negation-with-filter-session [none-below-threshold] :fact-type-fn :type)
+
+(deftest test-negation-with-filter
+
+  (is (= [{:?threshold 0}]
+         (-> negation-with-filter-session
+             (insert {:type :temperature :value 20})
+             (insert {:type :threshold :value 0})
+             (insert {:type :temperature :value 10})
+             (query none-below-threshold))))
+
+  ;; Values below the threshold exist, so we should not match.
+  (is (empty?
+       (-> negation-with-filter-session
+           (insert {:type :temperature :value 20})
+           (insert {:type :threshold :value 40})
+           (insert {:type :temperature :value 10})
+           (insert {:type :temperature :value 60})
+           (query none-below-threshold)))))

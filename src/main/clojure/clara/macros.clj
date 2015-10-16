@@ -90,11 +90,18 @@
             ~join-bindings)
 
           :negation
-          `(eng/->NegationNode
-            ~id
-            '~condition
-            ~(gen-beta-network children all-bindings)
-            ~join-bindings)
+          (if (:join-filter-expressions beta-node)
+            `(eng/->NegationWithJoinFilterNode
+              ~id
+              '~condition
+              ~(com/compile-join-filter (:join-filter-expressions beta-node) {})
+              ~(gen-beta-network children all-bindings)
+              ~join-bindings)
+            `(eng/->NegationNode
+              ~id
+              '~condition
+              ~(gen-beta-network children all-bindings)
+              ~join-bindings))
 
           :test
           `(eng/->TestNode
@@ -103,14 +110,25 @@
             ~(gen-beta-network children all-bindings))
 
           :accumulator
-          `(eng/->AccumulateNode
-            ~id
-            {:accumulator '~(:accumulator beta-node)
-             :from '~condition}
-            ~(:accumulator beta-node)
-            ~(:result-binding beta-node)
-            ~(gen-beta-network children all-bindings)
-            ~join-bindings)
+          (if (:join-filter-expressions beta-node)
+            `(eng/->AccumulateWithJoinFilterNode
+              ~id
+              {:accumulator '~(:accumulator beta-node)
+               :from '~condition}
+              ~(:accumulator beta-node)
+              ~(com/compile-join-filter (:join-filter-expressions beta-node) {})
+              ~(:result-binding beta-node)
+              ~(gen-beta-network children all-bindings)
+              ~join-bindings)
+
+            `(eng/->AccumulateNode
+              ~id
+              {:accumulator '~(:accumulator beta-node)
+               :from '~condition}
+              ~(:accumulator beta-node)
+              ~(:result-binding beta-node)
+              ~(gen-beta-network children all-bindings)
+              ~join-bindings))
 
           :production
           `(eng/->ProductionNode
