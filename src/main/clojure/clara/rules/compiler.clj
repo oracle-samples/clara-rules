@@ -499,6 +499,7 @@
                           {:node-type :query
                            :query production})]
 
+
     (vec
      (conj
       other-nodes
@@ -539,6 +540,12 @@
           (update-in matching-node [:children] conj production-node)
           production-node))))))
 
+;; This logic for sorting conditions is workable but confusing,
+;; and there may be edge cases where accumulators that use result bindings
+;; of previous accumulators in the same rule won't be able to see those
+;; bindings. We should consider replacing this comparator with a
+;; topological sort of variable bindings.
+;; See https://github.com/rbrush/clara-rules/issues/133
 (defn- condition-comp
   "Helper function to sort conditions to ensure bindings
    are created in the needed order. The current implementation
@@ -555,16 +562,24 @@
              :default :test))]
 
     (case (cond-type cond1)
-      ;; Conditions are always sorted ahead of non-conditions.
+      ;; Conditions are always sorted ahead of non-conditions. This is
+      ;; because they may create bindings used by other structures
+      ;; but never use them because arbitrary comparisons are
+      ;; extracted into tests, so we can safely put them first.
       :condition (not= :condition (cond-type cond2))
 
-      ;; Negated conditions occur before tests and accumulators.
-      :negation (boolean (#{:test :accumulator} (cond-type cond2)))
+      ;; Accumulators occur before tests and negations. Accumulators
+      ;; may use condition bindings and their results may be used
+      ;; in arbitrary test or negation logic, so we place it here.
+      :accumulator (boolean (#{:test :negation} (cond-type cond2)))
 
-      ;; Accumulators are sorted before tests.
-      :accumulator (= :test (cond-type cond2))
+      ;; Negated conditions are sorted before tests, since they
+      ;; may use bindings from conditions or accumulators but
+      ;; do not create their own.
+      :negation (= :test (cond-type cond2))
 
-      ;; Tests are last.
+      ;; Tests are last, since they use but cannot create bindings used
+      ;; by other conditions we can safely push them to the end
       :test false)))
 
 (defn- gen-compare

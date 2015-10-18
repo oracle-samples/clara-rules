@@ -1002,6 +1002,27 @@
     (is (empty? (query session-best-order-salience double-blocked-fourth)))
     (is (empty? (query session-worst-order-salience double-blocked-fourth)))))
 
+(deftest test-accum-result-in-negation
+  (let [all-temps-are-max (dsl/parse-query
+                           []
+                           [[?t <- (acc/max :temperature) :from [Temperature]]
+                            [:not [Temperature (< temperature ?t)]]
+                            ])
+
+        session (mk-session [all-temps-are-max])]
+
+    (is (empty?
+         (-> session
+             (insert (->Temperature 50 "MCI"))
+             (insert (->Temperature 40 "MCI"))
+             (query all-temps-are-max))))
+
+    (is (= [{:?t 50}]
+           (-> session
+               (insert (->Temperature 50 "MCI"))
+               (insert (->Temperature 50 "MCI"))
+               (query all-temps-are-max))))))
+
 (deftest test-simple-retraction
   (let [cold-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]])
 
