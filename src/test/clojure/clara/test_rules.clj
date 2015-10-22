@@ -179,14 +179,6 @@
     (is (= (->WindSpeed (->Temperature 10 "MCI") "MCI")
            @rule-output))))
 
-(deftest test-invalid-result-binding
-  (let [rule-output (atom nil)
-        same-wind-and-temp (dsl/parse-rule [[?t <- (acc/min :temperature :returns-fact true) :from [Temperature]]
-                                            [?w <- WindSpeed (= ?t windspeed)]]
-                                           (reset! rule-output ?w))]
-
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"accumulator" (mk-session [same-wind-and-temp])))))
-
 (deftest test-simple-query
   (let [cold-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]])
 
@@ -799,6 +791,26 @@
 
            (set temp-history)))))
 
+(deftest test-join-to-result-binding
+  (let [same-wind-and-temp (dsl/parse-query
+                            []
+                            [[?t <- (acc/min :temperature) :from [Temperature]]
+                             [?w <- WindSpeed (= ?t windspeed)]])
+
+        session (mk-session [same-wind-and-temp])]
+
+    (is (empty?
+         (-> session
+             (insert (->WindSpeed 50 "MCI")
+                     (->Temperature 51 "MCI"))
+             (query same-wind-and-temp))))
+
+    (is (= [{:?w (->WindSpeed 50 "MCI") :?t 50}]
+           (-> session
+               (insert (->WindSpeed 50 "MCI")
+                       (->Temperature 50 "MCI"))
+               (query same-wind-and-temp))))))
+
 
 (deftest test-simple-negation
   (let [not-cold-query (dsl/parse-query [] [[:not [Temperature (< temperature 20)]]])
@@ -989,6 +1001,27 @@
     (is (empty? (query session-no-salience double-blocked-fourth)))
     (is (empty? (query session-best-order-salience double-blocked-fourth)))
     (is (empty? (query session-worst-order-salience double-blocked-fourth)))))
+
+(deftest test-accum-result-in-negation
+  (let [all-temps-are-max (dsl/parse-query
+                           []
+                           [[?t <- (acc/max :temperature) :from [Temperature]]
+                            [:not [Temperature (< temperature ?t)]]
+                            ])
+
+        session (mk-session [all-temps-are-max])]
+
+    (is (empty?
+         (-> session
+             (insert (->Temperature 50 "MCI"))
+             (insert (->Temperature 40 "MCI"))
+             (query all-temps-are-max))))
+
+    (is (= [{:?t 50}]
+           (-> session
+               (insert (->Temperature 50 "MCI"))
+               (insert (->Temperature 50 "MCI"))
+               (query all-temps-are-max))))))
 
 (deftest test-simple-retraction
   (let [cold-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]])

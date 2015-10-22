@@ -599,10 +599,20 @@
                             fact-bindings
                             (when result-binding
                               { result-binding
-                                converted-result}))]
+                               converted-result}))
 
-    (send-tokens transport memory listener (:children node)
-                 [(->Token (conj (:matches token) [converted-result (:id node)]) new-bindings)])))
+        ;; This is to check that the produced accumulator result is
+        ;; consistent with any variable from another rule condition
+        ;; that has the same binding. If another condition binds something
+        ;; to ?x, only the accumulator results that match that would propagate.
+        ;; We can do this safely because previous states get retracted.
+        previous-result (get (:bindings token) result-binding ::no-previous-result)]
+
+    (when (or (= previous-result ::no-previous-result)
+              (= previous-result converted-result))
+
+      (send-tokens transport memory listener (:children node)
+                 [(->Token (conj (:matches token) [converted-result (:id node)]) new-bindings)]))))
 
 (defn- has-keys?
   "Returns true if the given map has all of the given keys."
