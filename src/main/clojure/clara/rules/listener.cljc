@@ -1,5 +1,6 @@
 (ns clara.rules.listener
-  "Event listeners for analyzing the flow through Clara.")
+  "Event listeners for analyzing the flow through Clara. This is for primarily for use by
+   tooling, but advanced users may use this to analyze sessions.")
 
 (defprotocol IPersistentEventListener
   (to-transient [listener]))

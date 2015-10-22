@@ -8,14 +8,13 @@
                  [prismatic/schema "1.0.1"]
                  [dorothy "0.0.6"]
                  [hiccup "1.0.5"]]
-  :plugins [[codox "0.8.10"]
+  :plugins [[lein-codox "0.9.0"]
             [lein-javadoc "0.2.0"]
             [lein-cljsbuild "1.1.0"]]
-  :codox {:exclude [clara.other-ruleset clara.sample-ruleset clara.test-java
-                    clara.test-rules clara.rules.memory clara.test-accumulators
-                    clara.rules.testfacts clara.rules.java clara.rules.engine
-                    clara.rules.compiler clara.rules.platform
-                    clara.test-durability clara.tools.test-inspect clara.tools.test-tracing]}
+  :codox {:namespaces [clara.rules clara.rules.dsl clara.rules.accumulators
+                       clara.rules.listener clara.rules.durability
+                       clara.tools.inspect clara.tools.tracing]
+          :metadata {:doc/format :markdown}}
   :javadoc-opts {:package-names "clara.rules"}
 
   :source-paths ["src/main/clojure"]

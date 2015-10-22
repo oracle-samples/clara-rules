@@ -1,5 +1,6 @@
 (ns clara.rules.platform
-  "Platform unified code Clojure/ClojureScript.")
+  "This namespace is for internal use and may move in the future.
+   Platform unified code Clojure/ClojureScript.")
 
 (defn throw-error
   "Throw an error with the given description string."

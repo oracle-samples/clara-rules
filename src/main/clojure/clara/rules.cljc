@@ -317,15 +317,16 @@
     "Defines a rule and stores it in the given var. For instance, a simple rule would look like this:
 
     (defrule hvac-approval
-    \"HVAC repairs need the appropriate paperwork, so insert a validation error if approval is not present.\"
-    [WorkOrder (= type :hvac)]
-    [:not [ApprovalForm (= formname \"27B-6\")]]
-    =>
-    (insert! (->ValidationError
-          :approval
-          \"HVAC repairs must include a 27B-6 form.\")))
+      \"HVAC repairs need the appropriate paperwork, so insert
+        a validation error if approval is not present.\"
+      [WorkOrder (= type :hvac)]
+      [:not [ApprovalForm (= formname \"27B-6\")]]
+      =>
+      (insert! (->ValidationError
+                :approval
+                \"HVAC repairs must include a 27B-6 form.\")))
 
-    See the guide at https://github.com/rbrush/clara-rules/wiki/Guide for details."
+See the [rule authoring documentation](http://www.clara-rules.org/docs/rules/) for details."
     [name & body]
     (if (com/compiling-cljs?)
       `(clara.macros/defrule ~name ~@body)
@@ -345,14 +346,14 @@
 #?(:clj
   (defmacro defquery
     "Defines a query and stored it in the given var. For instance, a simple query that accepts no
-      parameters would look like this:
+parameters would look like this:
 
-      (defquery check-job
+    (defquery check-job
       \"Checks the job for validation errors.\"
       []
       [?issue <- ValidationError])
 
-     See the guide at https://github.com/rbrush/clara-rules/wiki/Guide for details."
+See the [query authoring documentation](http://www.clara-rules.org/docs/queries/) for details."
     [name & body]
     (if (com/compiling-cljs?)
       `(clara.macros/defquery ~name ~@body)

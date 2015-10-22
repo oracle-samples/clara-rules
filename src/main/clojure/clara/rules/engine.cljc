@@ -1,5 +1,5 @@
 (ns clara.rules.engine
-  "The Clara rules engine. Most users should use only the clara.rules namespace."
+  "This namespace is for internal use and may move in the future. Most users should use only the clara.rules namespace."
   (:require [clojure.reflect :as reflect]
             [clojure.core.reducers :as r]
             [schema.core :as s]
