@@ -601,9 +601,11 @@
                               { result-binding
                                converted-result}))
 
-        ;; If any other rule used the binding resulting from
-        ;; this accumulator, we must ensure it matches the produced
-        ;; result so the rule activation is consistent.
+        ;; This is to check that the produced accumulator result is
+        ;; consistent with any variable from another rule condition
+        ;; that has the same binding. If another condition binds something
+        ;; to ?x, only the accumulator results that match that would propagate.
+        ;; We can do this safely because previous states get retracted.
         previous-result (get (:bindings token) result-binding ::no-previous-result)]
 
     (when (or (= previous-result ::no-previous-result)
