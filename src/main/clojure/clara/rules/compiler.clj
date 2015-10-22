@@ -1,5 +1,6 @@
 (ns clara.rules.compiler
-  "The Clara rules compiler, translating raw data structures into compiled versions and functions.
+  "This namespace is for internal use and may move in the future.
+   This is the Clara rules compiler, translating raw data structures into compiled versions and functions.
    Most users should use only the clara.rules namespace."
   (:require [clojure.reflect :as reflect]
             [clojure.core.reducers :as r]

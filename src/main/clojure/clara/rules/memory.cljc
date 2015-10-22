@@ -1,5 +1,6 @@
 (ns clara.rules.memory
-  "Specification and default implementation of working memory"
+  "This namespace is for internal use and may move in the future.
+   Specification and default implementation of working memory"
   (:require [clojure.set :as s]))
 
 ;; Activation record used by get-activations and add-activations! below.
@@ -494,7 +495,7 @@
                                                 activations))))
                                    (sorted-map-by activation-group-sort-fn)
                                    activation-map))))))
-                                   
+
 (defn local-memory
   "Creates an persistent local memory for the given rule base."
   [rulebase activation-group-sort-fn activation-group-fn alphas-fn]

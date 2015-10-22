@@ -1,5 +1,6 @@
 (ns clara.rules.java
-  "Java support. Users should use the Java API, or the clara.rules namespace from Clojure."
+  "This namespace is for internal use and may move in the future.
+  Java support. Users should use the Java API, or the clara.rules namespace from Clojure."
   (:require [clara.rules :as clara]
             [clara.rules.engine :as eng]
             [clara.rules.compiler :as com]
@@ -10,7 +11,7 @@
 
 (deftype JavaQueryResult [result]
   QueryResult
-  (getResult [_ fieldName] 
+  (getResult [_ fieldName]
     (get result (keyword fieldName)))
   Object
   (toString [_]
@@ -20,7 +21,7 @@
   (let [query-var (or (resolve (symbol name))
                       (throw (IllegalArgumentException.
                               (str "Unable to resolve symbol to query: " name))))
-        
+
         ;; Keywordize string keys from Java.
         keyword-args (into {}
                            (for [[k v] args]
@@ -31,7 +32,7 @@
 (deftype JavaWorkingMemory [session]
   WorkingMemory
 
-  (insert [this facts] 
+  (insert [this facts]
     (JavaWorkingMemory. (apply clara/insert session facts)))
 
   (retract [this facts]
@@ -40,13 +41,12 @@
   (fireRules [this]
     (JavaWorkingMemory. (clara/fire-rules session)))
 
-  (query [this name args] 
+  (query [this name args]
    (run-query session name args))
 
   (query [this name]
      (run-query session name {})))
 
 (defn mk-java-session [rulesets]
-  (JavaWorkingMemory. 
+  (JavaWorkingMemory.
    (com/mk-session (map symbol rulesets))))
-

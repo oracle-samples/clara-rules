@@ -1,5 +1,8 @@
 (ns clara.tools.viz
-  "Simple visualizations of Clara rules. This namespace should be considered experimental."
+  "This namespace is deprecated and will be removed in a future release. Use the clara.tools.inspect
+   namespace or tools built on top of it.
+
+  Simple visualizations of Clara rules. This namespace should be considered experimental."
   (require [dorothy.core :as dot]
 		   [clara.rules :refer :all]
            [clara.rules.schema :as schema]
@@ -8,7 +11,7 @@
            [clara.rules.compiler :as com]
            [clojure.string :as string]))
 
-(defn get-productions 
+(defn get-productions
   "Returns a sequence of productions from the given sources."
   [sources]
   (mapcat
@@ -17,10 +20,10 @@
       %)
    sources))
 
-(defn- condition-to-html 
+(defn- condition-to-html
   "Returns an HTML-based description of the given condition. "
   [condition]
-  (h/html 
+  (h/html
    (if (:accumulator condition)
 
      ;; Accumulator
@@ -31,7 +34,7 @@
 
      ;; Handle as a normal, non-accumulator
      [:table  {:border "0" :cellborder "0"}
-      (when (:type condition) 
+      (when (:type condition)
         [:tr [:td [:b (str (last (string/split (.getName (:type condition)) #"\.")))]]])
       [:tr [:td (h/h (str (:constraints condition)))]]])))
 
@@ -42,7 +45,7 @@
                                  [:tr [:td name]]
                                  [:tr [:td (h/h (str rhs))]]]))
 
-(defn show-network! 
+(defn show-network!
   "Opens a window that contains a visualization of the Rete network associated with the rules."
   [& sources]
   (let [productions (get-productions sources)
@@ -51,16 +54,16 @@
                          beta-node (tree-seq :children :children beta-root)]
                      beta-node)
         alpha-nodes (com/to-alpha-tree beta-tree)]
-    
-    (-> 
+
+    (->
 
      ;; Concat all of the components of our grab.
-     (concat 
+     (concat
       ;; Graph beta edges.
       (for [beta-node beta-nodes
             child (:children beta-node)]
         [(:id beta-node) (:id child)])
-      
+
       ;; Graph beta nodes.
       (for [beta-node beta-nodes]
         [(:id beta-node)
@@ -105,13 +108,13 @@
   [production]
 
   ;; Recursively walk nested condition and return a map associating each with a unique id.
-  (let [conditions (tree-seq #(operators (schema/condition-type %)) 
+  (let [conditions (tree-seq #(operators (schema/condition-type %))
                             #(rest %)
                             (if (= 1 (count (:lhs production)))
                               (first (:lhs production))
                               (into [:and] (:lhs production))))]  ; Add implied and for all conditions.
 
-    (into 
+    (into
      {}
      (map (fn [condition index]
             [condition (str index "-" (hash production))])
@@ -119,14 +122,14 @@
           (range)))))
 
 (defn- production-to-dot [production]
-  (let [condition-to-ids (condition-to-id-map production) 
+  (let [condition-to-ids (condition-to-id-map production)
 
         ;; Identify root conditions by first finding all children,
         ;; and removing them from the set of all conditions.
-        child-conditions (into 
+        child-conditions (into
                           #{}
                           (for [[condition id] condition-to-ids
-                                :when #(operators (schema/condition-type condition)) 
+                                :when #(operators (schema/condition-type condition))
                                 child (rest condition)]
                             child))
         root-conditions (for [[condition id] condition-to-ids
@@ -161,7 +164,7 @@
      (for [[condition id] root-conditions]
        [id (hash production)]))))
 
-(defn- get-insertions 
+(defn- get-insertions
   "Returns the insertions done by a production."
   [production]
   (if-let [rhs (:rhs production)]
@@ -211,7 +214,7 @@
           condition-id (get types-to-ids insertion)]
       [(hash production) condition-id {:style :dashed}])))
 
-(defn inserts? 
+(defn inserts?
   "Predicate that returns true when the given rule inserts the given fact"
   [rule fact]
   (contains? (get-insertions rule)
@@ -226,19 +229,19 @@
 (defn logic-to-dot
   [sources]
   (let [productions (get-productions sources)]
-    
+
     (->
      (concat
       (mapcat production-to-dot productions)
       (insertions-to-dot productions))
      vec ; dorothy assumes a vector.
-     dot/digraph 
+     dot/digraph
      dot/dot)))
 
-(defn save-png! 
+(defn save-png!
   [destination & sources]
   (dot/save! (logic-to-dot sources) destination {:format :png}))
 
-(defn show-logic! 
+(defn show-logic!
   [& sources]
   (dot/show! (logic-to-dot sources)))
