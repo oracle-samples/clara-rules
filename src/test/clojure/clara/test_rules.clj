@@ -2755,17 +2755,18 @@
                              (= ?x+y x+y)
                              (= ?bang! bang!)]])
 
-        s (-> (mk-session [q])
-              (insert ff)
-              fire-rules
-              (query q)
-              set)]
+        res (-> (mk-session [q])
+                (insert ff)
+                fire-rules
+                (query q)
+                set)]
 
-    (is (= #{{:?ff ff}
-             {:?it-works? true}
-             {:?a->b {:a :b}}
-             {:?x+y [:x :y]}
-             {:?bang! :bang!}}))))
+    (is (= #{{:?ff ff
+              :?it-works? true
+              :?a->b {:a :b}
+              :?x+y [:x :y]
+              :?bang! :bang!}}
+           res))))
 
 (deftest test-simple-exists
   (let [has-windspeed (dsl/parse-query [] [[:exists [WindSpeed (= ?location location)]]])
