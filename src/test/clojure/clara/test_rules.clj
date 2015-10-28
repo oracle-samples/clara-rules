@@ -12,6 +12,7 @@
             [clojure.set :as s]
             [clojure.edn :as edn]
             [clojure.walk :as walk]
+            [clara.sample-ruleset-seq]
             schema.test)
   (import [clara.rules.testfacts Temperature WindSpeed Cold TemperatureHistory
            ColdAndWindy LousyWeather First Second Third Fourth FlexibleFields]
@@ -1564,46 +1565,56 @@
            (set (query session cold-query :?l "ORD"))))))
 
 (deftest test-rules-from-ns
-
-  (is (= #{{:?loc "MCI"} {:?loc "BOS"}}
-       (set (-> (mk-session 'clara.sample-ruleset)
-                (insert (->Temperature 15 "MCI"))
-                (insert (->Temperature 22 "BOS"))
-                (insert (->Temperature 50 "SFO"))
-                (query sample/freezing-locations)))))
-
-  (let [session (-> (mk-session 'clara.sample-ruleset)
+  ;; Validate that rules behave identically when loaded from vars that contain a single
+  ;; rule or query or when loaded from a var with appropriate metadata that contains
+  ;; a sequence of rules and/or queries.
+  (doseq [rules-ns ['clara.sample-ruleset
+                    'clara.sample-ruleset-seq]]
+    (is (= #{{:?loc "MCI"} {:?loc "BOS"}}
+           (set (-> (mk-session rules-ns)
                     (insert (->Temperature 15 "MCI"))
-                    (insert (->WindSpeed 45 "MCI"))
-                    (fire-rules))]
+                    (insert (->Temperature 22 "BOS"))
+                    (insert (->Temperature 50 "SFO"))
+                    (query sample/freezing-locations))))
+        (str "Freezing locations not found using rules namespace " rules-ns))
 
-    (is (= #{{:?fact (->ColdAndWindy 15 45)}}
-           (set
-            (query session sample/find-cold-and-windy))))))
+    (let [session (-> (mk-session rules-ns)
+                      (insert (->Temperature 15 "MCI"))
+                      (insert (->WindSpeed 45 "MCI"))
+                      (fire-rules))]
+
+      (is (= #{{:?fact (->ColdAndWindy 15 45)}}
+             (set
+              (query session sample/find-cold-and-windy)))
+          (str "Expected ColdAndWindy fact not found using rules namespace " rules-ns)))))
 
 (deftest test-rules-from-multi-namespaces
+  (doseq [sample-ruleset-ns ['clara.sample-ruleset
+                             'clara.sample-ruleset-seq]]
+    (let [session (-> (mk-session sample-ruleset-ns 'clara.other-ruleset)
+                      (insert (->Temperature 15 "MCI"))
+                      (insert (->Temperature 10 "BOS"))
+                      (insert (->Temperature 50 "SFO"))
+                      (insert (->Temperature -10 "CHI")))]
 
-  (let [session (-> (mk-session 'clara.sample-ruleset 'clara.other-ruleset)
-                    (insert (->Temperature 15 "MCI"))
-                    (insert (->Temperature 10 "BOS"))
-                    (insert (->Temperature 50 "SFO"))
-                    (insert (->Temperature -10 "CHI")))]
+      (is (= #{{:?loc "MCI"} {:?loc "BOS"} {:?loc "CHI"}}
+             (set (query session sample/freezing-locations)))
+          (str "Failed to find freezing locations using sample-ruleset namespace " sample-ruleset-ns))
 
-    (is (= #{{:?loc "MCI"} {:?loc "BOS"} {:?loc "CHI"}}
-           (set (query session sample/freezing-locations))))
-
-    (is (= #{{:?loc "CHI"}}
-           (set (query session other/subzero-locations))))))
+      (is (= #{{:?loc "CHI"}}
+             (set (query session other/subzero-locations)))
+          (str "Failed to find expected subzero location using sample-ruleset namespace " sample-ruleset-ns)))))
 
 (deftest test-transitive-rule
-
-  (is (= #{{:?fact (->LousyWeather)}}
-         (set (-> (mk-session 'clara.sample-ruleset 'clara.other-ruleset)
-                  (insert (->Temperature 15 "MCI"))
-                  (insert (->WindSpeed 45 "MCI"))
-                  (fire-rules)
-                  (query sample/find-lousy-weather))))))
-
+  (doseq [sample-ruleset-ns ['clara.sample-ruleset
+                             'clara.sample-ruleset-seq]]
+    (is (= #{{:?fact (->LousyWeather)}}
+           (set (-> (mk-session sample-ruleset-ns 'clara.other-ruleset)
+                    (insert (->Temperature 15 "MCI"))
+                    (insert (->WindSpeed 45 "MCI"))
+                    (fire-rules)
+                    (query sample/find-lousy-weather))))
+       (str "Failed to find LousyWeather using sample-ruleset namespace " sample-ruleset-ns))))
 
 (deftest test-mark-as-fired
   (let [rule-output (atom nil)

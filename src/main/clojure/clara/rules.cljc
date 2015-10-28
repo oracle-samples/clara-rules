@@ -254,35 +254,38 @@
     (eng/LocalSession. rulebase (eng/local-memory rulebase transport activation-group-sort-fn activation-group-fn get-alphas-fn) transport listener get-alphas-fn))))
 
 #?(:clj
-  (extend-type clojure.lang.Symbol
-  com/IRuleSource
-  (load-rules [sym]
-
-    ;; Find the rules and queries in the namespace, shred them,
-    ;; and compile them into a rule base.
-    (->> (ns-interns sym)
-         (vals) ; Get the references in the namespace.
-         (filter #(or (:rule (meta %)) (:query (meta %)))) ; Filter down to rules and queries.
-         (map deref)))))  ; Get the rules from the symbols.
+   (extend-type clojure.lang.Symbol
+     com/IRuleSource
+     (load-rules [sym]
+                 ;; Find the rules and queries in the namespace, shred them,
+                 ;; and compile them into a rule base.
+                 (->> (ns-interns sym)
+                      (vals) ; Get the references in the namespace.
+                      (filter #((some-fn :rule :query :production-seq) (meta %))) ; Filter down to rules, queries, and seqs of both.
+                      (mapcat #(if (:production-seq (meta %))
+                                 (deref %)
+                                 [(deref %)]))))))
 
 #?(:clj
   (defmacro mk-session
-     "Creates a new session using the given rule sources. Thew resulting session
+     "Creates a new session using the given rule sources. The resulting session
       is immutable, and can be used with insert, retract, fire-rules, and query functions.
 
       If no sources are provided, it will attempt to load rules from the caller's namespace.
+      This will use rules defined with defrule, queries defined with defquery, and sequences
+      of rule and/or query structures in vars that are annotated with the metadata ^:production-seq.
 
       The caller may also specify keyword-style options at the end of the parameters. Currently four
       options are supported:
 
       * :fact-type-fn, which must have a value of a function used to determine the logical type of a given
-        cache. Defaults to Clojures type function.
+        cache. Defaults to Clojure's type function.
       * :cache, indicating whether the session creation can be cached, effectively memoizing mk-session.
         Defaults to true. Callers may wish to set this to false when needing to dynamically reload rules.
       * :activation-group-fn, a function applied to production structures and returns the group they should be activated with.
         It defaults to checking the :salience property, or 0 if none exists.
       * :activation-group-sort-fn, a comparator function used to sort the values returned by the above :activation-group-fn.
-        defaults to >, so rules with a higher salience are executed first.
+        Defaults to >, so rules with a higher salience are executed first.
 
       This is not supported in ClojureScript, since it requires eval to dynamically build a session. ClojureScript
       users must use pre-defined rulesessions using defsession."
