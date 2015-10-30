@@ -54,7 +54,7 @@ Here's a simple example. The [clara-examples project](https://github.com/rbrush/
 Add the following to your project.clj:
 
 ```clj
-[org.toomuchcode/clara-rules "0.8.9"]
+[org.toomuchcode/clara-rules "0.9.0"]
 ```
 
 or to your Maven POM:
@@ -63,7 +63,7 @@ or to your Maven POM:
 <dependency>
   <groupId>org.toomuchcode</groupId>
   <artifactId>clara-rules</artifactId>
-  <version>0.8.9</version>
+  <version>0.9.0</version>
 </dependency>
 ```
 

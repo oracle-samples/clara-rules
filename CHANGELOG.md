@@ -1,5 +1,16 @@
 This is a history of changes to clara-rules.
 
+### 0.9.0
+* Move to Clojure 1.7 and adopt modern ClojureScript best practices, such as reader conditionals and cljs.test.
+* ClojureScript users may now use macros from clara.rules; clara.rules.macros should be considered deprecated. See [issue 128](https://github.com/rbrush/clara-rules/issues/128).
+* Add an :exists operator. See [issue 130](https://github.com/rbrush/clara-rules/issues/130).
+* Pre-defined accumulators now handle fact retraction. See [issue 127](https://github.com/rbrush/clara-rules/issues/127).
+* Allow use of accumulator results in other rule conditions. See [issue 132](https://github.com/rbrush/clara-rules/issues/132).
+* Support arbitrary comparisons in accumulators in ClojureScript, bringing it inline with the Clojure support. See [issue 131](https://github.com/rbrush/clara-rules/issues/131).
+* Support multiple productions defined in a single var, useful for third-party macros. See [issue 134](https://github.com/rbrush/clara-rules/issues/134).
+* Update several dependencies.
+* Mark internal namespaces as internal, as they may be moved in a future release.
+
 ### 0.8.9
 * Properly handle deeply nested conjunctions. See [issue 126](https://github.com/rbrush/clara-rules/pull/126).
 * Report error for unbound condition variables across all condition types. See [issue 124](https://github.com/rbrush/clara-rules/pull/124).
