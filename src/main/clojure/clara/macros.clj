@@ -83,11 +83,18 @@
         (case (:node-type beta-node)
 
           :join
-          `(eng/->JoinNode
-            ~id
-            '~condition
-            ~(gen-beta-network children all-bindings)
-            ~join-bindings)
+          (if (:join-filter-expressions beta-node)
+            `(eng/->ExpressionJoinNode
+              ~id
+              '~condition
+              ~(com/compile-join-filter (:join-filter-expressions beta-node) {})
+              ~(gen-beta-network children all-bindings)
+              ~join-bindings)
+            `(eng/->HashJoinNode
+              ~id
+              '~condition
+              ~(gen-beta-network children all-bindings)
+              ~join-bindings))
 
           :negation
           (if (:join-filter-expressions beta-node)
