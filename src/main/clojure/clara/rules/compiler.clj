@@ -319,9 +319,12 @@
                      fact-assignments
                      token-assignments)]
 
-    `(fn [~'?__token__ ~(add-meta '?__fact__ type) ~destructured-env]
-      (let [~@assignments]
-        (and ~@constraints)))))
+    `(fn [~'?__token__
+         ~(add-meta '?__fact__ type)
+          ~destructured-env]
+       (let [~@assignments
+             ~'?__bindings__ (atom {})]
+         (do ~@(compile-constraints constraints (set binding-keys)))))))
 
 (defn- expr-type [expression]
   (if (map? expression)

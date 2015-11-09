@@ -456,9 +456,11 @@
      (for [element (mem/get-elements memory node join-bindings)
            token tokens
            :let [fact (:fact element)
-                 fact-binding (:bindings element)]
-           :when (join-filter-fn token fact {})]
-       (->Token (conj (:matches token) [fact id]) (conj fact-binding (:bindings token))))))
+                 fact-binding (:bindings element)
+                 beta-bindings (join-filter-fn token fact {})]
+           :when beta-bindings]
+       (->Token (conj (:matches token) [fact id])
+                (conj fact-binding (:bindings token) beta-bindings)))))
 
   (left-retract [node join-bindings tokens memory transport listener]
     (retract-tokens
@@ -469,9 +471,11 @@
      (for [token (mem/remove-tokens! memory node join-bindings tokens)
            element (mem/get-elements memory node join-bindings)
            :let [fact (:fact element)
-                 fact-bindings (:bindings element)]
-           :when (join-filter-fn token fact {})]
-       (->Token (conj (:matches token) [fact id]) (conj fact-bindings (:bindings token))))))
+                 fact-bindings (:bindings element)
+                 beta-bindings (join-filter-fn token fact {})]
+           :when beta-bindings]
+       (->Token (conj (:matches token) [fact id])
+                (conj fact-bindings (:bindings token) beta-bindings)))))
 
   (get-join-keys [node] binding-keys)
 
@@ -487,8 +491,10 @@
      children
      (for [token (mem/get-tokens memory node join-bindings)
            {:keys [fact bindings] :as element} elements
-           :when (join-filter-fn token fact {})]
-       (->Token (conj (:matches token) [fact id]) (conj (:bindings token) bindings)))))
+           :let [beta-bindings (join-filter-fn token fact {})]
+           :when beta-bindings]
+       (->Token (conj (:matches token) [fact id])
+                (conj (:bindings token) bindings beta-bindings)))))
 
   (right-retract [node join-bindings elements memory transport listener]
     (retract-tokens
@@ -498,8 +504,10 @@
      children
      (for [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)
            token (mem/get-tokens memory node join-bindings)
-           :when (join-filter-fn token fact {})]
-       (->Token (conj (:matches token) [fact id]) (conj (:bindings token) bindings))))))
+           :let [beta-bindings (join-filter-fn token fact {})]
+           :when beta-bindings]
+       (->Token (conj (:matches token) [fact id])
+                (conj (:bindings token) bindings beta-bindings))))))
 
 ;; The NegationNode is a beta node in the Rete network that simply
 ;; negates the incoming tokens from its ancestors. It sends tokens
