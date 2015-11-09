@@ -4,13 +4,13 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.7.0"]
-                 [org.clojure/clojurescript "1.7.145" :scope "provided"]
+                 [org.clojure/clojurescript "1.7.170" :scope "provided"]
                  [prismatic/schema "1.0.1"]
                  [dorothy "0.0.6"]
                  [hiccup "1.0.5"]]
   :plugins [[lein-codox "0.9.0"]
             [lein-javadoc "0.2.0"]
-            [lein-cljsbuild "1.1.0"]]
+            [lein-cljsbuild "1.1.1"]]
   :codox {:namespaces [clara.rules clara.rules.dsl clara.rules.accumulators
                        clara.rules.listener clara.rules.durability
                        clara.tools.inspect clara.tools.tracing]
