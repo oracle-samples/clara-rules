@@ -388,7 +388,7 @@
 ;; Record for the join node, a type of beta node in the rete network. This node performs joins
 ;; between left and right activations, creating new tokens when joins match and sending them to
 ;; its descendents.
-(defrecord JoinNode [id condition children binding-keys]
+(defrecord HashJoinNode [id condition children binding-keys]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport listener]
     ;; Add token to the node's working memory for future right activations.
@@ -441,6 +441,73 @@
      (for [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)
            token (mem/get-tokens memory node join-bindings)]
        (->Token (conj (:matches token) [fact id]) (conj (:bindings token) bindings))))))
+
+
+(defrecord ExpressionJoinNode [id condition join-filter-fn children binding-keys]
+  ILeftActivate
+  (left-activate [node join-bindings tokens memory transport listener]
+    ;; Add token to the node's working memory for future right activations.
+    (mem/add-tokens! memory node join-bindings tokens)
+    (send-tokens
+     transport
+     memory
+     listener
+     children
+     (for [element (mem/get-elements memory node join-bindings)
+           token tokens
+           :let [fact (:fact element)
+                 fact-binding (:bindings element)
+                 beta-bindings (join-filter-fn token fact {})]
+           :when beta-bindings]
+       (->Token (conj (:matches token) [fact id])
+                (conj fact-binding (:bindings token) beta-bindings)))))
+
+  (left-retract [node join-bindings tokens memory transport listener]
+    (retract-tokens
+     transport
+     memory
+     listener
+     children
+     (for [token (mem/remove-tokens! memory node join-bindings tokens)
+           element (mem/get-elements memory node join-bindings)
+           :let [fact (:fact element)
+                 fact-bindings (:bindings element)
+                 beta-bindings (join-filter-fn token fact {})]
+           :when beta-bindings]
+       (->Token (conj (:matches token) [fact id])
+                (conj fact-bindings (:bindings token) beta-bindings)))))
+
+  (get-join-keys [node] binding-keys)
+
+  (description [node] (str "JoinNode -- " (:text condition)))
+
+  IRightActivate
+  (right-activate [node join-bindings elements memory transport listener]
+    (mem/add-elements! memory node join-bindings elements)
+    (send-tokens
+     transport
+     memory
+     listener
+     children
+     (for [token (mem/get-tokens memory node join-bindings)
+           {:keys [fact bindings] :as element} elements
+           :let [beta-bindings (join-filter-fn token fact {})]
+           :when beta-bindings]
+       (->Token (conj (:matches token) [fact id])
+                (conj (:bindings token) bindings beta-bindings)))))
+
+  (right-retract [node join-bindings elements memory transport listener]
+    (retract-tokens
+     transport
+     memory
+     listener
+     children
+     (for [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)
+           token (mem/get-tokens memory node join-bindings)
+           :let [beta-bindings (join-filter-fn token fact {})]
+           :when beta-bindings]
+       (->Token (conj (:matches token) [fact id])
+                (conj (:bindings token) bindings beta-bindings))))))
 
 ;; The NegationNode is a beta node in the Rete network that simply
 ;; negates the incoming tokens from its ancestors. It sends tokens

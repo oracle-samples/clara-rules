@@ -14,8 +14,9 @@
             [schema.core :as sc]
             [schema.macros :as sm])
 
-  (:import [clara.rules.engine ProductionNode QueryNode JoinNode NegationNode TestNode
-                               AccumulateNode AlphaNode LocalTransport LocalSession Accumulator]
+  (:import [clara.rules.engine ProductionNode QueryNode HashJoinNode ExpressionJoinNode
+            NegationNode TestNode AccumulateNode AlphaNode LocalTransport
+            LocalSession Accumulator]
            [java.beans PropertyDescriptor]))
 
 ;; Protocol for loading rules from some arbitrary source.
@@ -23,7 +24,7 @@
   (load-rules [source]))
 
 ;; These nodes exist in the beta network.
-(def BetaNode (sc/either ProductionNode QueryNode JoinNode
+(def BetaNode (sc/either ProductionNode QueryNode HashJoinNode ExpressionJoinNode
                          NegationNode TestNode AccumulateNode))
 
 ;; A rulebase -- essentially an immutable Rete network with a collection of alpha and beta nodes and supporting structure.
@@ -318,9 +319,12 @@
                      fact-assignments
                      token-assignments)]
 
-    `(fn [~'?__token__ ~(add-meta '?__fact__ type) ~destructured-env]
-      (let [~@assignments]
-        (and ~@constraints)))))
+    `(fn [~'?__token__
+         ~(add-meta '?__fact__ type)
+          ~destructured-env]
+       (let [~@assignments
+             ~'?__bindings__ (atom {})]
+         (do ~@(compile-constraints constraints (set binding-keys)))))))
 
 (defn- expr-type [expression]
   (if (map? expression)
@@ -464,7 +468,8 @@
 
         ;; Get the non-equality unifications so we can handle them
         join-filter-expressions (if (and (or (= :accumulator node-type)
-                                             (= :negation node-type))
+                                             (= :negation node-type)
+                                             (= :join node-type))
                                          (some non-equality-unification? (:constraints condition)))
 
                                     (assoc condition :constraints (filterv non-equality-unification? (:constraints condition)))
@@ -473,8 +478,11 @@
 
         ;; Remove instances of non-equality constraints from accumulator
         ;; and negation nodes, since those are handled with specialized node implementations.
-        condition (if (or (= :accumulator node-type)
-                          (= :negation node-type))
+        condition (if (and (or (= :accumulator node-type)
+                               (= :negation node-type)
+                               (= :join node-type))
+                           (some non-equality-unification? (:constraints condition)))
+
                     (assoc condition
                       :constraints (into [] (remove non-equality-unification? (:constraints condition)))
                       :original-constraints (:constraints condition))
@@ -540,48 +548,6 @@
         (if matching-node
           (update-in matching-node [:children] conj production-node)
           production-node))))))
-
-;; This logic for sorting conditions is workable but confusing,
-;; and there may be edge cases where accumulators that use result bindings
-;; of previous accumulators in the same rule won't be able to see those
-;; bindings. We should consider replacing this comparator with a
-;; topological sort of variable bindings.
-;; See https://github.com/rbrush/clara-rules/issues/133
-(defn- condition-comp
-  "Helper function to sort conditions to ensure bindings
-   are created in the needed order. The current implementation
-   simply pushes tests to the end (since they don't create new bindings)
-   with accumulators before them, as they may rely on previously bound items
-   to complete successfully."
-  [cond1 cond2]
-
-  (letfn [(cond-type [condition]
-            (cond
-             (:type condition) :condition
-             (:accumulator condition) :accumulator
-             (= :not (first condition)) :negation
-             :default :test))]
-
-    (case (cond-type cond1)
-      ;; Conditions are always sorted ahead of non-conditions. This is
-      ;; because they may create bindings used by other structures
-      ;; but never use them because arbitrary comparisons are
-      ;; extracted into tests, so we can safely put them first.
-      :condition (not= :condition (cond-type cond2))
-
-      ;; Accumulators occur before tests and negations. Accumulators
-      ;; may use condition bindings and their results may be used
-      ;; in arbitrary test or negation logic, so we place it here.
-      :accumulator (boolean (#{:test :negation} (cond-type cond2)))
-
-      ;; Negated conditions are sorted before tests, since they
-      ;; may use bindings from conditions or accumulators but
-      ;; do not create their own.
-      :negation (= :test (cond-type cond2))
-
-      ;; Tests are last, since they use but cannot create bindings used
-      ;; by other conditions we can safely push them to the end
-      :test false)))
 
 (defn- gen-compare
   "Generic compare function for arbitrary Clojure data structures.
@@ -654,103 +620,6 @@
   (and (symbol? expr)
        (.startsWith (name expr) "?")))
 
-(defn- extract-from-constraint
-  "Process and extract a test expression from the constraint. Returns a pair of [processed-constraint, test-constraint],
-   which can be expanded into corresponding join and test nodes.
-   The test may be nil if no extraction is necessary."
-  [[op arg & rest :as constraint]]
-
-  (let [has-variable? (fn [expr]
-                        (some is-variable?
-                              (flatten-expression expr)))
-
-        binding-map (atom {})
-
-        ;; Walks a constraint and updates the map of expressions
-        ;; that should be bound to symbols for use in the downstream
-        ;; test expression.
-        process-form (fn process [[op & rest :as form]]
-                       (if (not (has-variable? form))
-                         (swap! binding-map assoc form (gensym "?__gen__"))
-                         (doseq [item rest]
-                           (if (sequential? item)
-                             (process item)
-                             (when (and (not (is-variable? item))
-                                        (not (coll? item))) ;; Handle collection literals.
-                               (swap! binding-map assoc item (gensym "?__gen__")))))))]
-
-    ;; If the constraint is a simple binding or an expression without variables,
-    ;; there is no test expression to extract.
-    (if (or (not (has-variable? constraint))
-            (and (equality-expression? constraint)
-                 ;; Handle bindings where variable is first.
-                 (or (and (is-variable? arg)
-                          (not (has-variable? rest)))
-                     ;; Handle bindings with later variables.
-                     (and (every? is-variable? rest)
-                          (not (has-variable? arg))))))
-
-      [[constraint] []]
-
-      ;; The constraint had some cross-condition comparison or nested binding
-      ;; that must be extracted to a test
-      (do
-
-        (process-form constraint)
-
-        (if (not-empty @binding-map)
-
-          ;; Replace the condition with the bindings needed for the test.
-          [(for [[form sym] @binding-map]
-             (list '= sym form))
-
-           ;; Create a test condition that is the same as the original, but
-           ;; with nested expressions replaced by the binding map.
-           [(walk/postwalk (fn [form]
-                             (if-let [sym (get @binding-map form)]
-                               sym
-                               form))
-                           constraint)]]
-
-          ;; No test bindings found, so simply keep the constraint as is.
-          [[constraint] []])))))
-
-(defn- extract-tests
-  "Pre-process the sequence of conditions, and returns a sequence of conditions that has
-   constraints that must be expanded into tests properly expanded.
-   For example, consider the following conditions
-  [Temperature (= ?t1 temperature)]
-  [Temperature (< ?t1 temperature)]
-  The second temperature is doing a comparison, so we can't use our hash-based index to
-  unify these items. Therefore we extract the logic into a separate test, so the above
-  conditions are transformed into this:
-  [Temperature (= ?t1 temperature)]
-  [Temperature (= ?__gen__1234 temperature)]
-  [:test (< ?t2 ?__gen__1234)]
-  The comparison is transformed into binding to a generate bind variable,
-  which is then available in the test node for comparison with other bindings."
-  [conditions]
-  ;; Look at the constraints under each condition. If the constraint does a comparison with an
-  ;; item in an ancestor, do two things: modify the constraint to bind its internal items to a new
-  ;; generated symbol, and add a test that does the expected check.
-  (for [{:keys [type constraints] :as condition} conditions
-        :let [extracted (map extract-from-constraint constraints)
-              processed-constraints (mapcat first extracted)
-              test-constraints (mapcat second extracted)]
-
-        ;; Don't extract test conditions from tests themselves,
-        ;; or items with no matching test constraints.
-        expanded (if (or (= :test (condition-type condition))
-                         (empty? test-constraints))
-                   [condition]
-                   ;; There were test constraints created, so add the processed
-                   ;; constraints along with the generated test condition.
-                   [(assoc condition :constraints processed-constraints
-                           :original-constraints constraints)
-                    {:constraints test-constraints}])]
-
-    expanded))
-
 (defn- extract-exists
   "Converts :exists operations into an accumulator to detect
    the presence of a fact and a test to check that count is
@@ -809,37 +678,82 @@
           [#{} #{}]
           constraints))
 
-(defn- check-unbound-variables
-  "Checks the expanded condition to see if there are any potentially unbound
-   variables being referenced."
-  [expanded-conditions]
-  (loop [ancestor-variables #{}
-         [condition & rest] expanded-conditions]
+(defn- sort-conditions
+  "Performs a topologic sort of conditions to ensure variables needed by
+   child conditions are bound."
+  [conditions]
 
-    (let [constraints (condp = (condition-type condition)
-                             :accumulator (get-in condition [:from :constraints])
-                             :negation (:constraints (second condition))
-                             (:constraints condition))
-          [bound-variables free-variables] (classify-variables constraints)]
+  ;; Get the bound and unbound variables for all conditions.
+  (let [classified-conditions
+        (for [condition conditions
+              :let [constraints (condp = (condition-type condition)
+                                  :accumulator (get-in condition [:from :constraints])
+                                  :negation (:constraints (second condition))
+                                  (:constraints condition))
 
-      (when-not (s/subset? free-variables ancestor-variables)
-        (let [invalid-variables (s/difference free-variables ancestor-variables)]
-          (throw (ex-info (str "Using variable that is not previously bound. This can happen "
-                               "when an expression uses a previously unbound variable, "
-                               "or if a variable is referenced in a nested part of a parent "
-                               "expression, such as (or (= ?my-expression my-field) ...). " \newline
-                               "Unbound variables: "
-                               invalid-variables)
-                          {:variables invalid-variables}))))
+                    [bound-variables unbound-variables] (classify-variables constraints)]]
+          {:bound (cond-> bound-variables
+                    (:fact-binding condition) (conj (symbol (name (:fact-binding condition))))
+                    (:result-binding condition) (conj (symbol (name (:result-binding condition)))))
 
-      (when (seq rest)
+           :unbound unbound-variables
+           :condition condition
+           :is-accumulator (= :accumulator (condition-type condition))})]
 
-        ;; Recur with bound variables and fact and accumulator result bindings visible to children.
-        (recur (cond-> (into ancestor-variables bound-variables)
-                       (:fact-binding condition) (conj (symbol (name (:fact-binding condition))))
-                       (:result-binding condition) (conj (symbol (name (:result-binding condition)))))
+    (loop [sorted-conditions []
+           bound-variables #{}
+           remaining-conditions classified-conditions]
 
-               rest)))))
+      (if (empty? remaining-conditions)
+        ;; No more conditions to sort, so return the raw conditions
+        ;; in sorted order.
+        (map :condition sorted-conditions)
+
+        ;; Unsatisfied conditions remain, so find ones we can satisfy.
+        (let [satisfied? (fn [classified-condition]
+                           (clojure.set/subset? (:unbound classified-condition)
+                                                bound-variables))
+
+              ;; Find non-accumulator conditions that are satisfied. We defer
+              ;; accumulators until later in the rete network because they
+              ;; may fire a default value if all needed bindings earlier
+              ;; in the network are satisfied.
+              satisfied-non-accum? (fn [classified-condition]
+                                     (and (not (:is-accumulator classified-condition))
+                                          (clojure.set/subset? (:unbound classified-condition)
+                                                               bound-variables)))
+
+              has-satisfied-non-accum (some satisfied-non-accum? remaining-conditions)
+
+              newly-satisfied (if has-satisfied-non-accum
+                                (filter satisfied-non-accum? remaining-conditions)
+                                (filter satisfied? remaining-conditions))
+
+              still-unsatisfied (if has-satisfied-non-accum
+                                  (remove satisfied-non-accum? remaining-conditions)
+                                  (remove satisfied? remaining-conditions))
+
+              updated-bindings (apply clojure.set/union bound-variables
+                                      (map :bound newly-satisfied))]
+
+          ;; If no existing variables can be satisfied then the production is invalid.
+          (when (empty? newly-satisfied)
+
+            ;; Get the subset of variables that cannot be satisfied.
+            (let [unsatisfiable (clojure.set/difference
+                                 (apply clojure.set/union (map :unbound still-unsatisfied))
+                                 bound-variables)]
+              (throw (ex-info (str "Using variable that is not previously bound. This can happen "
+                                   "when an expression uses a previously unbound variable, "
+                                   "or if a variable is referenced in a nested part of a parent "
+                                   "expression, such as (or (= ?my-expression my-field) ...). " \newline
+                                   "Unbound variables: "
+                                   unsatisfiable)
+                              {:variables unsatisfiable}))))
+
+          (recur (into sorted-conditions newly-satisfied)
+                 updated-bindings
+                 still-unsatisfied))))))
 
 (defn- get-conds
   "Returns a sequence of [condition environment] tuples and their corresponding productions."
@@ -861,15 +775,10 @@
                              (rest disjunction)
                              [disjunction])
 
+                ;; Convert exists operators to accumulator and a test.
                 conditions (extract-exists conditions)
 
-                conditions (extract-tests conditions)
-
-                ;; Sort conditions, see the condition-comp function for the reason.
-                sorted-conditions (sort condition-comp conditions)
-
-                ;; Ensure there are no potentially unbound variables in use.
-                _ (check-unbound-variables sorted-conditions)
+                sorted-conditions (sort-conditions conditions)
 
                 ;; Attach the conditions environment. TODO: narrow environment to those used?
                 conditions-with-env (for [condition sorted-conditions]
@@ -998,11 +907,21 @@
              condition
              (compile-beta-tree children all-bindings)
              join-bindings)
-            (eng/->JoinNode
-             id
-             condition
-             (compile-beta-tree children all-bindings)
-             join-bindings))
+
+            ;; If the join operation includes arbitrary expressions
+            ;; that can't expressed as a hash join, we must use the expressions
+            (if (:join-filter-expressions beta-node)
+              (eng/->ExpressionJoinNode
+               id
+               condition
+               (eval (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node)))
+               (compile-beta-tree children all-bindings)
+               join-bindings)
+              (eng/->HashJoinNode
+               id
+               condition
+               (compile-beta-tree children all-bindings)
+               join-bindings)))
 
           :negation
           ;; Check to see if the negation includes an

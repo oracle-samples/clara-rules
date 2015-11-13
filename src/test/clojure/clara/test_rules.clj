@@ -2855,3 +2855,38 @@
                (insert (->Temperature 70 "ORD"))
                (query wind-and-temp)
                (set))))))
+
+;; Test for https://github.com/rbrush/clara-rules/issues/142
+(deftest test-beta-binding
+  "Tests bind operation that must happen on the beta side of the network"
+  (let [beta-bind-query (dsl/parse-query []
+                                         [[Temperature (= ?x temperature)]
+                                          [ColdAndWindy (= ?t (+ temperature ?x))]])
+
+        increment-query (dsl/parse-query []
+                                         [[Temperature (= ?x temperature)]
+                                          [ColdAndWindy (= ?t (inc ?x))]])]
+
+    (is (= [{:?x 10 :?t 15}]
+           (-> (mk-session [beta-bind-query])
+               (insert (->Temperature 10 "MCI")
+                       (->ColdAndWindy 5 50))
+               (fire-rules)
+               (query beta-bind-query))))
+
+    ;; Test retraction
+    (is (empty?
+         (-> (mk-session [beta-bind-query])
+             (insert (->Temperature 10 "MCI")
+                     (->ColdAndWindy 5 50))
+             (fire-rules)
+             (retract (->Temperature 10 "MCI"))
+             (query beta-bind-query))))
+
+    ;; Test version that didn't compile with issue 142.
+    (is (= [{:?x 10 :?t 11}]
+           (-> (mk-session [increment-query])
+               (insert (->Temperature 10 "MCI")
+                       (->ColdAndWindy 5 50))
+               fire-rules
+               (query increment-query))))))

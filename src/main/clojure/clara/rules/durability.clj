@@ -16,7 +16,7 @@
             [schema.core :as s]
             [schema.macros :as sm])
 
-  (:import [clara.rules.engine JoinNode RootJoinNode Token AccumulateNode ProductionNode]))
+  (:import [clara.rules.engine ExpressionJoinNode HashJoinNode RootJoinNode Token AccumulateNode ProductionNode]))
 
 
 ;; A schema representing a minimal representation of a rule session's state.
@@ -45,8 +45,9 @@
   (let [{:keys [rulebase memory]} (eng/components session)
         {:keys [id-to-node production-nodes query-nodes]} rulebase
         beta-nodes (for [[id node] id-to-node
-                         :when (or (instance? JoinNode node)
-                                   (instance? RootJoinNode node))]
+                         :when (or (instance? HashJoinNode node)
+                                   (instance? RootJoinNode node)
+                                   (instance? ExpressionJoinNode node))]
                      node)
 
         accumulate-nodes (for [[id node] id-to-node

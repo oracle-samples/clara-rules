@@ -92,6 +92,7 @@
    :id s/Num
    :condition LeafCondition
    :join-bindings #{s/Keyword}
+   (s/optional-key :join-filter-expressions) LeafCondition
    (s/optional-key :env) {s/Keyword s/Any}
    :children  [(s/recursive #'BetaNode)]})
 
