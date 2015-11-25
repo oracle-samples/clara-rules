@@ -1,4 +1,4 @@
-(defproject org.toomuchcode/clara-rules "0.10.0-SNAPSHOT"
+(defproject org.toomuchcode/clara-rules "0.9.1"
   :description "Clara Rules Engine"
   :url "https://github.com/rbrush/clara-rules"
   :license {:name "Eclipse Public License"
@@ -40,7 +40,7 @@
                                                   "src/test/html/advanced.html"]}}
 
   :scm {:name "git"
-        :url "https://github.com/rbrush/clara-rules.git"}
+          :url "https://github.com/rbrush/clara-rules"}
   :pom-addition [:developers [:developer
                               [:id "rbrush"]
                               [:name "Ryan Brush"]

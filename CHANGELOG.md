@@ -1,5 +1,9 @@
 This is a history of changes to clara-rules.
 
+### 0.9.1
+* Allow binding of arbitrary expressions that use previous variables. See [issue 142](https://github.com/rbrush/clara-rules/issues/142).
+* Simplify variable dependencies with a topological sort of rule conditions. See [issue 133](https://github.com/rbrush/clara-rules/issues/133).
+
 ### 0.9.0
 * Move to Clojure 1.7 and adopt modern ClojureScript best practices, such as reader conditionals and cljs.test.
 * ClojureScript users may now use macros from clara.rules; clara.rules.macros should be considered deprecated. See [issue 128](https://github.com/rbrush/clara-rules/issues/128).
