@@ -4,7 +4,8 @@
             [schema.core :as s]
             #?(:cljs [clara.rules.listener :as l])
             #?(:clj [clara.rules.compiler :as com])
-            #?(:clj [clara.rules.dsl :as dsl])))
+            #?(:clj [clara.rules.dsl :as dsl]))
+  #?(:cljs (:require-macros clara.rules)))
 
 (defn insert
   "Inserts one or more facts into a working session. It does not modify the given
