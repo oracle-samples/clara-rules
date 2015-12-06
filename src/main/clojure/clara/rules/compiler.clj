@@ -873,138 +873,148 @@
 
 (sc/defn compile-beta-tree
   "Compile the beta tree to the nodes used at runtime."
-  ([beta-nodes  :- [schema/BetaNode]
-    parent-bindings]
-     (compile-beta-tree beta-nodes parent-bindings false))
-  ([beta-nodes  :- [schema/BetaNode]
-    parent-bindings
-    is-root]
-     (vec
-      (for [beta-node beta-nodes
-            :let [{:keys [condition children id production query join-bindings]} beta-node
+  [beta-nodes  :- [schema/BetaNode]]
+  (let [;; A local, memoized function that ensures that the same expression of
+        ;; a given node :id is only compiled into a single function.
+        ;; This prevents redundant compilation and avoids having a Rete node
+        ;; :id that has had its expressions compiled into different
+        ;; compiled functions.
+        compile-expr (memoize (fn [id expr] (eval expr)))
+        
+        compile-beta-tree
+        (fn compile-beta-tree [beta-nodes parent-bindings is-root]
+          (vec
+           (for [beta-node beta-nodes
+                 :let [{:keys [condition children id production query join-bindings]} beta-node
 
-                  ;; If the condition is symbol, attempt to resolve the clas it belongs to.
-                  condition (if (symbol? condition)
-                              (.loadClass (clojure.lang.RT/makeClassLoader) (name condition))
-                              condition)
+                       ;; If the condition is symbol, attempt to resolve the clas it belongs to.
+                       condition (if (symbol? condition)
+                                   (.loadClass (clojure.lang.RT/makeClassLoader) (name condition))
+                                   condition)
 
-                  constraint-bindings (variables-as-keywords (:constraints condition))
+                       constraint-bindings (variables-as-keywords (:constraints condition))
 
-                  ;; Get all bindings from the parent, condition, and returned fact.
-                  all-bindings (cond-> (s/union parent-bindings constraint-bindings)
-                                       ;; Optional fact binding from a condition.
-                                       (:fact-binding condition) (conj (:fact-binding condition))
-                                       ;; Optional accumulator result.
-                                       (:result-binding beta-node) (conj (:result-binding beta-node)))]]
+                       ;; Get all bindings from the parent, condition, and returned fact.
+                       all-bindings (cond-> (s/union parent-bindings constraint-bindings)
+                                      ;; Optional fact binding from a condition.
+                                      (:fact-binding condition) (conj (:fact-binding condition))
+                                      ;; Optional accumulator result.
+                                      (:result-binding beta-node) (conj (:result-binding beta-node)))]]
 
-        (case (:node-type beta-node)
+             (case (:node-type beta-node)
 
-          :join
-          ;; Use an specialized root node for efficiency in this case.
-          (if is-root
-            (eng/->RootJoinNode
-             id
-             condition
-             (compile-beta-tree children all-bindings)
-             join-bindings)
+               :join
+               ;; Use an specialized root node for efficiency in this case.
+               (if is-root
+                 (eng/->RootJoinNode
+                  id
+                  condition
+                  (compile-beta-tree children all-bindings false)
+                  join-bindings)
+                 ;; If the join operation includes arbitrary expressions
+                 ;; that can't expressed as a hash join, we must use the expressions
+                 (if (:join-filter-expressions beta-node)
+                   (eng/->ExpressionJoinNode
+                    id
+                    condition
+                    (compile-expr id
+                                  (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node)))
+                    (compile-beta-tree children all-bindings false)
+                    join-bindings)
+                   (eng/->HashJoinNode
+                    id
+                    condition
+                    (compile-beta-tree children all-bindings false)
+                    join-bindings)))
 
-            ;; If the join operation includes arbitrary expressions
-            ;; that can't expressed as a hash join, we must use the expressions
-            (if (:join-filter-expressions beta-node)
-              (eng/->ExpressionJoinNode
-               id
-               condition
-               (eval (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node)))
-               (compile-beta-tree children all-bindings)
-               join-bindings)
-              (eng/->HashJoinNode
-               id
-               condition
-               (compile-beta-tree children all-bindings)
-               join-bindings)))
+               :negation
+               ;; Check to see if the negation includes an
+               ;; expression that must be joined to the incoming token
+               ;; and use the appropriate node type.
+               (if (:join-filter-expressions beta-node)
 
-          :negation
-          ;; Check to see if the negation includes an
-          ;; expression that must be joined to the incoming token
-          ;; and use the appropriate node type.
-          (if (:join-filter-expressions beta-node)
+                 (eng/->NegationWithJoinFilterNode
+                  id
+                  condition
+                  (compile-expr id
+                                (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node)))
+                  (compile-beta-tree children all-bindings false)
+                  join-bindings)
 
-            (eng/->NegationWithJoinFilterNode
-             id
-             condition
-             (eval (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node)))
-             (compile-beta-tree children all-bindings)
-             join-bindings)
+                 (eng/->NegationNode
+                  id
+                  condition
+                  (compile-beta-tree children all-bindings false)
+                  join-bindings))
 
-            (eng/->NegationNode
-             id
-             condition
-             (compile-beta-tree children all-bindings)
-             join-bindings))
+               :test
+               (eng/->TestNode
+                id
+                (compile-expr id
+                              (compile-test (:constraints condition)))
+                (compile-beta-tree children all-bindings false))
 
-          :test
-          (eng/->TestNode
-           id
-           (eval (compile-test (:constraints condition)))
-           (compile-beta-tree children all-bindings))
+               :accumulator
+               ;; We create an accumulator that accepts the environment for the beta node
+               ;; into its context, hence the function with the given environment.
+               (let [compiled-node (compile-expr id
+                                                 (compile-accum (:accumulator beta-node) (:env beta-node)))
+                     compiled-accum (compiled-node (:env beta-node))]
 
-          :accumulator
-          ;; We create an accumulator that accepts the environment for the beta node
-          ;; into its context, hence the function with the given environment.
-          (let [compiled-accum ((eval (compile-accum (:accumulator beta-node) (:env beta-node))) (:env beta-node))]
+                 ;; Ensure the compiled accumulator has the expected structure
+                 (when (not (instance? Accumulator compiled-accum))
+                   (throw (IllegalArgumentException. (str (:accumulator beta-node) " is not a valid accumulator."))))
 
-            ;; Ensure the compiled accumulator has the expected structure
-            (when (not (instance? Accumulator compiled-accum))
-              (throw (IllegalArgumentException. (str (:accumulator beta-node) " is not a valid accumulator."))))
+                 ;; If a non-equality unification is in place, compile the predicate and use
+                 ;; the specialized accumulate node.
 
-            ;; If a non-equality unification is in place, compile the predicate and use
-            ;; the specialized accumulate node.
+                 (if (:join-filter-expressions beta-node)
 
-            (if (:join-filter-expressions beta-node)
+                   (eng/->AccumulateWithJoinFilterNode
+                    id
+                    ;; Create an accumulator structure for use when examining the node or the tokens
+                    ;; it produces.
+                    {:accumulator (:accumulator beta-node)
+                     ;; Include the original filter expressions in the constraints for inspection tooling.
+                     :from (update-in condition [:constraints]
+                                      into (-> beta-node :join-filter-expressions :constraints))}
+                    compiled-accum
+                    (compile-expr id
+                                  (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node)))
+                    (:result-binding beta-node)
+                    (compile-beta-tree children all-bindings false)
+                    join-bindings)
 
-              (eng/->AccumulateWithJoinFilterNode
-               id
-               ;; Create an accumulator structure for use when examining the node or the tokens
-               ;; it produces.
-               {:accumulator (:accumulator beta-node)
-                ;; Include the original filter expressions in the constraints for inspection tooling.
-                :from (update-in condition [:constraints]
-                                 into (-> beta-node :join-filter-expressions :constraints))}
-               compiled-accum
-               (eval (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node)))
-               (:result-binding beta-node)
-               (compile-beta-tree children all-bindings)
-               join-bindings)
+                   ;; All unification is based on equality, so just use the simple accumulate node.
+                   (eng/->AccumulateNode
+                    id
+                    ;; Create an accumulator structure for use when examining the node or the tokens
+                    ;; it produces.
+                    {:accumulator (:accumulator beta-node)
+                     :from condition}
+                    compiled-accum
+                    (:result-binding beta-node)
+                    (compile-beta-tree children all-bindings false)
+                    join-bindings)))
 
-              ;; All unification is based on equality, so just use the simple accumulate node.
-              (eng/->AccumulateNode
-               id
-               ;; Create an accumulator structure for use when examining the node or the tokens
-               ;; it produces.
-               {:accumulator (:accumulator beta-node)
-                :from condition}
-               compiled-accum
-               (:result-binding beta-node)
-               (compile-beta-tree children all-bindings)
-               join-bindings)))
+               :production
+               (eng/->ProductionNode
+                id
+                production
+                (binding [*file* (:file (meta (:rhs production)))]
+                  (compile-expr id
+                                (with-meta (compile-action all-bindings
+                                                           (:rhs production)
+                                                           (:env production))
+                                  (meta (:rhs production))))))
 
-          :production
-          (eng/->ProductionNode
-           id
-           production
-           (binding [*file* (:file (meta (:rhs production)))]
-             (eval (with-meta
-                     (compile-action
-                      all-bindings (:rhs production) (:env production))
-                     (meta (:rhs production))))))
-
-          :query
-          (eng/->QueryNode
-           id
-           query
-           (:params query))
-          )))))
-
+               :query
+               (eng/->QueryNode
+                id
+                query
+                (:params query))))))]
+    ;; Start compilation.
+    (compile-beta-tree beta-nodes #{} true)))
 
 (sc/defn build-network
   "Constructs the network from compiled beta tree and condition functions."
@@ -1102,7 +1112,7 @@
   [productions :- [schema/Production]
    options :- {sc/Keyword sc/Any}]
   (let [beta-struct (to-beta-tree productions)
-        beta-tree (compile-beta-tree beta-struct #{} true)
+        beta-tree (compile-beta-tree beta-struct)
         alpha-nodes (compile-alpha-nodes (to-alpha-tree beta-struct))
         rulebase (build-network beta-tree alpha-nodes productions)
         transport (LocalTransport.)
