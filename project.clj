@@ -20,6 +20,7 @@
   :source-paths ["src/main/clojure"]
   :test-paths ["src/test/clojure" "src/test/common"]
   :java-source-paths ["src/main/java"]
+  :javac-options ["-target" "1.6" "-source" "1.6"]
   :hooks [leiningen.cljsbuild]
   :cljsbuild {:builds [;; Simple mode compilation for tests.
                        {:source-paths ["src/test/clojurescript" "src/test/common"]
