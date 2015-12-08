@@ -2542,6 +2542,67 @@
                       (fire-rules)
                       (query find-colder))))))
 
+(deftest
+  ^{:doc "Ensures that when 'sibling' nodes are sharing a common child
+          production node, that activations are effectively retracted in some
+          TMS control flows.  
+          See https://github.com/rbrush/clara-rules/pull/145 for more context."}
+  test-disjunctions-sharing-production-node
+  (let [r (dsl/parse-rule [[:or
+                            [First]
+                            [Second]]
+                           [?ts <- (acc/all) :from [Temperature]]]
+                          (insert! (with-meta {:ts ?ts}
+                                     {:type :holder})))
+        q (dsl/parse-query []
+                           [[?h <- :holder]])
+        s (mk-session [r q])
+        ;; Vary the insertion order to ensure that the outcomes are the same.
+        ;; This insertion order will cause retractions to need to be propagated
+        ;; to the RHS production node that is shared by the nested conditions
+        ;; of the disjunction. 
+        qres1 (-> s
+                  (insert (->First))
+                  (insert (->Temperature 1 "MCI"))
+                  (insert (->Second))
+                  (insert (->Temperature 2 "MCI"))
+                  fire-rules
+                  (query q)
+                  set)
+        qres2 (-> s
+                  (insert (->First))
+                  (insert (->Temperature 1 "MCI"))
+                  (insert (->Temperature 2 "MCI"))
+                  (insert (->Second))
+                  fire-rules
+                  (query q)
+                  set)]
+    (is (= qres1 qres2))))
+
+(deftest ^{:doc "Ensuring that ProductionNodes compilation is separate per node in network.
+                 See https://github.com/rbrush/clara-rules/pull/145 for more context."}
+  test-multiple-equiv-rhs-different-metadata
+  (let [r1 (dsl/parse-rule [[?t <- Temperature]]
+                           (insert! ^{:type :a} {:t ?t}))
+        r2 (dsl/parse-rule [[?t <- Temperature]]
+                           (insert! ^{:type :b} {:t ?t}))
+        q1 (dsl/parse-query []
+                            [[?a <- :a]])
+        q2 (dsl/parse-query []
+                            [[?b <- :b]])
+
+        temp (->Temperature 60 "MCI")
+        s (-> (mk-session [r1 r2 q1 q2])
+              (insert temp)
+              fire-rules)
+        res1 (set (query s q1))
+        res2 (set (query s q2))]
+
+    (is (= #{{:?a {:t temp}}}
+           res1))
+    (is (= #{{:?b {:t temp}}}
+           res2))))
+
 (deftest test-accumulator-with-extracted-test
   (let [q1 (dsl/parse-query []
                             [[?res <- (acc/all) :from [Temperature (= ?t temperature)]]
