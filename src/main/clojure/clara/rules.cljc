@@ -343,7 +343,7 @@ See the [rule authoring documentation](http://www.clara-rules.org/docs/rules/) f
           (throw (ex-info (str "Invalid rule " name ". No RHS (missing =>?).")
                           {})))
         `(def ~(vary-meta name assoc :rule true :doc doc)
-           (cond-> ~(dsl/parse-rule* lhs rhs properties {})
+           (cond-> ~(dsl/parse-rule* lhs rhs properties {} (meta &form))
              ~name (assoc :name ~(str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name)))
              ~doc (assoc :doc ~doc)))))))
 
@@ -365,6 +365,6 @@ See the [query authoring documentation](http://www.clara-rules.org/docs/queries/
             binding (if doc (second body) (first body))
             definition (if doc (drop 2 body) (rest body) )]
         `(def ~(vary-meta name assoc :query true :doc doc)
-           (cond-> ~(dsl/parse-query* binding definition {})
+           (cond-> ~(dsl/parse-query* binding definition {} (meta &form))
              ~name (assoc :name ~(str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name)))
              ~doc (assoc :doc ~doc)))))))

@@ -10,7 +10,6 @@
             [clara.rules.schema :as schema]
             [schema.core :as sc]))
 
-
 ;; Let operators be symbols or keywords.
 (def ops #{'and 'or 'not 'exists :and :or :not :exists})
 
@@ -27,9 +26,26 @@
     :rhs (when-not (empty? rhs)
            (conj rhs 'do))}))
 
+(defn- throw-dsl-ex
+  "Throws an exception indicating a failure parsing a form."
+  [message info expr-meta]
+  (if expr-meta
+    (let [{:keys [line column file]} expr-meta]
+      (throw (ex-info
+              (str message
+                   (when line
+                     (str " line: " line))
+                   (when column
+                     (str " column: " column))
+                   (when file
+                     (str " file: " file)))
+
+              (into info expr-meta))))
+    (throw (ex-info message info))))
+
 (defn- construct-condition
   "Creates a condition with the given optional result binding when parsing a rule."
-  [condition result-binding]
+  [condition result-binding expr-meta]
   (let [type (if (symbol? (first condition))
                (if-let [resolved (resolve (first condition))]
 
@@ -47,11 +63,25 @@
     (when (and (vector? type)
                (some list? type))
 
-      (throw (IllegalArgumentException. (str "Type " type " is a vector and appears to contain expressions. "
-                                             "Is there an extraneous set of brackets in the condition?"))))
+      (throw-dsl-ex (str "Type " type " is a vector and appears to contain expressions. "
+                         "Is there an extraneous set of brackets in the condition?")
+                    {}
+                    expr-meta))
 
     (when (> (count args) 1)
-      (throw (IllegalArgumentException. "Only one argument can be passed to a condition.")))
+      (throw-dsl-ex "Only one argument can be passed to a condition."
+                    {}
+                    expr-meta))
+
+    ;; Check if a malformed rule has a nested operator where we expect a type.
+    (when (and (sequential? type)
+               (seq type)
+               (ops (first type)))
+      (throw-dsl-ex (str "Attempting to bind into " result-binding
+                         " nested expression: " (pr-str condition)
+                         " Nested expressions cannot be bound into higher-level results")
+                    {}
+                    expr-meta))
 
     ;; Include the original metadata in the returned condition so line numbers
     ;; can be preserved when we compile it.
@@ -67,40 +97,43 @@
 
 (defn- parse-condition-or-accum
   "Parse an expression that could be a condition or an accumulator."
-  [condition]
+  [condition expr-meta]
   ;; Grab the binding of the operation result, if present.
   (let [result-binding (if (= '<- (second condition)) (keyword (first condition)) nil)
         condition (if result-binding (drop 2 condition) condition)]
 
     (when (and (not= nil result-binding)
                (not= \? (first (name result-binding))))
-      (throw (IllegalArgumentException. (str "Invalid binding for condition: " result-binding))))
+      (throw-dsl-ex (str "Invalid binding for condition: " result-binding)
+                    {}
+                    expr-meta))
 
     ;; If it's an s-expression, simply let it expand itself, and assoc the binding with the result.
     (if (#{'from :from} (second condition)) ; If this is an accumulator....
       (let [parsed-accum {:accumulator (first condition)
-                          :from (construct-condition (nth condition 2) nil)}]
+                          :from (construct-condition (nth condition 2) nil expr-meta)}]
         ;; A result binding is optional for an accumulator.
         (if result-binding
           (assoc parsed-accum :result-binding result-binding)
           parsed-accum))
       ;; Not an accumulator, so simply create the condition.
-      (construct-condition condition result-binding))))
+      (construct-condition condition result-binding expr-meta))))
 
 (defn- parse-expression
   "Convert each expression into a condition structure."
-  [expression]
+  [expression expr-meta]
   (cond
 
    (contains? ops (first expression))
    (into [(keyword (name (first expression)))] ; Ensure expression operator is a keyword.
-         (map parse-expression (rest expression)))
+         (for [nested-expr (rest expression)]
+           (parse-expression nested-expr expr-meta)))
 
    (contains? #{'test :test} (first expression))
    {:constraints (vec (rest expression))}
 
    :default
-   (parse-condition-or-accum expression)))
+   (parse-condition-or-accum expression expr-meta)))
 
 (defn- maybe-qualify
   "Attempt to qualify the given symbol, returning the symbol itself
@@ -155,7 +188,7 @@
                    (name sym))
 
            ;; Finally, just return the symbol unchanged if it doesn't match anything above,
-           ;; assuming it's a local parameter or variable.
+           ;; assuming it's a local parameter or variable.n
            :default
            sym)
 
@@ -195,47 +228,55 @@
 
 (defn parse-rule*
   "Creates a rule from the DSL syntax using the given environment map."
-  [lhs rhs properties env]
-  (let [conditions (mapv parse-expression lhs)
-        rule {:lhs (list 'quote
-                         (mapv #(resolve-vars % (destructure-syms %))
-                               conditions))
-              :rhs (list 'quote
-                         (with-meta (resolve-vars rhs
-                                                  (map :fact-binding conditions))
+  ([lhs rhs properties env]
+   (parse-rule* lhs rhs properties env {}))
+  ([lhs rhs properties env rule-meta]
+   (let [conditions (into [] (for [expr lhs]
+                               (parse-expression expr rule-meta)))
 
-                           (assoc (meta rhs) :file *file*)))}
+         rule {:lhs (list 'quote
+                          (mapv #(resolve-vars % (destructure-syms %))
+                                conditions))
+               :rhs (list 'quote
+                          (with-meta (resolve-vars rhs
+                                                   (map :fact-binding conditions))
 
-        symbols (set (filter symbol? (com/flatten-expression (concat lhs rhs))))
-        matching-env (into {} (for [sym (keys env)
-                                    :when (symbols sym)
-                                    ]
-                                [(keyword (name sym)) sym]))]
+                            (assoc (meta rhs) :file *file*)))}
 
-    (cond-> rule
+         symbols (set (filter symbol? (com/flatten-expression (concat lhs rhs))))
+         matching-env (into {} (for [sym (keys env)
+                                     :when (symbols sym)
+                                     ]
+                                 [(keyword (name sym)) sym]))]
 
-            ;; Add properties, if given.
-            (not (empty? properties)) (assoc :props properties)
+     (cond-> rule
 
-            ;; Add the environment, if given.
-            (not (empty? env)) (assoc :env matching-env))))
+       ;; Add properties, if given.
+       (not (empty? properties)) (assoc :props properties)
+
+       ;; Add the environment, if given.
+       (not (empty? env)) (assoc :env matching-env)))))
 
 (defn parse-query*
   "Creates a query from the DSL syntax using the given environment map."
-  [params lhs env]
-  (let [conditions (mapv parse-expression lhs)
-        query {:lhs (list 'quote (mapv #(resolve-vars % (destructure-syms %))
-                                       conditions))
-               :params (set params)}
+  ([params lhs env]
+   (parse-query* params lhs env {}))
+  ([params lhs env query-meta]
+   (let [conditions (into [] (for [expr lhs]
+                               (parse-expression expr query-meta)))
 
-        symbols (set (filter symbol? (com/flatten-expression lhs)))
-        matching-env (into {}
-                           (for [sym (keys env)
-                                 :when (symbols sym)]
-                             [(keyword (name sym)) sym]))]
+         query {:lhs (list 'quote (mapv #(resolve-vars % (destructure-syms %))
+                                        conditions))
+                :params (set params)}
 
-    (cond-> query
-            (not (empty? env)) (assoc :env matching-env))))
+         symbols (set (filter symbol? (com/flatten-expression lhs)))
+         matching-env (into {}
+                            (for [sym (keys env)
+                                  :when (symbols sym)]
+                              [(keyword (name sym)) sym]))]
+
+     (cond-> query
+       (not (empty? env)) (assoc :env matching-env)))))
 
 (defmacro parse-rule
   "Macro used to dynamically create a new rule using the DSL syntax."

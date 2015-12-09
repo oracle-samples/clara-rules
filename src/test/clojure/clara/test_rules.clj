@@ -2545,7 +2545,7 @@
 (deftest
   ^{:doc "Ensures that when 'sibling' nodes are sharing a common child
           production node, that activations are effectively retracted in some
-          TMS control flows.  
+          TMS control flows.
           See https://github.com/rbrush/clara-rules/pull/145 for more context."}
   test-disjunctions-sharing-production-node
   (let [r (dsl/parse-rule [[:or
@@ -2560,7 +2560,7 @@
         ;; Vary the insertion order to ensure that the outcomes are the same.
         ;; This insertion order will cause retractions to need to be propagated
         ;; to the RHS production node that is shared by the nested conditions
-        ;; of the disjunction. 
+        ;; of the disjunction.
         qres1 (-> s
                   (insert (->First))
                   (insert (->Temperature 1 "MCI"))
@@ -2951,3 +2951,13 @@
                        (->ColdAndWindy 5 50))
                fire-rules
                (query increment-query))))))
+
+(deftest test-invalid-binding
+  (is (thrown-with-msg?
+       clojure.lang.ExceptionInfo
+       #"line.*123.*column.*456"
+       (dsl/parse-query*
+        []
+        [[:?b '<- [:or [String] [Integer]]]]
+        {}
+        {:line 123 :column 456}))))
