@@ -1,7 +1,7 @@
 # Clara
 [![Build Status](https://travis-ci.org/rbrush/clara-rules.svg?branch=master)](https://travis-ci.org/rbrush/clara-rules)
 
-Clara is a forward-chaining rules engine written in Clojure with Java interoperability. It aims to simplify code with a developer-centric approach to expxert systems. More at [clara-rules.org](http://www.clara-rules.org).
+Clara is a forward-chaining rules engine written in Clojure with Java interoperability. It aims to simplify code with a developer-centric approach to expert systems. More at [clara-rules.org](http://www.clara-rules.org).
 
 ## Example
 
