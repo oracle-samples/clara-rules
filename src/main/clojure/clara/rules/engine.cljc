@@ -1044,7 +1044,22 @@
               (binding [*rule-context* {:token token :node node}]
 
                 ;; Fire the rule itself.
-                ((:rhs node) token (:env (:production node)))
+                (try
+                  ((:rhs node) token (:env (:production node)))
+                  (catch #?(:clj Exception
+                            :cljs js/Object) e
+
+                         ;; If the rule fired an exception, help debugging by attaching
+                         ;; details about the rule itself while propagating the cause.
+                         (let [production (:production node)
+                               rule-name (:name production)
+                               rhs (:rhs production)]
+                           (throw (ex-info (str "Exception in " (if rule-name rule-name (pr-str rhs))
+                                                " with bindings " (pr-str (:bindings token)))
+                                           {:bindings (:bindings token)
+                                            :name rule-name
+                                            :rhs rhs}
+                                           e)))))
 
                 ;; Explicitly flush updates if we are in a no-loop rule, so the no-loop
                 ;; will be in context for child rules.

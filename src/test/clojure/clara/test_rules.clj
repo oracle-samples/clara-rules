@@ -2961,3 +2961,27 @@
         [[:?b '<- [:or [String] [Integer]]]]
         {}
         {:line 123 :column 456}))))
+
+(deftest test-throw-rhs
+
+  (let [unnamed-rule (dsl/parse-rule [[Temperature (= ?x temperature)]]
+                                     (throw (ex-info "Test exception" {})))
+
+        named-rule (assoc unnamed-rule :name "test-rule-name")]
+
+    (try
+      (-> (mk-session [unnamed-rule])
+          (insert (->Temperature 10 "MCI"))
+          (fire-rules))
+      (catch Exception e
+        (is (= {:?x 10} (:bindings (ex-data e))))))
+
+    (try
+      (-> (mk-session [named-rule])
+          (insert (->Temperature 10 "MCI"))
+          (fire-rules))
+      (catch Exception e
+
+        (is (re-find #"test-rule-name" (.getMessage e)))
+        (is (= {:?x 10} (:bindings (ex-data e))))
+        (is (= "test-rule-name" (:name (ex-data e))))))))
