@@ -1047,7 +1047,7 @@
                 (try
                   ((:rhs node) token (:env (:production node)))
                   (catch #?(:clj Exception
-                            :cljs js/Object) e
+                            :cljs :default) e
 
                          ;; If the rule fired an exception, help debugging by attaching
                          ;; details about the rule itself while propagating the cause.

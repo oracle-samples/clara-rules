@@ -58,6 +58,12 @@
             :temp ?t
             :wind ?w}))
 
+(defrule throw-on-bad-temp
+  "Rule to test exception flow."
+  [Temperature (> temperature 10000) (= ?t temperature)]
+  =>
+  (throw (ex-info "Bad temperature!" {:temp ?t})))
+
 (defquery find-cold-and-windy
     []
     [?fact <- ColdAndWindy])
@@ -172,3 +178,16 @@
     (is (= #{{:?w 45 :?t 15 :?loc "MCI"}}
            (set
             (query session wind-with-temperature))))))
+
+(deftest test-throw-rhs
+
+  (try
+    (-> my-session
+        (insert (->Temperature 999999 "MCI"))
+        (fire-rules))
+    (catch :default e
+
+      (is (= {:?t 999999}
+             (:bindings (ex-data e))))
+      (is (= "clara.test-rules/throw-on-bad-temp"
+             (:name (ex-data e)))))))
