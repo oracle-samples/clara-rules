@@ -1,5 +1,11 @@
 This is a history of changes to clara-rules.
 
+### 0.9.2
+* Report better error and line number when parsing malformed productions. See issue [144](https://github.com/rbrush/clara-rules/issues/144).
+* Fix truth maintenance bug when using disjunctions. See issue [145](https://github.com/rbrush/clara-rules/pull/145).
+* Target Java API compilation to Java 1.6. See issue [146](https://github.com/rbrush/clara-rules/issues/146).
+* Catch exceptions thrown in rule actions and add context for debugging. See issue [147](https://github.com/rbrush/clara-rules/issues/147).
+
 ### 0.9.1
 * Allow binding of arbitrary expressions that use previous variables. See [issue 142](https://github.com/rbrush/clara-rules/issues/142).
 * Simplify variable dependencies with a topological sort of rule conditions. See [issue 133](https://github.com/rbrush/clara-rules/issues/133).
