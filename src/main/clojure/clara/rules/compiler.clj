@@ -333,10 +333,11 @@
 
 (defn- cartesian-join [lists lst]
   (if (seq lists)
-    (let [[h & t] lists]
+    (let [[h & t] lists
+          c (cartesian-join t lst)]
       (mapcat
        (fn [l]
-         (map #(conj % l) (cartesian-join t lst)))
+         (map #(conj % l) c))
        h))
     [lst]))
 
