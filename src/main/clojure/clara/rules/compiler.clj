@@ -332,14 +332,11 @@
     (first expression)))
 
 (defn- cartesian-join [lists lst]
-  (if (seq lists)
-    (let [[h & t] lists
-          c (cartesian-join t lst)]
-      (mapcat
-       (fn [l]
-         (map #(conj % l) c))
-       h))
-    [lst]))
+  (reduce
+     (fn [acc e]
+	     (mapcat (fn [l] (map #(conj % l) acc)) e))
+     [lst]
+     lists))
 
 (defn to-dnf
   "Convert a lhs expression to disjunctive normal form."
