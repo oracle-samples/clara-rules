@@ -127,6 +127,54 @@
     (fire-rules session)
     (is (= 10 @rule-output))))
 
+(deftest test-simple-binding-variable-second
+  (let [rule-output (atom nil)
+        cold-rule (dsl/parse-rule [[Temperature (< temperature 20) (= temperature ?t)]]
+                                  (reset! rule-output ?t))
+
+        session (-> (mk-session [cold-rule])
+                    (insert (->Temperature 10 "MCI")))]
+
+
+    (fire-rules session)
+    (is (= 10 @rule-output))))
+
+(deftest test-multiple-binding
+  (let [rule-output-t (atom nil)
+        rule-output-u (atom nil)
+        rule-output-v (atom nil)
+        cold-rule (dsl/parse-rule [[Temperature (< temperature 20) (= ?t temperature ?u ?v)]]
+                                  (do (reset! rule-output-t ?t)
+                                      (reset! rule-output-u ?u)
+                                      (reset! rule-output-v ?v)))
+
+        session (-> (mk-session [cold-rule])
+                    (insert (->Temperature 10 "MCI")))]
+
+
+    (fire-rules session)
+    (is (= 10 @rule-output-t @rule-output-u @rule-output-v))))
+
+(deftest test-multiple-comparison-binding
+  (let [rule-output (atom nil)
+        cold-rule (dsl/parse-rule [[Temperature (= ?t temperature 10)]]
+                                  (reset! rule-output ?t))
+
+        session (-> (mk-session [cold-rule])
+                    (insert (->Temperature 10 "MCI")))]
+
+
+    (fire-rules session)
+    (is (= 10 @rule-output))))
+
+(deftest test-malformed-binding
+  ;; Test binding with no value.
+  (try
+    (mk-session [(dsl/parse-rule [[Temperature (= ?t)]]
+                                 (println "Placeholder."))])
+    (catch Exception e
+      (is (= [:?t] (:variables (ex-data e)))))))
+
 (deftest test-simple-join-binding
   (let [rule-output (atom nil)
         same-wind-and-temp (dsl/parse-rule [[Temperature (= ?t temperature)]

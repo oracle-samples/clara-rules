@@ -178,31 +178,50 @@
     (boolean (or (#{'= '== 'clojure.core/= 'clojure.core/==} op)
                  (#{'clojure.core/= 'clojure.core/==} (qualify-when-sym op))))))
 
-(defn- compile-constraints [exp-seq assigment-set]
+(defn- compile-constraints [exp-seq]
   (if (empty? exp-seq)
     `((deref ~'?__bindings__))
-    (let [ [[cmp a b :as exp] & rest] exp-seq
-           compiled-rest (compile-constraints rest assigment-set)
-           eq-expr? (equality-expression? exp)
-           a-in-assigment (and eq-expr? (and (symbol? a) (assigment-set (keyword a))))
-           b-in-assigment (and eq-expr? (and (symbol? b) (assigment-set (keyword b))))]
-      (cond
-       a-in-assigment
-       (if b-in-assigment
-         `((let [a-exist# (contains? (deref ~'?__bindings__) ~(keyword a))
-                 b-exist# (contains? (deref ~'?__bindings__) ~(keyword b))]
-             (when (and (not a-exist#) (not b-exist#)) (throw (Throwable. "Binding undefine variables")))
-             (when (not a-exist#) (swap! ~'?__bindings__ assoc ~(keyword a) ((deref ~'?__bindings__) ~(keyword b))))
-             (when (not b-exist#) (swap! ~'?__bindings__ assoc ~(keyword b) ((deref ~'?__bindings__) ~(keyword a))))
-             (if (or (not a-exist#) (not b-exist#) (= ((deref ~'?__bindings__) ~(keyword a)) ((deref ~'?__bindings__) ~(keyword b))))
-               (do ~@compiled-rest)
-               nil)))
-         (cons `(swap! ~'?__bindings__ assoc ~(keyword a) ~b) compiled-rest))
-       b-in-assigment
-       (cons `(swap! ~'?__bindings__ assoc ~(keyword b) ~a) compiled-rest)
-       ;; not a unification
-       :else
-       (list (list 'if exp (cons 'do compiled-rest) nil))))))
+    (let [ [exp & rest-exp] exp-seq
+           compiled-rest (compile-constraints rest-exp)
+           variables (into #{}
+                           (filter (fn [item]
+                                     (and (symbol? item)
+                                          (= \? (first (name item)))))
+                                   exp))
+           expression-values (remove variables (rest exp))
+           binds-variables? (and (equality-expression? exp)
+                                 (seq variables))]
+      (when (and binds-variables?
+                 (empty? expression-values))
+
+        (throw (ex-info (str "Malformed variable binding for " variables ". No associated value.")
+                        {:variables (map keyword variables)})))
+
+      (if binds-variables?
+
+        (concat
+
+         ;; Bind each variable with the first value we encounter.
+         ;; The additional equality checks are handled below so which value
+         ;; we bind to is not important. So an expression like (= ?x value-1 value-2) will
+         ;; bind ?x to value-1, and then ensure value-1 and value-2 are equal below.
+         (for [variable variables]
+           `(swap! ~'?__bindings__ assoc ~(keyword variable) ~(first expression-values)))
+
+         ;; If there is more than one expression value, we need to ensure they are
+         ;; equal as well as doing the bind. This ensures that value-1 and value-2 are
+         ;; equal.
+         (if (> (count expression-values) 1)
+
+
+           (list (list 'if (cons '= expression-values) (cons 'do compiled-rest) nil))
+           ;; No additional values to check, so move on to the rest of
+           ;; the expression
+           compiled-rest))
+
+        ;; No variables to unify, so simply check the expression and
+        ;; move on to the rest.
+        (list (list 'if exp (cons 'do compiled-rest) nil))))))
 
 (defn flatten-expression
   "Flattens expression as clojure.core/flatten does, except will flatten
@@ -255,7 +274,7 @@
           ~destructured-env] ;; TODO: add destructured environment parameter...
        (let [~@assignments
              ~'?__bindings__ (atom ~initial-bindings)]
-         (do ~@(compile-constraints constraints (set binding-keys)))))))
+         (do ~@(compile-constraints constraints))))))
 
 ;; FIXME: add env...
 (defn compile-test [tests]
@@ -324,7 +343,7 @@
           ~destructured-env]
        (let [~@assignments
              ~'?__bindings__ (atom {})]
-         (do ~@(compile-constraints constraints (set binding-keys)))))))
+         (do ~@(compile-constraints constraints))))))
 
 (defn- expr-type [expression]
   (if (map? expression)
@@ -880,7 +899,7 @@
         ;; :id that has had its expressions compiled into different
         ;; compiled functions.
         compile-expr (memoize (fn [id expr] (eval expr)))
-        
+
         compile-beta-tree
         (fn compile-beta-tree [beta-nodes parent-bindings is-root]
           (vec
