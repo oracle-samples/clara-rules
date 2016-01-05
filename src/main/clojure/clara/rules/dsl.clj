@@ -61,7 +61,7 @@
         constraints (vec (if args (drop 2 condition) (rest condition)))]
 
     (when (and (vector? type)
-               (some list? type))
+               (some seq? type))
 
       (throw-dsl-ex (str "Type " type " is a vector and appears to contain expressions. "
                          "Is there an extraneous set of brackets in the condition?")

@@ -3033,3 +3033,24 @@
         (is (re-find #"test-rule-name" (.getMessage e)))
         (is (= {:?x 10} (:bindings (ex-data e))))
         (is (= "test-rule-name" (:name (ex-data e))))))))
+
+(deftest test-non-list-seq-form-used-for-non-eq-unification
+  (let [non-list-constraint (cons '= '(this (identity ?t)))
+        ;; Sanity check in case Clojure impl details change.
+        _ (is (not (list? non-list-constraint))
+              (str "Ensure test is using non-list seq to expose"
+                   " any `list?` impl specific compiler issues"))
+        q {:lhs [{:type clara.rules.testfacts.Temperature
+                  :constraints []
+                  :fact-binding :?t}
+                 {:type clara.rules.testfacts.Temperature
+                  :constraints [non-list-constraint]}]
+           :params #{}}
+        temp (->Temperature 1 "MCI")
+        res (-> (mk-session [q] :cache false)
+                (insert temp)
+                fire-rules
+                (query q)
+                first)]
+    (is (= {:?t temp}
+           res))))

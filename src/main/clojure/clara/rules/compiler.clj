@@ -435,7 +435,7 @@
    indicating it can't be solved by simple unification."
   (let [found-complex (atom false)
         process-form (fn [form]
-                       (when (and (list? form)
+                       (when (and (seq? form)
                                   (not (equality-expression? form))
                                   (some (fn [sym] (and (symbol? sym)
                                                       (.startsWith (name sym) "?")))

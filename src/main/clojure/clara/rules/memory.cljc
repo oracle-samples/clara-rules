@@ -165,7 +165,7 @@
                                ^:unsynchronized-mutable beta-memory
                                ^:unsynchronized-mutable accum-memory
                                ^:unsynchronized-mutable production-memory
-                               ^:unsynchronized-mutable activation-map]
+                               ^:unsynchronized-mutable #?(:clj ^java.util.NavigableMap activation-map :cljs activation-map)]
 
   IMemoryReader
   (get-rulebase [memory] rulebase)
@@ -316,7 +316,7 @@
       (pop-activation!
         [memory]
         (when (not (.isEmpty activation-map))
-          (let [^java.util.Map$Entry entry (.firstEntry activation-map)
+          (let [entry (.firstEntry activation-map)
                 key (.getKey entry)
                 value (.getValue entry)
                 remaining (rest value)]
@@ -342,7 +342,7 @@
       (next-activation-group
         [memory]
         (when (not (.isEmpty activation-map))
-          (let [^java.util.Map$Entry entry (.firstEntry activation-map)]
+          (let [entry (.firstEntry activation-map)]
             (.getKey entry))))
       :cljs
       (next-activation-group
