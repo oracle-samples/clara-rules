@@ -2,6 +2,7 @@
   "Forward-chaining rules for Clojure. The primary API is in this namespace."
   (:require [clara.rules.engine :as eng]
             [schema.core :as s]
+            [clara.rules.platform :as platform]
             #?(:cljs [clara.rules.listener :as l])
             #?(:clj [clara.rules.compiler :as com])
             #?(:clj [clara.rules.dsl :as dsl]))
@@ -144,7 +145,7 @@
     ;; effectively memoizing this operation.
     (let [alpha-map (atom {})]
       (fn [facts]
-        (for [[fact-type facts] (group-by fact-type-fn facts)]
+        (for [[fact-type facts] (platform/tuned-group-by fact-type-fn facts)]
 
           (if-let [alpha-nodes (get @alpha-map fact-type)]
 

@@ -145,7 +145,7 @@
                          listener)))))
 
   (retract-elements [transport memory listener nodes elements]
-    (doseq  [[bindings element-group] (group-by :bindings elements)
+    (doseq  [[bindings element-group] (platform/tuned-group-by :bindings elements)
              node nodes]
       (right-retract node
                      (select-keys bindings (get-join-keys node))
@@ -155,7 +155,7 @@
                      listener)))
 
   (retract-tokens [transport memory listener nodes tokens]
-    (doseq  [[bindings token-group] (group-by :bindings tokens)
+    (doseq  [[bindings token-group] (platform/tuned-group-by :bindings tokens)
              node nodes]
       (left-retract  node
                      (select-keys bindings (get-join-keys node))
