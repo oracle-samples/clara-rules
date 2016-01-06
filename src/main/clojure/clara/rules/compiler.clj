@@ -512,7 +512,12 @@
         matching-node (first (for [beta-node beta-nodes
                                    :when (and (= condition (:condition beta-node))
                                               (= node-type (:node-type beta-node))
-                                              (= env (:env beta-node))
+
+                                              ;; Environment for merged nodes should be equal or empty.
+                                              (or (= env (:env beta-node))
+                                                  (and (empty? env)
+                                                       (empty? (:env beta-node))))
+
                                               (= result-binding (:result-binding beta-node))
                                               (= accumulator (:accumulator beta-node)))]
                                beta-node))
@@ -774,36 +779,95 @@
                  updated-bindings
                  still-unsatisfied))))))
 
+(defn- extract-negations
+  "Extracts new rules to complex negations. Returns a map of :new-lhs containing
+   the new left-hand side of a production, and :generated-rules, containing
+   a sequence of rules generated to handle the complex negation."
+  [production]
+  (loop [previous-expressions []
+         [next-expression & remaining-expressions] (:lhs production)
+         generated-rules []]
+
+    (if next-expression
+
+      ;; Find complex nested negations to refactor into new rules.
+      (if (and (= :not (first next-expression))
+               (vector? (second next-expression))
+               (#{:and :or :not} (first (second next-expression))))
+
+        ;; Dealing with a compound negation, so extract it out.
+        (let [negation-expr (second next-expression)
+              gen-rule-name (str (or (:name production)
+                                     (gensym "gen-rule"))
+                                 "__"
+                                 (inc (count generated-rules)))
+
+              modified-expression `[:not {:type ~(if (compiling-cljs?)
+                                                  'clara.rules.engine/NegationResult
+                                                  'clara.rules.engine.NegationResult)
+                                          :constraints [(~'= ~gen-rule-name ~'gen-rule-name)]}]
+              generated-rule (cond-> {:name gen-rule-name
+                                      :lhs (conj previous-expressions
+                                                 negation-expr)
+                                      :rhs `(clara.rules/insert! (eng/->NegationResult ~gen-rule-name))}
+
+                               ;; Propagate properties like salience to the generated production.
+                               (:props production) (assoc :props (:props production))
+
+                               ;; Propagate the the environment (such as local bindings) if applicable.
+                               (:env production) (assoc :env (:env production)))]
+
+          (recur (conj previous-expressions modified-expression)
+                 remaining-expressions
+                 (conj generated-rules generated-rule)))
+
+        ;; next-expression wasn't a compound negation, so move on.
+        (recur (conj previous-expressions next-expression)
+               remaining-expressions
+               generated-rules))
+
+      {:new-lhs previous-expressions
+       :generated-rules generated-rules})))
+
 (defn- get-conds
   "Returns a sequence of [condition environment] tuples and their corresponding productions."
   [production]
 
-  (let [lhs-expression (into [:and] (:lhs production)) ; Add implied and.
+  (let [{:keys [new-lhs generated-rules]} (extract-negations production)
+
+        ;; Add implied and
+        lhs-expression (into [:and] new-lhs)
         expression  (to-dnf lhs-expression)
         disjunctions (if (= :or (first expression))
                        (rest expression)
                        [expression])]
 
-    ;; Now we've split the production into one ore more disjunctions that
-    ;; can be processed independently. Commonality between disjunctions will
-    ;; be merged when building the Rete network.
-    (for [disjunction disjunctions
+    (into
 
-          :let [conditions (if (and (vector? disjunction)
-                                    (= :and (first disjunction)))
-                             (rest disjunction)
-                             [disjunction])
+     ;; If any new rules were generated for complex negations,
+     ;; process and include them in the result.
+     (mapcat get-conds generated-rules)
 
-                ;; Convert exists operators to accumulator and a test.
-                conditions (extract-exists conditions)
+     ;; Now we've split the production into one ore more disjunctions that
+     ;; can be processed independently. Commonality between disjunctions will
+     ;; be merged when building the Rete network.
+     (for [disjunction disjunctions
 
-                sorted-conditions (sort-conditions conditions)
+           :let [conditions (if (and (vector? disjunction)
+                                     (= :and (first disjunction)))
+                              (rest disjunction)
+                              [disjunction])
 
-                ;; Attach the conditions environment. TODO: narrow environment to those used?
-                conditions-with-env (for [condition sorted-conditions]
-                                      [condition (:env production)])]]
+                 ;; Convert exists operators to accumulator and a test.
+                 conditions (extract-exists conditions)
 
-      [conditions-with-env production])))
+                 sorted-conditions (sort-conditions conditions)
+
+                 ;; Attach the conditions environment. TODO: narrow environment to those used?
+                 conditions-with-env (for [condition sorted-conditions]
+                                       [condition (:env production)])]]
+
+       [conditions-with-env production]))))
 
 
 (sc/defn to-beta-tree :- [schema/BetaNode]
@@ -1089,9 +1153,22 @@
 
   ;; We preserve a map of fact types to alpha nodes for efficiency,
   ;; effectively memoizing this operation.
-  (let [alpha-map (atom {})]
+  (let [alpha-map (atom {})
+
+        ;; If a customized fact-type-fn is provided,
+        ;; we must use a specialized grouping function
+        ;; that handles internal control types that may not
+        ;; follow the provided type function.
+        fact-grouping-fn (if (= fact-type-fn type)
+                           type
+                           (fn [fact]
+                             (if (isa? (type fact) :clara.rules.engine/system-type)
+                               ;; Internal system types always use Clojure's type mechanism.
+                               (type fact)
+                               ;; All other types defer to the provided function.
+                               (fact-type-fn fact))))]
     (fn [facts]
-      (for [[fact-type facts] (platform/tuned-group-by fact-type-fn facts)]
+      (for [[fact-type facts] (platform/tuned-group-by fact-grouping-fn facts)]
 
         (if-let [alpha-nodes (get @alpha-map fact-type)]
 

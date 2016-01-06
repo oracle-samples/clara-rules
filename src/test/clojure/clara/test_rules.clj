@@ -956,7 +956,8 @@
 
         session-with-data (-> session
                               (insert (->WindSpeed 40 "MCI"))
-                              (insert (->Temperature 10 "MCI")))]
+                              (insert (->Temperature 10 "MCI"))
+                              (fire-rules))]
 
     ;; It is not cold and windy, so we should have a match.
     (is (= #{{}}
@@ -971,8 +972,8 @@
 
         session  (mk-session [not-cold-or-windy])
 
-        session-with-temp (insert session (->WindSpeed 40 "MCI"))
-        session-retracted (retract session-with-temp (->WindSpeed 40 "MCI"))]
+        session-with-temp (fire-rules (insert session (->WindSpeed 40 "MCI")))
+        session-retracted (fire-rules (retract session-with-temp (->WindSpeed 40 "MCI")))]
 
     ;; It is not cold and windy, so we should have a match.
     (is (= #{{}}
@@ -984,6 +985,126 @@
     ;; Retract the added fact and ensure we now match something.
     (is (= #{{}}
            (set (query session-retracted not-cold-or-windy))))))
+
+
+(deftest test-complex-negation
+  (let [cold-not-match-temp
+        (dsl/parse-query []
+                         [[:not [:and
+                                 [?t <- Temperature]
+                                 [Cold (= temperature (:temperature ?t))]]]])
+
+        negation-with-prior-bindings
+        (dsl/parse-query []
+                         [[WindSpeed (= ?l location)]
+                          [:not [:and
+                                 [?t <- Temperature (= ?l location)]
+                                 [Cold (= temperature (:temperature ?t))]]]])
+
+        nested-negation-with-prior-bindings
+        (dsl/parse-query []
+                         [[WindSpeed (= ?l location)]
+                          [:not [:and
+                                 [?t <- Temperature (= ?l location)]
+                                 [:not [Cold (= temperature (:temperature ?t))]]]]])
+
+        s (mk-session [cold-not-match-temp] :cache false)
+        s-with-prior (mk-session [negation-with-prior-bindings] :cache false)
+        s-with-nested (mk-session [nested-negation-with-prior-bindings] :cache false)]
+
+    (is (= [{}]
+           (-> s
+               (fire-rules)
+               (query cold-not-match-temp))))
+
+    ;; Should not match when negation is met.
+    (is (empty? (-> s
+                    (insert (->Temperature 10 "MCI")
+                            (->Cold 10))
+                    (fire-rules)
+                    (query cold-not-match-temp))))
+
+    ;; Should have result if only a single item matched.
+    (is (= [{}]
+           (-> s
+               (insert (->Temperature 10 "MCI"))
+               (fire-rules)
+               (query cold-not-match-temp))))
+
+    ;; Test previous binding is visible.
+    (is (empty? (-> s-with-prior
+                    (fire-rules)
+                    (query negation-with-prior-bindings))))
+
+    ;; Should have result since negation does not match.
+    (is (= [{:?l "MCI"}]
+           (-> s-with-prior
+               (insert (->WindSpeed 10 "MCI")
+                       (->Temperature 10 "ORD")
+                       (->Cold 10))
+               (fire-rules)
+               (query negation-with-prior-bindings))))
+
+    ;; No result because negation matches.
+    (is (empty? (-> s-with-prior
+                    (insert (->WindSpeed 10 "MCI")
+                            (->Temperature 10 "MCI")
+                            (->Cold 10))
+                    (fire-rules)
+                    (query negation-with-prior-bindings))))
+
+    ;; There should be only one root to the beta tree because the top condition is reused.
+    (is (= 1 (count (com/to-beta-tree [negation-with-prior-bindings]))))
+    (is (= 1 (count (com/to-beta-tree [nested-negation-with-prior-bindings]))))
+
+    ;; Has nothing because the cold does not match the nested negation,
+    ;; so the :and is true and is negated at the top level.
+    (is (empty?
+         (-> s-with-nested
+             (insert (->WindSpeed 10 "MCI")
+                     (->Temperature 10 "MCI")
+                     (->Cold 20))
+             (fire-rules)
+             (query nested-negation-with-prior-bindings))))
+
+    ;; Match the nested negation, which is then negated again at the higher level,
+    ;; so this rule matches.
+    (is (= [{:?l "MCI"}]
+           (-> s-with-nested
+               (insert (->WindSpeed 10 "MCI")
+                       (->Temperature 10 "MCI")
+                       (->Cold 10))
+               (fire-rules)
+               (query nested-negation-with-prior-bindings))))))
+
+
+(deftest test-complex-negation-custom-type
+  (let [cold-not-match-temp
+        (dsl/parse-query []
+                         [[:not [:and
+                                 [?t <- :temperature]
+                                 [:cold [{temperature :temperature}] (= temperature (:temperature ?t))]]]])
+
+        s (mk-session [cold-not-match-temp] :cache false :fact-type-fn :type)]
+
+    (is (= [{}]
+           (-> s
+               (fire-rules)
+               (query cold-not-match-temp))))
+
+    ;; Should not match when negation is met.
+    (is (empty? (-> s
+                    (insert {:type :temperature :temperature 10}
+                            {:type :cold :temperature 10})
+                    (fire-rules)
+                    (query cold-not-match-temp))))
+
+    ;; Should have result if only a single item matched.
+    (is (= [{}]
+           (-> s
+               (insert {:type :temperature :temperature 10})
+               (fire-rules)
+               (query cold-not-match-temp))))))
 
 (deftest test-negation-with-complex-retractions
   (let [;; Non-blocked rule, where "blocked" means there is a

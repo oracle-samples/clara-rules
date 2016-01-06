@@ -27,6 +27,13 @@
 ;; Token with no bindings, used as the root of beta nodes.
 (def empty-token (->Token [] {}))
 
+;; Record indicating the negation existing in the working memory.
+(defrecord NegationResult [gen-rule-name])
+
+;; Make the negation result a "system type", so its type is not overridden
+;; with a customized fact type function.
+(derive NegationResult :clara.rules.engine/system-type)
+
 ;; Schema for the structure returned by the components
 ;; function on the session protocol.
 ;; This is simply a comment rather than first-class schema
