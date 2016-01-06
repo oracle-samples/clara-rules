@@ -15,7 +15,7 @@
      (:accumulator condition) :accumulator
      :else :test)
 
-    ;; Otherwise the node must a vector that starts with the boolean operator.
+    ;; Otherwise the node must a sequential that starts with the boolean operator.
     (first condition)))
 
 
@@ -56,7 +56,7 @@
 
 (def Condition
   (s/conditional
-   vector? BooleanCondition
+   sequential? BooleanCondition
    map? LeafCondition))
 
 (def Rule
