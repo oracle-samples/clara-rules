@@ -178,6 +178,27 @@
     (boolean (or (#{'= '== 'clojure.core/= 'clojure.core/==} op)
                  (#{'clojure.core/= 'clojure.core/==} (qualify-when-sym op))))))
 
+(def ^:dynamic *compile-ctx* nil)
+
+(defn- try-eval
+  "Evals the given `expr`.  If an exception is thrown, it is caught and an
+   ex-info exception is thrown with more details added.  Uses *compile-ctx*
+   for additional contextual info to add to the exception details."
+  [expr]
+  (try
+    (eval expr)
+    (catch Exception e
+      (let [edata (merge {:expr expr}
+                         (dissoc *compile-ctx* :msg))
+            msg (:msg *compile-ctx*)]
+        (throw (ex-info (str (if msg (str "Failed " msg) "Failed compiling.") \newline
+                             ;; Put ex-data specifically in the string since
+                             ;; often only ExceptionInfo.toString() will be
+                             ;; called, which doesn't show this data.
+                             edata \newline)
+                        edata
+                        e))))))
+
 (defn- compile-constraints [exp-seq]
   (if (empty? exp-seq)
     `((deref ~'?__bindings__))
@@ -771,9 +792,12 @@
                                    "when an expression uses a previously unbound variable, "
                                    "or if a variable is referenced in a nested part of a parent "
                                    "expression, such as (or (= ?my-expression my-field) ...). " \newline
+                                   "Production: " \newline
+                                   (:production *compile-ctx*) \newline
                                    "Unbound variables: "
                                    unsatisfiable)
-                              {:variables unsatisfiable}))))
+                              {:production (:production *compile-ctx*)
+                               :variables unsatisfiable}))))
 
           (recur (into sorted-conditions newly-satisfied)
                  updated-bindings
@@ -833,41 +857,42 @@
   "Returns a sequence of [condition environment] tuples and their corresponding productions."
   [production]
 
-  (let [{:keys [new-lhs generated-rules]} (extract-negations production)
+  (binding [*compile-ctx* {:production production}]
+    (let [{:keys [new-lhs generated-rules]} (extract-negations production)
 
-        ;; Add implied and
-        lhs-expression (into [:and] new-lhs)
-        expression  (to-dnf lhs-expression)
-        disjunctions (if (= :or (first expression))
-                       (rest expression)
-                       [expression])]
+          ;; Add implied and
+          lhs-expression (into [:and] new-lhs)
+          expression  (to-dnf lhs-expression)
+          disjunctions (if (= :or (first expression))
+                         (rest expression)
+                         [expression])]
 
-    (into
+      (into
 
-     ;; If any new rules were generated for complex negations,
-     ;; process and include them in the result.
-     (mapcat get-conds generated-rules)
+       ;; If any new rules were generated for complex negations,
+       ;; process and include them in the result.
+       (mapcat get-conds generated-rules)
 
-     ;; Now we've split the production into one ore more disjunctions that
-     ;; can be processed independently. Commonality between disjunctions will
-     ;; be merged when building the Rete network.
-     (for [disjunction disjunctions
+       ;; Now we've split the production into one ore more disjunctions that
+       ;; can be processed independently. Commonality between disjunctions will
+       ;; be merged when building the Rete network.
+       (for [disjunction disjunctions
 
-           :let [conditions (if (and (vector? disjunction)
-                                     (= :and (first disjunction)))
-                              (rest disjunction)
-                              [disjunction])
+             :let [conditions (if (and (vector? disjunction)
+                                       (= :and (first disjunction)))
+                                (rest disjunction)
+                                [disjunction])
 
-                 ;; Convert exists operators to accumulator and a test.
-                 conditions (extract-exists conditions)
+                   ;; Convert exists operators to accumulator and a test.
+                   conditions (extract-exists conditions)
 
-                 sorted-conditions (sort-conditions conditions)
+                   sorted-conditions (sort-conditions conditions)
 
-                 ;; Attach the conditions environment. TODO: narrow environment to those used?
-                 conditions-with-env (for [condition sorted-conditions]
-                                       [condition (:env production)])]]
+                   ;; Attach the conditions environment. TODO: narrow environment to those used?
+                   conditions-with-env (for [condition sorted-conditions]
+                                         [condition (:env production)])]]
 
-       [conditions-with-env production]))))
+         [conditions-with-env production])))))
 
 
 (sc/defn to-beta-tree :- [schema/BetaNode]
@@ -945,12 +970,14 @@
               cmeta (meta condition)]]
 
     (cond-> {:type (effective-type type)
-             :alpha-fn (binding [*file* (or (:file cmeta) *file*)]
-                         (eval (with-meta
-                                 (compile-condition
-                                  type (first args) constraints
-                                  fact-binding env)
-                                 (meta condition))))
+             :alpha-fn (binding [*file* (or (:file cmeta) *file*)
+                                 *compile-ctx* {:condition condition
+                                                :env env
+                                                :msg "compiling alpha node"}]
+                         (try-eval (with-meta (compile-condition
+                                               type (first args)  constraints
+                                               fact-binding env)
+                                     (meta condition))))
              :children beta-children}
             env (assoc :env env))))
 
@@ -962,8 +989,7 @@
         ;; This prevents redundant compilation and avoids having a Rete node
         ;; :id that has had its expressions compiled into different
         ;; compiled functions.
-        compile-expr (memoize (fn [id expr] (eval expr)))
-
+        compile-expr (memoize (fn [id expr] (try-eval expr)))
         compile-beta-tree
         (fn compile-beta-tree [beta-nodes parent-bindings is-root]
           (vec
@@ -1000,8 +1026,12 @@
                    (eng/->ExpressionJoinNode
                     id
                     condition
-                    (compile-expr id
-                                  (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node)))
+                    (binding [*compile-ctx* {:condition condition
+                                             :join-filter-expressions (:join-filter-expressions beta-node)
+                                             :env (:env beta-node)
+                                             :msg "compiling expression join node"}]
+                      (compile-expr id
+                                    (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node))))
                     (compile-beta-tree children all-bindings false)
                     join-bindings)
                    (eng/->HashJoinNode
@@ -1019,8 +1049,12 @@
                  (eng/->NegationWithJoinFilterNode
                   id
                   condition
-                  (compile-expr id
-                                (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node)))
+                  (binding [*compile-ctx* {:condition condition
+                                           :join-filter-expressions (:join-filter-expressions beta-node)
+                                           :env (:env beta-node)
+                                           :msg "compiling negation with join filter node"}]
+                    (compile-expr id
+                                  (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node))))
                   (compile-beta-tree children all-bindings false)
                   join-bindings)
 
@@ -1033,15 +1067,22 @@
                :test
                (eng/->TestNode
                 id
-                (compile-expr id
-                              (compile-test (:constraints condition)))
+                (binding [*compile-ctx* {:condition condition
+                                         :env (:env beta-node)
+                                         :msg "compiling test node"}]
+                  (compile-expr id
+                                (compile-test (:constraints condition))))
                 (compile-beta-tree children all-bindings false))
 
                :accumulator
                ;; We create an accumulator that accepts the environment for the beta node
                ;; into its context, hence the function with the given environment.
-               (let [compiled-node (compile-expr id
-                                                 (compile-accum (:accumulator beta-node) (:env beta-node)))
+               (let [compiled-node (binding [*compile-ctx* {:condition condition
+                                                            :accumulator (:accumulator beta-node)
+                                                            :env (:env beta-node)
+                                                            :msg "compiling accumulator"}]
+                                     (compile-expr id
+                                                   (compile-accum (:accumulator beta-node) (:env beta-node))))
                      compiled-accum (compiled-node (:env beta-node))]
 
                  ;; Ensure the compiled accumulator has the expected structure
@@ -1062,8 +1103,12 @@
                      :from (update-in condition [:constraints]
                                       into (-> beta-node :join-filter-expressions :constraints))}
                     compiled-accum
-                    (compile-expr id
-                                  (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node)))
+                    (binding [*compile-ctx* {:condition condition
+                                             :join-filter-expressions (:join-filter-expressions beta-node)
+                                             :env (:env beta-node)
+                                             :msg "compiling accumulate with join filter node"}]
+                      (compile-expr id
+                                    (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node))))
                     (:result-binding beta-node)
                     (compile-beta-tree children all-bindings false)
                     join-bindings)
@@ -1084,7 +1129,9 @@
                (eng/->ProductionNode
                 id
                 production
-                (binding [*file* (:file (meta (:rhs production)))]
+                (binding [*file* (:file (meta (:rhs production)))
+                          *compile-ctx* {:production production
+                                         :msg "compiling production node"}]
                   (compile-expr id
                                 (with-meta (compile-action all-bindings
                                                            (:rhs production)
