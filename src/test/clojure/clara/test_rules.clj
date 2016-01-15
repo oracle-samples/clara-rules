@@ -737,6 +737,36 @@
     (is (= [{:?c (->Cold 10)}]
            cold-results))))
 
+(deftest test-accumulator-right-retract-before-matching-tokens-exist
+  (let [accum-q (dsl/parse-query []
+                                 [[Temperature (= ?t temperature)]
+                                  ;; Using simple AccumulateNode
+                                  [?cs <- (acc/all) :from [Cold (= ?t temperature)]]])
+        accum-join-filter-q (dsl/parse-query []
+                                             [[Temperature (= ?t temperature)]
+                                              ;; Using AccumulateWithJoinFilterNode
+                                              [?cs <- (acc/all) :from [Cold (<= temperature ?t)]]])
+        c10 (->Cold 10)
+        t10 (->Temperature 10 "MCI")
+        s1 (mk-session [accum-q])
+        s2 (mk-session [accum-join-filter-q])
+        validate-query (fn [s q msg]
+                         (is (= #{{:?t 10 :?cs []}}
+                                (-> s
+                                    (insert c10)
+                                    (retract c10)
+                                    (insert t10)
+                                    fire-rules
+                                    (query q)
+                                    set))
+                             msg))]
+    (validate-query s1
+                    accum-q
+                    "AccumulateNode")
+    (validate-query s2
+                    accum-join-filter-q
+                    "AccumulateWithJoinFilterNode")))
+
 (deftest ^{:doc "A test that ensures that when candidate facts are grouped by bindings in a
                  join filter accumulator that has an initial-value to propagate, that the value
                  is propagated for empty groups."}

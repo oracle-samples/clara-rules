@@ -762,14 +762,14 @@
       (if (not= :clara.rules.memory/no-accum-reduced previous)
 
         ;; A previous value was reduced, so we need to retract it.
-        (doseq [token (mem/get-tokens memory node join-bindings)]
+        (doseq [token matched-tokens]
           (retract-accumulated node accum-condition accumulator result-binding token
                                previous bindings transport memory listener))
 
         ;; The accumulator has an initial value that is effectively the previous result when
         ;; there was no previous item, so retract it.
         (when-let [initial-value (:initial-value accumulator)]
-          (doseq [token (mem/get-tokens memory node join-bindings)]
+          (doseq [token matched-tokens]
             (retract-accumulated node accum-condition accumulator result-binding token initial-value
                                  {result-binding initial-value} transport memory listener))))
 
@@ -806,21 +806,21 @@
             ;; No need to retract anything if there was no previous item.
             :when (not= :clara.rules.memory/no-accum-reduced previous)
 
-            ;; Get all of the previously matched tokens so we can retract and re-send them.
-            token matched-tokens
-
             ;; Compute the new version with the retracted information.
             :let [retracted ((:retract-fn accumulator) previous fact)]]
 
       ;; Add our newly retracted information to our node.
       (mem/add-accum-reduced! memory node join-bindings retracted bindings)
+      
+      ;; Get all of the previously matched tokens so we can retract and re-send them.
+      (doseq [token matched-tokens]
 
-      ;; Retract the previous token.
-      (retract-accumulated node accum-condition accumulator result-binding token previous bindings transport memory listener)
+        ;; Retract the previous token.
+        (retract-accumulated node accum-condition accumulator result-binding token previous bindings transport memory listener)
 
-      ;; Send a new accumulated token with our new, retracted information.
-      (when retracted
-        (send-accumulated node accum-condition accumulator result-binding token retracted bindings transport memory listener)))))
+        ;; Send a new accumulated token with our new, retracted information.
+        (when retracted
+          (send-accumulated node accum-condition accumulator result-binding token retracted bindings transport memory listener))))))
 
 (defn- do-accumulate
   "Runs the actual accumulation.  Returns the accumulated value if there are candidate facts
@@ -928,7 +928,7 @@
 
        ;; Items were previously reduced that matched the bindings, so retract them to
        ;; allow the newly accumulated result to propagate.
-       (doseq [token (mem/get-tokens memory node join-bindings)
+       (doseq [token matched-tokens
 
                :let [previous-accum-result (do-accumulate accumulator join-filter-fn token previous-candidates)]
 
@@ -942,7 +942,7 @@
        ;; retracted.
        (when-let [initial-value (:initial-value accumulator)]
 
-         (doseq [token (mem/get-tokens memory node join-bindings)]
+         (doseq [token matched-tokens]
 
            (retract-accumulated node accum-condition accumulator result-binding token initial-value
                                 {result-binding initial-value} transport memory listener))))
@@ -977,7 +977,6 @@
 
   (right-retract [node join-bindings elements memory transport listener]
 
-
     (doseq [:let [matched-tokens (mem/get-tokens memory node join-bindings)]
             {:keys [fact bindings] :as element} elements
             :let [previous-candidates (mem/get-accum-reduced memory node join-bindings bindings)]
@@ -985,24 +984,25 @@
             ;; No need to retract anything if there was no previous item.
             :when (not= :clara.rules.memory/no-accum-reduced previous-candidates)
 
-            ;; Get all of the previously matched tokens so we can retract and re-send them.
-            token matched-tokens
-
-            ;; Compute the new version with the retracted information.
-            :let [previous-result (do-accumulate accumulator join-filter-fn token previous-candidates)
-                  new-candidates (second (mem/remove-first-of-each [fact] previous-candidates))
-                  new-result (do-accumulate accumulator join-filter-fn token new-candidates)]]
+            :let [new-candidates (second (mem/remove-first-of-each [fact] previous-candidates))]]
 
       ;; Add the new candidates to our node.
       (mem/add-accum-reduced! memory node join-bindings new-candidates bindings)
 
-      ;; Retract the previous token if something was previously accumulated.
-      (when (not= ::no-accum-result previous-result)
-        (retract-accumulated node accum-condition accumulator result-binding token previous-result bindings transport memory listener))
+      (doseq [;; Get all of the previously matched tokens so we can retract and re-send them.
+              token matched-tokens
 
-      ;; Send a new accumulated token with our new, retracted information when there is a new result.
-      (when (and new-result (not= ::no-accum-result new-result))
-        (send-accumulated node accum-condition accumulator result-binding token new-result bindings transport memory listener)))))
+              ;; Compute the new version with the retracted information.
+              :let [previous-result (do-accumulate accumulator join-filter-fn token previous-candidates)
+                    new-result (do-accumulate accumulator join-filter-fn token new-candidates)]]
+
+        ;; Retract the previous token if something was previously accumulated.
+        (when (not= ::no-accum-result previous-result)
+          (retract-accumulated node accum-condition accumulator result-binding token previous-result bindings transport memory listener))
+
+        ;; Send a new accumulated token with our new, retracted information when there is a new result.
+        (when (and new-result (not= ::no-accum-result new-result))
+          (send-accumulated node accum-condition accumulator result-binding token new-result bindings transport memory listener))))))
 
 (defn variables-as-keywords
   "Returns symbols in the given s-expression that start with '?' as keywords"
