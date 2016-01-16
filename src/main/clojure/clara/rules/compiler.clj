@@ -262,9 +262,19 @@
 (defn- add-meta
   "Helper function to add metadata."
   [fact-symbol fact-type]
-  (if (class? fact-type)
-    (vary-meta fact-symbol assoc :tag (symbol (.getName ^Class fact-type)))
-    fact-symbol))
+  (let [fact-type (if (symbol? fact-type)
+                    (try
+                      (resolve fact-type)
+                      (catch Exception e
+                        ;; We shouldn't have to worry about exceptions being thrown here according
+                        ;; to `resolve`s docs.
+                        ;; However, due to http://dev.clojure.org/jira/browse/CLJ-1403 being open
+                        ;; still, it is safer to catch any exceptions thrown.
+                        fact-type))
+                    fact-type)]
+    (if (class? fact-type)
+      (vary-meta fact-symbol assoc :tag (symbol (.getName ^Class fact-type)))
+      fact-symbol)))
 
 (defn compile-condition
   "Returns a function definition that can be used in alpha nodes to test the condition."
