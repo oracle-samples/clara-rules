@@ -800,14 +800,15 @@
   (right-retract [node join-bindings elements memory transport listener]
 
     (doseq [:let [matched-tokens (mem/get-tokens memory node join-bindings)]
-            {:keys [fact bindings] :as element} elements
+            [bindings elements] (platform/tuned-group-by :bindings elements)
             :let [previous (mem/get-accum-reduced memory node join-bindings bindings)]
 
             ;; No need to retract anything if there was no previous item.
             :when (not= :clara.rules.memory/no-accum-reduced previous)
 
             ;; Compute the new version with the retracted information.
-            :let [retracted ((:retract-fn accumulator) previous fact)]]
+            :let [facts (mapv :fact elements)
+                  retracted (r/reduce (:retract-fn accumulator) previous facts)]]
 
       ;; Add our newly retracted information to our node.
       (mem/add-accum-reduced! memory node join-bindings retracted bindings)
@@ -978,14 +979,15 @@
   (right-retract [node join-bindings elements memory transport listener]
 
     (doseq [:let [matched-tokens (mem/get-tokens memory node join-bindings)]
-            {:keys [fact bindings] :as element} elements
+            [bindings elements] (platform/tuned-group-by :bindings elements)
             :let [previous-candidates (mem/get-accum-reduced memory node join-bindings bindings)]
 
             ;; No need to retract anything if there was no previous item.
             :when (not= :clara.rules.memory/no-accum-reduced previous-candidates)
 
-            :let [new-candidates (second (mem/remove-first-of-each [fact] previous-candidates))]]
-
+            :let [facts (mapv :fact elements)
+                  new-candidates (second (mem/remove-first-of-each facts previous-candidates))]]
+      
       ;; Add the new candidates to our node.
       (mem/add-accum-reduced! memory node join-bindings new-candidates bindings)
 
