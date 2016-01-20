@@ -76,6 +76,9 @@
    * :condition-matches -- a map of conditions pulled from each rule to facts they match.
    * :insertions -- a map of rules to a sequence of {:explanation E, :fact F} records
      to allow inspection of why a given fact was inserted.
+   * :fact->explanations -- a map of facts inserted to a sequence 
+     of maps of the form {:rule rule-structure :explanation explanation}, 
+     where each such map justifies a single insertion of the fact.
 
    Users may inspect the entire structure for troubleshooting or explore it
    for specific cases. For instance, the following code snippet could look
@@ -105,9 +108,9 @@
                                  [(:production rule-node) rule-node]))]
 
     {:rule-matches (into {}
-                          (for [[rule rule-node] rule-to-nodes]
-                            [rule (to-explanations session
-                                                   (mem/get-tokens-all memory rule-node))]))
+                         (for [[rule rule-node] rule-to-nodes]
+                           [rule (to-explanations session
+                                                  (mem/get-tokens-all memory rule-node))]))
 
      :query-matches (into {}
                           (for [[query query-node] query-to-nodes]
@@ -121,7 +124,17 @@
                          [rule
                           (for [token (mem/get-tokens-all memory rule-node)
                                 insertion (mem/get-insertions memory rule-node token)]
-                            {:explanation (first (to-explanations session [token])) :fact insertion})]))}))
+                            {:explanation (first (to-explanations session [token])) :fact insertion})]))
+
+     :fact->explanations (reduce (fn [previous [insertion info]]
+                                   (update previous insertion (fnil conj []) info))
+                                 {}
+                                 (mapcat (fn [[rule rule-node]]
+                                           (for [token (mem/get-tokens-all memory rule-node)
+                                                 insertion (mem/get-insertions memory rule-node token)]
+                                             [insertion {:rule rule
+                                                         :explanation (first (to-explanations session [token]))}]))
+                                         rule-to-nodes))}))
 
 (defn- explain-activation
   "Prints a human-readable explanation of the facts and conditions that created the Rete token."
