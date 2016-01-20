@@ -7,7 +7,7 @@
             [clara.rules.accumulators :as acc]
             [clojure.test :refer :all]
             schema.test)
-  (:import [clara.rules.testfacts Temperature WindSpeed Cold
+  (:import [clara.rules.testfacts Temperature WindSpeed Cold Hot
             ColdAndWindy LousyWeather First Second Third Fourth]))
 
 (use-fixtures :once schema.test/validate-schemas)
@@ -19,43 +19,65 @@
                      :name "Beep")
 
         cold-rule (dsl/parse-rule [[Temperature (< temperature 20) (= ?t temperature)]]
-                                  (println ?t "is cold!") )
+                                  (insert! (map->Cold {:temperature :too-cold})))
 
         hot-rule (dsl/parse-rule [[Temperature (> temperature 80) (= ?t temperature)]]
-                                 (println ?t "is hot!") )
+                                 (insert! (map->Hot {:temperature ?t})))
 
         session (-> (mk-session [cold-query cold-rule hot-rule])
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 90 "MCI")))
+                    (insert (->Temperature 90 "MCI"))
+                    (fire-rules))
+
+        hot-rule-90-explanation (map->Explanation {:matches [[(->Temperature 90 "MCI")
+                                                              (first (:lhs hot-rule))]],
+                                                   :bindings {:?t 90}})
+
+        cold-rule-15-explanation (map->Explanation {:matches [[(->Temperature 15 "MCI")
+                                                               (first (:lhs cold-query))]],
+
+                                                    :bindings {:?t 15}})
+
+        cold-rule-10-explanation (map->Explanation {:matches [[(->Temperature 10 "MCI")
+                                                               (first (:lhs cold-query))]],
+                                                    :bindings {:?t 10}})
 
         rule-dump (inspect session)]
 
     ;; Retrieve the tokens matching the cold query. This test validates
     ;; the tokens contain the expected matching conditions by retrieving
     ;; them directly from the query in question.
-    (is (= [(map->Explanation {:matches [[(->Temperature 15 "MCI")
-                                          (first (:lhs cold-query))]],
-
-                               :bindings {:?t 15}})
-
-            (map->Explanation {:matches [[(->Temperature 10 "MCI")
-                                          (first (:lhs cold-query))]],
-                               :bindings {:?t 10}})]
-
+    (is (= [cold-rule-15-explanation cold-rule-10-explanation]
            (get-in rule-dump [:query-matches cold-query])))
 
     ;; Retrieve tokens matching the hot rule.
-    (is (= [(map->Explanation {:matches [[(->Temperature 90 "MCI")
-                                          (first (:lhs hot-rule))]],
-                               :bindings {:?t 90}})]
-
+    (is (= [hot-rule-90-explanation]
            (get-in rule-dump [:rule-matches hot-rule])))
+
+    (is (= [{:explanation hot-rule-90-explanation
+             :fact (map->Hot {:temperature 90})}]
+           (get-in rule-dump [:insertions hot-rule])))
 
     ;; Ensure the first condition in the rule matches the expected facts.
     (is (= [(->Temperature 15 "MCI") (->Temperature 10 "MCI")]
-           (get-in rule-dump [:condition-matches  (first (:lhs cold-rule))])))))
+           (get-in rule-dump [:condition-matches  (first (:lhs cold-rule))])))
 
+    ;; Test the :fact->explanations key in the inspected session data.
+    (is (= {(map->Cold {:temperature :too-cold}) [{:explanation cold-rule-10-explanation
+                                                   :rule cold-rule}
+                                                  {:explanation cold-rule-15-explanation
+                                                   :rule cold-rule}]
+            (map->Hot {:temperature 90}) [{:explanation hot-rule-90-explanation
+                                           :rule hot-rule}]}
+           
+           ;; Avoid dependence on the ordering of the cold explanations.
+           (update (:fact->explanations rule-dump)
+                   (map->Cold {:temperature :too-cold})
+
+                   (fn [expls]
+                     (sort-by #(get-in % [:explanation :bindings :?t])
+                              expls)))))))
 
 (deftest test-accum-inspect
   (let [lowest-temp (acc/min :temperature :returns-fact true)
