@@ -13,6 +13,8 @@
             [clara.rules.dsl :as dsl]
             [cljs.analyzer :as ana]
             [cljs.env :as env]
+            [schema.core :as sc]
+            [clara.rules.schema :as schema]
             [clojure.set :as s]))
 
 
@@ -63,13 +65,19 @@
     `(def ~name
        ~query)))
 
-(defn- gen-beta-network
+(sc/defn gen-beta-network :- [sc/Any] ; Returns a sequence of compiled nodes.
   "Generates the beta network from the beta tree. "
-  ([beta-nodes
-    parent-bindings]
+  ([node-ids :- #{sc/Int}              ; Nodes to compile.
+    {:keys [id-to-production-node id-to-condition-node forward-edges] :as beta-graph} :- schema/BetaGraph
+    parent-bindings :- #{sc/Keyword}]
      (vec
-      (for [beta-node beta-nodes
-            :let [{:keys [condition children id production query join-bindings]} beta-node
+      (for [id node-ids
+            :let [beta-node (or (get id-to-condition-node id)
+                                (get id-to-production-node id))
+
+                  {:keys [condition production query join-bindings]} beta-node
+
+                  child-ids (get forward-edges id)
 
                   constraint-bindings (com/variables-as-keywords (:constraints condition))
 
@@ -88,12 +96,12 @@
               ~id
               '~condition
               ~(com/compile-join-filter (:join-filter-expressions beta-node) {})
-              ~(gen-beta-network children all-bindings)
+              ~(gen-beta-network child-ids beta-graph all-bindings)
               ~join-bindings)
             `(eng/->HashJoinNode
               ~id
               '~condition
-              ~(gen-beta-network children all-bindings)
+              ~(gen-beta-network child-ids beta-graph all-bindings)
               ~join-bindings))
 
           :negation
@@ -102,19 +110,19 @@
               ~id
               '~condition
               ~(com/compile-join-filter (:join-filter-expressions beta-node) {})
-              ~(gen-beta-network children all-bindings)
+              ~(gen-beta-network child-ids beta-graph all-bindings)
               ~join-bindings)
             `(eng/->NegationNode
               ~id
               '~condition
-              ~(gen-beta-network children all-bindings)
+              ~(gen-beta-network child-ids beta-graph all-bindings)
               ~join-bindings))
 
           :test
           `(eng/->TestNode
             ~id
             ~(com/compile-test (:constraints condition))
-            ~(gen-beta-network children all-bindings))
+            ~(gen-beta-network child-ids beta-graph all-bindings))
 
           :accumulator
           (if (:join-filter-expressions beta-node)
@@ -125,7 +133,7 @@
               ~(:accumulator beta-node)
               ~(com/compile-join-filter (:join-filter-expressions beta-node) {})
               ~(:result-binding beta-node)
-              ~(gen-beta-network children all-bindings)
+              ~(gen-beta-network child-ids beta-graph all-bindings)
               ~join-bindings)
 
             `(eng/->AccumulateNode
@@ -134,7 +142,7 @@
                :from '~condition}
               ~(:accumulator beta-node)
               ~(:result-binding beta-node)
-              ~(gen-beta-network children all-bindings)
+              ~(gen-beta-network child-ids beta-graph all-bindings)
               ~join-bindings))
 
           :production
@@ -148,10 +156,10 @@
            ~id
            '~query
            ~(:params query))
-          )))))
+          (throw (ex-info (str "Unknown node type " (:node-type beta-node)) {:node beta-node})))))))
 
-(defn- compile-alpha-nodes
-  [alpha-nodes]
+(sc/defn ^:always-validate compile-alpha-nodes
+  [alpha-nodes :- [schema/AlphaNode]]
   (vec
    (for [{:keys [condition beta-children env]} alpha-nodes
          :let [{:keys [type constraints fact-binding args]} condition]]
@@ -199,11 +207,12 @@ use it as follows:
                                production (get-productions source)]
                            production))
 
-        beta-tree (com/to-beta-tree productions)
-        beta-network (gen-beta-network beta-tree #{})
+        beta-graph (com/to-beta-graph productions)
+        ;; Compile the children of the logical root condition.
+        beta-network (gen-beta-network (get-in beta-graph [:forward-edges 0]) beta-graph #{})
 
-        alpha-tree (com/to-alpha-tree beta-tree)
-        alpha-nodes (compile-alpha-nodes alpha-tree)]
+        alpha-graph (com/to-alpha-graph beta-graph)
+        alpha-nodes (compile-alpha-nodes alpha-graph)]
 
     `(let [beta-network# ~beta-network
            alpha-nodes# ~alpha-nodes

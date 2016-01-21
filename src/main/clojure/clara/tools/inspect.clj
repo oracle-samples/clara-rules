@@ -27,18 +27,17 @@
 
 (defn- get-condition-matches
   "Returns facts matching each condition"
-  [beta-roots memory]
-  (let [join-nodes (for [beta-root beta-roots
-                         beta-node (tree-seq :children :children beta-root)
-                         :when (= :join (:node-type beta-node))]
-                     beta-node)]
+  [beta-graph memory]
+  (let [join-node-ids (for [[node-id beta-node] (:id-to-condition-node beta-graph)
+                            :when (= :join (:node-type beta-node))]
+                        [node-id beta-node])]
     (reduce
-     (fn [matches node]
+     (fn [matches [node-id beta-node]]
        (update-in matches
-                  [(:condition node)]
-                  concat (map :fact (mem/get-elements-all memory node))))
+                  [(:condition beta-node)]
+                  concat (map :fact (mem/get-elements-all memory {:id node-id}))))
      {}
-     join-nodes)))
+     join-node-ids)))
 
 (defn- to-explanations
   "Helper function to convert tokens to explanation records."
@@ -97,7 +96,7 @@
   (let [{:keys [memory rulebase]} (eng/components session)
         {:keys [productions production-nodes query-nodes]} rulebase
 
-        beta-tree (com/to-beta-tree productions)
+        beta-graph (com/to-beta-graph productions)
 
         ;; Map of queries to their nodes in the network.
         query-to-nodes (into {} (for [[query-name query-node] query-nodes]
@@ -117,7 +116,7 @@
                             [query (to-explanations session
                                                     (mem/get-tokens-all memory query-node))]))
 
-     :condition-matches (get-condition-matches beta-tree memory)
+     :condition-matches (get-condition-matches beta-graph memory)
 
      :insertions (into {}
                        (for [[rule rule-node] rule-to-nodes]

@@ -2,15 +2,16 @@
   "This namespace is for internal use and may move in the future.
    This is the Clara rules compiler, translating raw data structures into compiled versions and functions.
    Most users should use only the clara.rules namespace."
-  (:require [clojure.reflect :as reflect]
-            [clojure.core.reducers :as r]
-            [clojure.set :as s]
-            [clara.rules.engine :as eng]
+  (:require [clara.rules.engine :as eng]
             [clara.rules.listener :as listener]
             [clara.rules.platform :as platform]
+            [clara.rules.schema :as schema]
+            [clojure.core.reducers :as r]
+            [clojure.reflect :as reflect]
+            [clojure.set :as s]
+            [clojure.set :as set]
             [clojure.string :as string]
             [clojure.walk :as walk]
-            [clara.rules.schema :as schema]
             [schema.core :as sc]
             [schema.macros :as sm])
 
@@ -313,7 +314,8 @@
         assignments (mapcat #(list (symbol (name %)) (list 'get-in '?__token__ [:bindings %])) binding-keys)]
 
     `(fn [~'?__token__]
-      (let [~@assignments]
+       (let [~@assignments]
+
         (and ~@tests)))))
 
 (defn compile-action
@@ -438,6 +440,10 @@
 
         :exists expression
 
+        ;; Double negation, so just return the expression under the second negation.
+        :not
+        (to-dnf (second child))
+
         ;; DeMorgan's law converting conjunction to negated disjuctions.
         :and (to-dnf (cons :or (for [grandchild (rest child)] [:not grandchild])))
 
@@ -516,172 +522,6 @@
 
     node-type))
 
-(defn- add-to-beta-tree
-  "Adds a sequence of conditions and the corresponding production to the beta tree."
-  [beta-nodes
-   [[condition env] & more]
-   bindings
-   production]
-  (let [node-type (condition-type condition)
-        accumulator (:accumulator condition)
-        result-binding (:result-binding condition) ; Get the optional result binding used by accumulators.
-        condition (cond
-                   (= :negation node-type) (second condition)
-                   accumulator (:from condition)
-                   :default condition)
-
-        ;; Get the non-equality unifications so we can handle them
-        join-filter-expressions (if (and (or (= :accumulator node-type)
-                                             (= :negation node-type)
-                                             (= :join node-type))
-                                         (some non-equality-unification? (:constraints condition)))
-
-                                    (assoc condition :constraints (filterv non-equality-unification? (:constraints condition)))
-
-                                    nil)
-
-        ;; Remove instances of non-equality constraints from accumulator
-        ;; and negation nodes, since those are handled with specialized node implementations.
-        condition (if (and (or (= :accumulator node-type)
-                               (= :negation node-type)
-                               (= :join node-type))
-                           (some non-equality-unification? (:constraints condition)))
-
-                    (assoc condition
-                      :constraints (into [] (remove non-equality-unification? (:constraints condition)))
-                      :original-constraints (:constraints condition))
-
-                    condition)
-
-        ;; For the sibling beta nodes, find a match for the candidate.
-        matching-node (first (for [beta-node beta-nodes
-                                   :when (and (= condition (:condition beta-node))
-                                              (= node-type (:node-type beta-node))
-
-                                              (or (= env (:env beta-node))
-                                                  (and (empty? env)
-                                                       (empty? (:env beta-node))))
-
-                                              (= result-binding (:result-binding beta-node))
-                                              (= accumulator (:accumulator beta-node)))]
-                               beta-node))
-
-        other-nodes (remove #(= matching-node %) beta-nodes)
-        cond-bindings (variables-as-keywords (:constraints condition))
-
-        ;; Create either the rule or query node, as appropriate.
-        production-node (if (:rhs production)
-                          {:node-type :production
-                           :production production}
-                          {:node-type :query
-                           :query production})]
-
-
-    (vec
-     (conj
-      other-nodes
-      (if condition
-        ;; There are more conditions, so recurse.
-        (if matching-node
-          (assoc matching-node
-            :children
-            (add-to-beta-tree (:children matching-node)
-                              more
-                              (cond-> (s/union bindings cond-bindings)
-                                      result-binding (conj result-binding)
-                                      (:fact-binding condition) (conj (:fact-binding condition)))
-                              production))
-
-          (cond->
-           {:node-type node-type
-            :condition condition
-            :children (add-to-beta-tree []
-                                        more
-                                        (cond-> (s/union bindings cond-bindings)
-                                                result-binding (conj result-binding)
-                                                (:fact-binding condition) (conj (:fact-binding condition)))
-                                        production)
-            :env (or env {})}
-
-           ;; Add the join bindings to join, accumulator or negation nodes.
-           (#{:join :negation :accumulator} node-type) (assoc :join-bindings (s/intersection bindings cond-bindings))
-
-           accumulator (assoc :accumulator accumulator)
-
-           result-binding (assoc :result-binding result-binding)
-
-           join-filter-expressions (assoc :join-filter-expressions join-filter-expressions)))
-
-        ;; There are no more conditions, so add our query or rule.
-        (if matching-node
-          (update-in matching-node [:children] conj production-node)
-          production-node))))))
-
-(defn- gen-compare
-  "Generic compare function for arbitrary Clojure data structures.
-   The only guarantee is the ordering of items will be consistent
-   between invocations."
-  [left right]
-  (cond
-
-   ;; Handle the nil cases first to ensure nil-safety.
-   (and (nil? left) (nil? right))
-   0
-
-   (nil? left)
-   -1
-
-   (nil? right)
-   1
-
-   ;; Ignore functions for our comparison purposes,
-   ;; since we won't distinguish rules by them.
-   (and (fn? left) (fn? right))
-   0
-
-   ;; If the types differ, compare based on their names.
-   (not= (type left)
-         (type right))
-   (compare (.getName ^Class (type left))
-            (.getName ^Class (type right)))
-
-   ;; Compare items in a sequence until we find a difference.
-   (sequential? left)
-   (loop [left-seq left
-          right-seq right]
-
-     (if (and (seq left-seq) (seq right-seq))
-
-       ;; Both sequences have content, so compare them and recur if necessary.
-       (let [result (gen-compare (first left-seq) (first right-seq)) ]
-         (if (not= 0 result)
-           result
-           (recur (rest left-seq) (rest right-seq))))
-
-       ;; At least one sequence is empty.
-       (cond
-
-        (seq left-seq) 1
-        (seq right-seq) -1
-        :default 0)))
-
-   ;; Covert maps to sequences sorted by keys and compare those sequences.
-   (map? left)
-   (let [kv-sort-fn (fn [[key1 _] [key2 _]] (gen-compare key1 key2))
-         left-kvs (sort kv-sort-fn (seq left))
-         right-kvs (sort kv-sort-fn (seq right))  ]
-
-     (gen-compare left-kvs right-kvs))
-
-   ;; The content is comparable and not a sequence, so simply compare them.
-   (instance? Comparable left)
-   (compare left right)
-
-   ;; Unknown items are just treated as equal for our purposes,
-   ;; since we can't define an ordering.
-   :default 0
-   ))
-
 (defn- is-variable?
   "Returns true if the given expression is a variable (a symbol prefixed by ?)"
   [expr]
@@ -746,27 +586,87 @@
           [#{} #{}]
           constraints))
 
-(defn- sort-conditions
+(sc/defn analyze-condition :- {;; Variables used in the condition that are bound
+                               :bound #{sc/Symbol}
+
+                               ;; Variables used in the condition that are unbound.
+                               :unbound #{sc/Symbol}
+
+                               ;; The condition that was analyzed
+                               :condition schema/Condition
+
+                               ;; Flag indicating it is an accumulator.
+                               :is-accumulator sc/Bool}
+  [condition :- schema/Condition]
+
+  (let [dnf-condition (to-dnf condition)
+
+        ;; Break the condition up into leafs
+        leaf-conditions (case (first dnf-condition)
+
+                          ;; A top level disjunction, so get all child conjunctions and
+                          ;; flatten them.
+                          :or
+                          (for [nested-condition (rest dnf-condition)
+                                leaf-condition (if (= :and (first nested-condition))
+                                                 (rest nested-condition)
+                                                 [nested-condition])]
+                            leaf-condition)
+
+
+                          ;; A top level and of nested conditions, so just use them
+                          :and
+                          (rest dnf-condition)
+
+                          ;; The condition itself is a leaf, so keep it.
+                          [dnf-condition])]
+
+    (reduce
+     (fn [{:keys [bound unbound condition is-accumulator]} leaf-condition]
+
+
+       ;; The effective leaf for variable purposes may be contained in a negation or
+       ;; an accumulator, so extract it.
+       (let [effective-leaf (condp = (condition-type leaf-condition)
+                                  :accumulator (:from leaf-condition)
+                                  :negation (second leaf-condition)
+                                  leaf-condition)
+
+             constraints (:constraints effective-leaf)
+
+             [bound-variables unbound-variables] (classify-variables constraints)
+
+             bound-with-result-bindings (cond-> bound-variables
+                                          (:fact-binding effective-leaf) (conj (symbol (name (:fact-binding effective-leaf))))
+                                          (:result-binding leaf-condition) (conj (symbol (name (:result-binding leaf-condition)))))
+
+             ;; All variables bound in this condition.
+             all-bound (s/union bound bound-with-result-bindings)
+
+             ;; Unbound variables, minus those that have been bound elsewhere in this condition.
+             all-unbound (s/difference (s/union unbound-variables unbound) all-bound)]
+
+         {:bound all-bound
+          :unbound all-unbound
+          :condition condition
+          :is-accumulator (or is-accumulator
+                              (= :accumulator
+                                 (condition-type leaf-condition)))}
+
+         ))
+     {:bound #{}
+      :unbound #{}
+      :condition condition
+      :is-accumulator false}
+     leaf-conditions)))
+
+(sc/defn sort-conditions :- [schema/Condition]
   "Performs a topologic sort of conditions to ensure variables needed by
    child conditions are bound."
-  [conditions]
+  [conditions :- [schema/Condition]]
 
-  ;; Get the bound and unbound variables for all conditions.
-  (let [classified-conditions
-        (for [condition conditions
-              :let [constraints (condp = (condition-type condition)
-                                  :accumulator (get-in condition [:from :constraints])
-                                  :negation (:constraints (second condition))
-                                  (:constraints condition))
-
-                    [bound-variables unbound-variables] (classify-variables constraints)]]
-          {:bound (cond-> bound-variables
-                    (:fact-binding condition) (conj (symbol (name (:fact-binding condition))))
-                    (:result-binding condition) (conj (symbol (name (:result-binding condition)))))
-
-           :unbound unbound-variables
-           :condition condition
-           :is-accumulator (= :accumulator (condition-type condition))})]
+  ;; Get the bound and unbound variables for all conditions and sort them.
+  (let [classified-conditions (map analyze-condition conditions)]
 
     (loop [sorted-conditions []
            bound-variables #{}
@@ -826,140 +726,546 @@
                  updated-bindings
                  still-unsatisfied))))))
 
-(defn- extract-negations
-  "Extracts new rules to complex negations. Returns a map of :new-lhs containing
-   the new left-hand side of a production, and :generated-rules, containing
-   a sequence of rules generated to handle the complex negation."
-  [production]
-  (loop [previous-expressions []
-         [next-expression & remaining-expressions] (:lhs production)
-         generated-rules []]
+(sc/defn condition-to-node :- schema/ConditionNode
+  "Converts a condition to a node structure."
+  [condition :- schema/Condition
+   env :- (sc/maybe {sc/Keyword sc/Any})
+   parent-bindings :- #{sc/Keyword}]
+  (let [node-type (condition-type condition)
+        accumulator (:accumulator condition)
+        result-binding (:result-binding condition) ; Get the optional result binding used by accumulators.
+        condition (cond
+                   (= :negation node-type) (second condition)
+                   accumulator (:from condition)
+                   :default condition)
 
-    (if next-expression
+        ;; Get the non-equality unifications so we can handle them
+        join-filter-expressions (if (and (or (= :accumulator node-type)
+                                             (= :negation node-type)
+                                             (= :join node-type))
+                                         (some non-equality-unification? (:constraints condition)))
 
-      ;; Find complex nested negations to refactor into new rules.
-      (if (and (= :not (first next-expression))
-               (sequential? (second next-expression))
-               (#{:and :or :not} (first (second next-expression))))
+                                    (assoc condition :constraints (filterv non-equality-unification? (:constraints condition)))
 
-        ;; Dealing with a compound negation, so extract it out.
-        (let [negation-expr (second next-expression)
-              gen-rule-name (str (or (:name production)
-                                     (gensym "gen-rule"))
-                                 "__"
-                                 (inc (count generated-rules)))
+                                    nil)
 
-              modified-expression `[:not {:type ~(if (compiling-cljs?)
-                                                  'clara.rules.engine/NegationResult
-                                                  'clara.rules.engine.NegationResult)
-                                          :constraints [(~'= ~gen-rule-name ~'gen-rule-name)]}]
-              generated-rule (cond-> {:name gen-rule-name
-                                      :lhs (conj previous-expressions
-                                                 negation-expr)
-                                      :rhs `(clara.rules/insert! (eng/->NegationResult ~gen-rule-name))}
+        ;; Remove instances of non-equality constraints from accumulator
+        ;; and negation nodes, since those are handled with specialized node implementations.
+        condition (if (and (or (= :accumulator node-type)
+                               (= :negation node-type)
+                               (= :join node-type))
+                           (some non-equality-unification? (:constraints condition)))
 
-                               ;; Propagate properties like salience to the generated production.
-                               (:props production) (assoc :props (:props production))
+                    (assoc condition
+                      :constraints (into [] (remove non-equality-unification? (:constraints condition)))
+                      :original-constraints (:constraints condition))
+
+                    condition)
+
+        ;; Variables used in the condition.
+        cond-bindings (variables-as-keywords (:constraints condition))]
+
+        (cond->
+            {:node-type node-type
+             :condition condition
+             :used-bindings cond-bindings}
+
+          (seq env) (assoc :env env)
+
+          ;; Add the join bindings to join, accumulator or negation nodes.
+          (#{:join :negation :accumulator} node-type) (assoc :join-bindings (s/intersection cond-bindings parent-bindings))
+
+          accumulator (assoc :accumulator accumulator)
+
+          result-binding (assoc :result-binding result-binding)
+
+          join-filter-expressions (assoc :join-filter-expressions join-filter-expressions))))
+
+(sc/defn ^:private add-node :- schema/BetaGraph
+  "Adds a node to the beta graph."
+  [beta-graph :- schema/BetaGraph
+   source-ids :- [sc/Int]
+   target-id :- sc/Int
+   target-node :- (sc/either schema/ConditionNode schema/ProductionNode)]
+
+  ;; Add the production or condition to the network.
+  (let [beta-graph (if (#{:production :query} (:node-type target-node))
+                          (assoc-in beta-graph [:id-to-production-node target-id] target-node)
+                          (assoc-in beta-graph [:id-to-condition-node target-id] target-node))]
+
+
+    ;; Associate the forward and backward edges.
+    (reduce (fn [beta-graph source-id]
+              (let [forward-path [:forward-edges source-id]
+                    forward-previous (get-in beta-graph forward-path)
+                    backward-path [:backward-edges target-id]
+                    backward-previous (get-in beta-graph backward-path)]
+                (-> beta-graph
+                    (assoc-in
+                     forward-path
+                     (if forward-previous
+                       (conj forward-previous target-id)
+                       #{target-id}))
+                    (assoc-in
+                     backward-path
+                     (if backward-previous
+                       (conj backward-previous source-id)
+                       #{source-id})))))
+
+            beta-graph
+            source-ids)))
+
+
+(declare add-production)
+
+(sc/defn ^:private extract-negation :-  {:new-expression schema/Condition
+                                         :beta-with-negations schema/BetaGraph}
+
+  "Extracts complex, nested negations and adds a rule to the beta graph to trigger the returned
+   negation expression."
+  [previous-expressions :- [schema/Condition]
+   expression :- schema/Condition
+   parent-ids :- [sc/Int]
+   ancestor-bindings :- #{sc/Keyword}
+   beta-graph :- schema/BetaGraph
+   production :- schema/Production
+   create-id-fn]
+
+  (if (and (= :not (first expression))
+           (sequential? (second expression))
+           (#{:and :or :not} (first (second expression))))
+
+    ;; Dealing with a compound negation, so extract it out.
+    (let [negation-expr (second expression)
+          gen-rule-name (str (or (:name production)
+                                 (gensym "gen-rule"))
+                             "__"
+                             (gensym))
+
+          modified-expression `[:not {:type ~(if (compiling-cljs?)
+                                               'clara.rules.engine/NegationResult
+                                               'clara.rules.engine.NegationResult)
+                                      :constraints [(~'= ~gen-rule-name ~'gen-rule-name)]}]
+
+
+
+          generated-rule (cond-> {:name gen-rule-name
+                                  :lhs (concat previous-expressions [negation-expr])
+                                  :rhs `(clara.rules/insert! (eng/->NegationResult ~gen-rule-name))}
+
+                           ;; Propagate properties like salience to the generated production.
+                           (:props production) (assoc :props (:props production))
 
                                ;; Propagate the the environment (such as local bindings) if applicable.
-                               (:env production) (assoc :env (:env production)))]
+                           (:env production) (assoc :env (:env production)))
 
-          (recur (conj previous-expressions modified-expression)
-                 remaining-expressions
-                 (conj generated-rules generated-rule)))
-
-        ;; next-expression wasn't a compound negation, so move on.
-        (recur (conj previous-expressions next-expression)
-               remaining-expressions
-               generated-rules))
-
-      {:new-lhs previous-expressions
-       :generated-rules generated-rules})))
-
-(defn- get-conds
-  "Returns a sequence of [condition environment] tuples and their corresponding productions."
-  [production]
-
-  (binding [*compile-ctx* {:production production}]
-    (let [{:keys [new-lhs generated-rules]} (extract-negations production)
-
-          ;; Add implied and
-          lhs-expression (into [:and] new-lhs)
-          expression  (to-dnf lhs-expression)
-          disjunctions (if (= :or (first expression))
-                         (rest expression)
-                         [expression])]
-
-      (into
-
-       ;; If any new rules were generated for complex negations,
-       ;; process and include them in the result.
-       (mapcat get-conds generated-rules)
-
-       ;; Now we've split the production into one ore more disjunctions that
-       ;; can be processed independently. Commonality between disjunctions will
-       ;; be merged when building the Rete network.
-       (for [disjunction disjunctions
-
-           :let [conditions (if (and (sequential? disjunction)
-                                     (= :and (first disjunction)))
-                              (rest disjunction)
-                              [disjunction])
-
-                   ;; Convert exists operators to accumulator and a test.
-                   conditions (extract-exists conditions)
-
-                   sorted-conditions (sort-conditions conditions)
-
-                   ;; Attach the conditions environment. TODO: narrow environment to those used?
-                   conditions-with-env (for [condition sorted-conditions]
-                                         [condition (:env production)])]]
-
-         [conditions-with-env production])))))
+          ;; Add the generated rule to the beta network.
 
 
-(sc/defn to-beta-tree :- [schema/BetaNode]
-  "Convert a sequence of rules and/or queries into a beta tree. Returns each root."
+          beta-with-negations (add-production generated-rule beta-graph create-id-fn)]
+
+      {:new-expression modified-expression
+       :beta-with-negations beta-with-negations})
+
+    ;; The expression wasn't a negation, so return the previous content.
+    {:new-expression expression
+     :beta-with-negations beta-graph}))
+
+;; A beta graph with no nodes.
+(def ^:private empty-beta-graph {:forward-edges {}
+                                 :backward-edges {}
+                                 :id-to-condition-node {0 ::root-condition}
+                                 :id-to-production-node {}})
+
+(sc/defn ^:private add-conjunctions :- {:beta-graph schema/BetaGraph
+                                        :new-ids [sc/Int]
+                                        :bindings #{sc/Keyword}}
+
+  "Adds a sequence of conjunctions to the graph in a parent-child relationship."
+
+  [conjunctions :- [schema/Condition]
+   parent-ids :- [sc/Int]
+   env :- (sc/maybe {sc/Keyword sc/Any})
+   ancestor-bindings :- #{sc/Keyword}
+   beta-graph :- schema/BetaGraph
+   create-id-fn]
+
+  (loop [beta-graph beta-graph
+         parent-ids parent-ids
+         bindings ancestor-bindings
+         [expression & remaining-expressions] conjunctions]
+
+    (if expression
+
+      (let [node (condition-to-node expression env bindings)
+
+            {:keys [result-binding fact-binding]} expression
+
+            all-bindings (cond-> (s/union bindings (:used-bindings node))
+                           result-binding (conj result-binding)
+                           fact-binding (conj fact-binding))
+
+            ;; Find children that all parent nodes have.
+            common-children-ids (apply s/union (-> (:forward-edges beta-graph)
+                                                   (select-keys parent-ids)
+                                                   (vals)))
+
+
+            id-to-condition-nodes (:id-to-condition-node beta-graph)
+
+            ;; Find an id for an equivalent node.
+            existing-id (first (for [child-id common-children-ids
+                                     :when (= node (get id-to-condition-nodes child-id))]
+                                 child-id))
+
+            ;; Use the existing id or create a new one.
+            node-id (or existing-id
+                        (create-id-fn))
+
+            graph-with-node (add-node beta-graph parent-ids node-id node)]
+
+
+        (recur graph-with-node
+               [node-id]
+               all-bindings
+               remaining-expressions))
+
+      ;; No expressions remaining, so return the structure.
+      {:beta-graph beta-graph
+       :new-ids parent-ids
+       :bindings bindings})))
+
+(sc/defn ^:private add-production  :- schema/BetaGraph
+  "Adds a production to the graph of beta nodes."
+  [production :- schema/Production
+   beta-graph :- schema/BetaGraph
+   create-id-fn]
+
+  ;; Flatten conditions, removing an extraneous ands so we can process them independently.
+  (let [flattened-conditions (for [condition (:lhs production)
+                                   child-condition (if (#{'and :and} (first condition))
+                                                     (rest condition)
+                                                     [condition])]
+
+                               child-condition)
+
+        sorted-conditions (sort-conditions flattened-conditions)]
+
+    (loop [previous-conditions []
+           [current-condition & remaining-conditions] sorted-conditions
+           parent-ids [0]
+           ancestor-bindings #{}
+           beta-graph beta-graph]
+
+      (if current-condition
+
+        (let [{:keys [new-expression beta-with-negations]}
+              (extract-negation previous-conditions
+                                current-condition
+                                parent-ids
+                                ancestor-bindings
+                                beta-graph
+                                production
+                                create-id-fn)
+
+              condition (or new-expression
+                            current-condition)
+
+              ;; Extract disjunctions from the condition.
+              dnf-expression (to-dnf condition)
+
+              ;; Get a sequence of disjunctions.
+              disjunctions (for [expression
+                                 (if (= :or (first dnf-expression)) ; Ignore top-level or in DNF.
+                                   (rest dnf-expression)
+                                   [dnf-expression])]
+
+                             (if (= :and (first expression)) ; Ignore nested ands in DNF.
+                               (rest expression)
+                               [expression]))
+
+              {beta-with-nodes :beta-graph new-ids :new-ids all-bindings :bindings}
+              (reduce (fn [previous-result conjunctions]
+
+                        ;; Get the beta graph, new identifiers, and complete bindings
+                        (let [;; Convert exists operations to accumulator and test nodes.
+                              exists-extracted (extract-exists conjunctions)
+
+                              ;; Compute the new beta graph, ids, and bindings with the expressions.
+                              new-result (add-conjunctions exists-extracted
+                                                           parent-ids
+                                                           (:env production)
+                                                           ancestor-bindings
+                                                           (:beta-graph previous-result)
+                                                           create-id-fn)]
+
+                          ;; Combine the newly created beta graph, node ids, and bindings
+                          ;; for use in descendent nodes.
+                          {:beta-graph (:beta-graph new-result)
+                           :new-ids (into (:new-ids previous-result) (:new-ids new-result))
+                           :bindings (set/union (:bindings previous-result)
+                                                (:bindings new-result)) }
+                          ))
+
+                      ;; Initial reduce value, combining previous graph, parent ids, and ancestor variable bindings.
+                      {:beta-graph beta-with-negations
+                       :new-ids []
+                       :bindings ancestor-bindings}
+
+                      ;; Each disjunction contains a sequence of conjunctions.
+                      disjunctions)]
+
+          (recur (conj previous-conditions current-condition)
+                 remaining-conditions
+                 new-ids
+                 all-bindings
+                 beta-with-nodes))
+
+        ;; No more conditions to add, so connect the production.
+        (add-node beta-graph
+                  parent-ids
+                  (create-id-fn)
+                  (if (:rhs production)
+                    {:node-type :production
+                     :production production
+                     :bindings ancestor-bindings}
+                    {:node-type :query
+                     :query production}))))))
+
+
+(sc/defn to-beta-graph :- schema/BetaGraph
+
+  "Produces a description of the beta network."
   [productions :- [schema/Production]]
-  (let [conditions (mapcat get-conds productions)
 
-        raw-roots (reduce
-                   (fn [beta-roots [conditions production]]
-                    (add-to-beta-tree beta-roots conditions #{} production))
-                   []
-                   conditions)
+  (let [id-counter (atom 0)
+        create-id-fn (fn [] (swap! id-counter inc))]
 
-        nodes (for [root raw-roots
-                    node (tree-seq :children :children root)]
-                node)
+    (reduce (fn [beta-graph production]
+              (add-production production beta-graph create-id-fn))
 
-        ;; Sort nodes so the same id is assigned consistently,
-        ;; then map the to corresponding ids.
-        nodes-to-id (zipmap
-                     nodes
-                     (range))
+            empty-beta-graph
+            productions)))
 
-        ;; Anonymous function to walk the nodes and
-        ;; assign identifiers to them.
-        assign-ids-fn (fn assign-ids [node]
-                        (if (:children node)
-                          (merge node
-                                 {:id (nodes-to-id node)
-                                  :children (map assign-ids (:children node))})
-                          (assoc node :id (nodes-to-id node))))]
+(sc/defn ^:private compile-node
+  "Compiles a given node description into a node usable in the network with the
+   given children."
+  [beta-node :- (sc/either schema/ConditionNode schema/ProductionNode)
+   id :- sc/Int
+   is-root :- sc/Bool
+   children :- [sc/Any]
+   compile-expr ] ; Function to do the evaluation.
 
-    ;; Assign IDs to the roots and return them.
-    (map assign-ids-fn raw-roots)))
+  (let [{:keys [condition production query join-bindings]} beta-node
 
-(sc/defn to-alpha-tree :- [schema/AlphaNode]
+        condition (if (symbol? condition)
+                    (.loadClass (clojure.lang.RT/makeClassLoader) (name condition))
+                    condition)]
+
+    (case (:node-type beta-node)
+
+      :join
+      ;; Use an specialized root node for efficiency in this case.
+      (if is-root
+        (eng/->RootJoinNode
+         id
+         condition
+         children
+         join-bindings)
+        ;; If the join operation includes arbitrary expressions
+        ;; that can't expressed as a hash join, we must use the expressions
+        (if (:join-filter-expressions beta-node)
+          (eng/->ExpressionJoinNode
+           id
+           condition
+           (binding [*compile-ctx* {:condition condition
+                                    :join-filter-expressions (:join-filter-expressions beta-node)
+                                    :env (:env beta-node)
+                                    :msg "compiling expression join node"}]
+             (compile-expr id
+                           (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node))))
+           children
+           join-bindings)
+          (eng/->HashJoinNode
+           id
+           condition
+           children
+           join-bindings)))
+
+      :negation
+      ;; Check to see if the negation includes an
+      ;; expression that must be joined to the incoming token
+      ;; and use the appropriate node type.
+      (if (:join-filter-expressions beta-node)
+
+        (eng/->NegationWithJoinFilterNode
+         id
+         condition
+         (binding [*compile-ctx* {:condition condition
+                                  :join-filter-expressions (:join-filter-expressions beta-node)
+                                  :env (:env beta-node)
+                                  :msg "compiling negation with join filter node"}]
+           (compile-expr id
+                         (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node))))
+         children
+         join-bindings)
+
+        (eng/->NegationNode
+         id
+         condition
+         children
+         join-bindings))
+
+      :test
+      (eng/->TestNode
+       id
+       (binding [*compile-ctx* {:condition condition
+                                :env (:env beta-node)
+                                :msg "compiling test node"}]
+         (compile-expr id
+                       (compile-test (:constraints condition))))
+       children)
+
+      :accumulator
+      ;; We create an accumulator that accepts the environment for the beta node
+      ;; into its context, hence the function with the given environment.
+      (let [compiled-node (binding [*compile-ctx* {:condition condition
+                                                   :accumulator (:accumulator beta-node)
+                                                   :env (:env beta-node)
+                                                   :msg "compiling accumulator"}]
+                            (compile-expr id
+                                          (compile-accum (:accumulator beta-node) (:env beta-node))))
+            compiled-accum (compiled-node (:env beta-node))]
+
+        ;; Ensure the compiled accumulator has the expected structure
+        (when (not (instance? Accumulator compiled-accum))
+          (throw (IllegalArgumentException. (str (:accumulator beta-node) " is not a valid accumulator."))))
+
+        ;; If a non-equality unification is in place, compile the predicate and use
+        ;; the specialized accumulate node.
+
+        (if (:join-filter-expressions beta-node)
+
+          (eng/->AccumulateWithJoinFilterNode
+           id
+           ;; Create an accumulator structure for use when examining the node or the tokens
+           ;; it produces.
+           {:accumulator (:accumulator beta-node)
+            ;; Include the original filter expressions in the constraints for inspection tooling.
+            :from (update-in condition [:constraints]
+                             into (-> beta-node :join-filter-expressions :constraints))}
+           compiled-accum
+           (binding [*compile-ctx* {:condition condition
+                                    :join-filter-expressions (:join-filter-expressions beta-node)
+                                    :env (:env beta-node)
+                                    :msg "compiling accumulate with join filter node"}]
+             (compile-expr id
+                           (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node))))
+           (:result-binding beta-node)
+           children
+           join-bindings)
+
+          ;; All unification is based on equality, so just use the simple accumulate node.
+          (eng/->AccumulateNode
+           id
+           ;; Create an accumulator structure for use when examining the node or the tokens
+           ;; it produces.
+           {:accumulator (:accumulator beta-node)
+            :from condition}
+           compiled-accum
+           (:result-binding beta-node)
+           children
+           join-bindings)))
+
+      :production
+      (eng/->ProductionNode
+       id
+       production
+       (binding [*file* (:file (meta (:rhs production)))
+                 *compile-ctx* {:production production
+                                :msg "compiling production node"}]
+         (compile-expr id
+                       (with-meta (compile-action (:bindings beta-node)
+                                                  (:rhs production)
+                                                  (:env production))
+                         (meta (:rhs production))))))
+
+      :query
+      (eng/->QueryNode
+       id
+       query
+       (:params query)))))
+
+(sc/defn ^:private compile-beta-graph :- {sc/Int sc/Any}
+  "Compile the beta description to the nodes used at runtime."
+  [{:keys [id-to-production-node id-to-condition-node forward-edges backward-edges]} :- schema/BetaGraph]
+  (let [;; A local, memoized function that ensures that the same expression of
+        ;; a given node :id is only compiled into a single function.
+        ;; This prevents redundant compilation and avoids having a Rete node
+        ;; :id that has had its expressions compiled into different
+        ;; compiled functions.
+        compile-expr (memoize (fn [id expr] (try-eval expr)))
+
+        ;; Sort the ids to compile based on dependencies.
+        ids-to-compile (loop [pending-ids (into #{} (concat (keys id-to-production-node) (keys id-to-condition-node)))
+                              node-deps forward-edges
+                              sorted-nodes []]
+
+                         (if (empty? pending-ids)
+                           sorted-nodes
+
+                           (let [newly-satisfied-ids (into #{}
+                                                           (for [pending-id pending-ids
+                                                                 :when (empty? (get node-deps pending-id))]
+                                                             pending-id))
+
+                                 updated-edges (into {} (for [[dependent-id dependencies]  node-deps]
+                                                          [dependent-id (s/difference dependencies newly-satisfied-ids)]))]
+
+                             (recur (s/difference pending-ids newly-satisfied-ids)
+                                    updated-edges
+                                    (concat sorted-nodes newly-satisfied-ids)))))]
+
+    (reduce (fn [id-to-compiled-nodes id-to-compile]
+
+              ;; Get the condition or production node to compile
+              (let [node-to-compile (get id-to-condition-node
+                                         id-to-compile
+                                         (get id-to-production-node id-to-compile))
+
+                    ;; Get the children.
+                    children (->> (get forward-edges id-to-compile)
+                                 (select-keys id-to-compiled-nodes)
+                                 (vals))]
+
+                ;; Sanity check for our logic...
+                (assert (= (count children)
+                           (count (get forward-edges id-to-compile)))
+                        "Each child should be compiled.")
+
+                (if (= ::root-condition node-to-compile)
+                  id-to-compiled-nodes
+                  (assoc id-to-compiled-nodes
+                         id-to-compile
+                         (compile-node node-to-compile
+                                       id-to-compile
+                                       ;; 0 is the id of the root node.
+                                       (= #{0} (get backward-edges id-to-compile))
+                                       children
+                                       compile-expr))))
+              )
+            {}
+            ids-to-compile)))
+
+
+(sc/defn to-alpha-graph :- [schema/AlphaNode]
   "Returns a sequence of [condition-fn, [node-ids]] tuples to represent the alpha side of the network."
-  [beta-roots :- [schema/BetaNode]]
+  [beta-graph :- schema/BetaGraph]
 
   ;; Create a sequence of tuples of conditions + env to beta node ids.
-  (let [condition-to-node-ids (for [root beta-roots
-                                    node (tree-seq :children :children root)
+  (let [condition-to-node-ids (for [[id node] (:id-to-condition-node beta-graph)
                                     :when (:condition node)]
-                                [[(:condition node) (:env node)] (:id node)])
+                                [[(:condition node) (:env node)] id])
 
         ;; Merge common conditions together.
         condition-to-node-map (reduce
@@ -981,7 +1287,8 @@
 
        (cond-> {:condition condition
                 :beta-children (distinct node-ids)}
-               env (assoc :env env))))))
+         (seq env) (assoc :env env))))))
+
 
 (sc/defn compile-alpha-nodes :- [{:type sc/Any
                                   :alpha-fn sc/Any ;; TODO: is a function...
@@ -1002,180 +1309,16 @@
                                                fact-binding env)
                                      (meta condition))))
              :children beta-children}
-            env (assoc :env env))))
-
-(sc/defn compile-beta-tree
-  "Compile the beta tree to the nodes used at runtime."
-  [beta-nodes  :- [schema/BetaNode]]
-  (let [;; A local, memoized function that ensures that the same expression of
-        ;; a given node :id is only compiled into a single function.
-        ;; This prevents redundant compilation and avoids having a Rete node
-        ;; :id that has had its expressions compiled into different
-        ;; compiled functions.
-        compile-expr (memoize (fn [id expr] (try-eval expr)))
-        compile-beta-tree
-        (fn compile-beta-tree [beta-nodes parent-bindings is-root]
-          (vec
-           (for [beta-node beta-nodes
-                 :let [{:keys [condition children id production query join-bindings]} beta-node
-
-                       ;; If the condition is symbol, attempt to resolve the clas it belongs to.
-                       condition (if (symbol? condition)
-                                   (.loadClass (clojure.lang.RT/makeClassLoader) (name condition))
-                                   condition)
-
-                       constraint-bindings (variables-as-keywords (:constraints condition))
-
-                       ;; Get all bindings from the parent, condition, and returned fact.
-                       all-bindings (cond-> (s/union parent-bindings constraint-bindings)
-                                      ;; Optional fact binding from a condition.
-                                      (:fact-binding condition) (conj (:fact-binding condition))
-                                      ;; Optional accumulator result.
-                                      (:result-binding beta-node) (conj (:result-binding beta-node)))]]
-
-             (case (:node-type beta-node)
-
-               :join
-               ;; Use an specialized root node for efficiency in this case.
-               (if is-root
-                 (eng/->RootJoinNode
-                  id
-                  condition
-                  (compile-beta-tree children all-bindings false)
-                  join-bindings)
-                 ;; If the join operation includes arbitrary expressions
-                 ;; that can't expressed as a hash join, we must use the expressions
-                 (if (:join-filter-expressions beta-node)
-                   (eng/->ExpressionJoinNode
-                    id
-                    condition
-                    (binding [*compile-ctx* {:condition condition
-                                             :join-filter-expressions (:join-filter-expressions beta-node)
-                                             :env (:env beta-node)
-                                             :msg "compiling expression join node"}]
-                      (compile-expr id
-                                    (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node))))
-                    (compile-beta-tree children all-bindings false)
-                    join-bindings)
-                   (eng/->HashJoinNode
-                    id
-                    condition
-                    (compile-beta-tree children all-bindings false)
-                    join-bindings)))
-
-               :negation
-               ;; Check to see if the negation includes an
-               ;; expression that must be joined to the incoming token
-               ;; and use the appropriate node type.
-               (if (:join-filter-expressions beta-node)
-
-                 (eng/->NegationWithJoinFilterNode
-                  id
-                  condition
-                  (binding [*compile-ctx* {:condition condition
-                                           :join-filter-expressions (:join-filter-expressions beta-node)
-                                           :env (:env beta-node)
-                                           :msg "compiling negation with join filter node"}]
-                    (compile-expr id
-                                  (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node))))
-                  (compile-beta-tree children all-bindings false)
-                  join-bindings)
-
-                 (eng/->NegationNode
-                  id
-                  condition
-                  (compile-beta-tree children all-bindings false)
-                  join-bindings))
-
-               :test
-               (eng/->TestNode
-                id
-                (binding [*compile-ctx* {:condition condition
-                                         :env (:env beta-node)
-                                         :msg "compiling test node"}]
-                  (compile-expr id
-                                (compile-test (:constraints condition))))
-                (compile-beta-tree children all-bindings false))
-
-               :accumulator
-               ;; We create an accumulator that accepts the environment for the beta node
-               ;; into its context, hence the function with the given environment.
-               (let [compiled-node (binding [*compile-ctx* {:condition condition
-                                                            :accumulator (:accumulator beta-node)
-                                                            :env (:env beta-node)
-                                                            :msg "compiling accumulator"}]
-                                     (compile-expr id
-                                                   (compile-accum (:accumulator beta-node) (:env beta-node))))
-                     compiled-accum (compiled-node (:env beta-node))]
-
-                 ;; Ensure the compiled accumulator has the expected structure
-                 (when (not (instance? Accumulator compiled-accum))
-                   (throw (IllegalArgumentException. (str (:accumulator beta-node) " is not a valid accumulator."))))
-
-                 ;; If a non-equality unification is in place, compile the predicate and use
-                 ;; the specialized accumulate node.
-
-                 (if (:join-filter-expressions beta-node)
-
-                   (eng/->AccumulateWithJoinFilterNode
-                    id
-                    ;; Create an accumulator structure for use when examining the node or the tokens
-                    ;; it produces.
-                    {:accumulator (:accumulator beta-node)
-                     ;; Include the original filter expressions in the constraints for inspection tooling.
-                     :from (update-in condition [:constraints]
-                                      into (-> beta-node :join-filter-expressions :constraints))}
-                    compiled-accum
-                    (binding [*compile-ctx* {:condition condition
-                                             :join-filter-expressions (:join-filter-expressions beta-node)
-                                             :env (:env beta-node)
-                                             :msg "compiling accumulate with join filter node"}]
-                      (compile-expr id
-                                    (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node))))
-                    (:result-binding beta-node)
-                    (compile-beta-tree children all-bindings false)
-                    join-bindings)
-
-                   ;; All unification is based on equality, so just use the simple accumulate node.
-                   (eng/->AccumulateNode
-                    id
-                    ;; Create an accumulator structure for use when examining the node or the tokens
-                    ;; it produces.
-                    {:accumulator (:accumulator beta-node)
-                     :from condition}
-                    compiled-accum
-                    (:result-binding beta-node)
-                    (compile-beta-tree children all-bindings false)
-                    join-bindings)))
-
-               :production
-               (eng/->ProductionNode
-                id
-                production
-                (binding [*file* (:file (meta (:rhs production)))
-                          *compile-ctx* {:production production
-                                         :msg "compiling production node"}]
-                  (compile-expr id
-                                (with-meta (compile-action all-bindings
-                                                           (:rhs production)
-                                                           (:env production))
-                                  (meta (:rhs production))))))
-
-               :query
-               (eng/->QueryNode
-                id
-                query
-                (:params query))))))]
-    ;; Start compilation.
-    (compile-beta-tree beta-nodes #{} true)))
+      env (assoc :env env))))
 
 (sc/defn build-network
   "Constructs the network from compiled beta tree and condition functions."
-  [beta-roots alpha-fns productions]
+  [id-to-node :- {sc/Int sc/Any}
+   beta-roots
+   alpha-fns
+   productions]
 
-  (let [beta-nodes (for [root beta-roots
-                         node (tree-seq :children :children root)]
-                     node)
+  (let [beta-nodes (vals id-to-node)
 
         production-nodes (for [node beta-nodes
                                :when (= ProductionNode (type node))]
@@ -1191,10 +1334,6 @@
                                  entry [[(:query query-node) query-node]
                                         [(:name (:query query-node)) query-node]]]
                              entry))
-
-        ;; Map of node ids to beta nodes.
-        id-to-node (into {} (for [node beta-nodes]
-                                 [(:id node) node]))
 
         ;; type, alpha node tuples.
         alpha-nodes (for [{:keys [type alpha-fn children env]} alpha-fns
@@ -1277,10 +1416,12 @@
   "Compile the rules into a rete network and return the given session."
   [productions :- [schema/Production]
    options :- {sc/Keyword sc/Any}]
-  (let [beta-struct (to-beta-tree productions)
-        beta-tree (compile-beta-tree beta-struct)
-        alpha-nodes (compile-alpha-nodes (to-alpha-tree beta-struct))
-        rulebase (build-network beta-tree alpha-nodes productions)
+  (let [beta-graph (to-beta-graph productions)
+        beta-tree (compile-beta-graph beta-graph)
+        beta-root-ids (-> beta-graph :forward-edges (get 0)) ; 0 is the id of the virtual root node.
+        beta-roots (vals (select-keys beta-tree beta-root-ids))
+        alpha-nodes (compile-alpha-nodes (to-alpha-graph beta-graph))
+        rulebase (build-network beta-tree beta-roots alpha-nodes productions)
         transport (LocalTransport.)
 
         ;; The fact-type uses Clojure's type function unless overridden.

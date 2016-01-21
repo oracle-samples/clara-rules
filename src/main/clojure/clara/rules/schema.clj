@@ -65,8 +65,7 @@
    (s/optional-key :props) {s/Keyword s/Any}
    (s/optional-key :env) {s/Keyword s/Any}
    :lhs [Condition]
-   :rhs s/Any
-   })
+   :rhs s/Any})
 
 (def Query
   {(s/optional-key :name) s/Str
@@ -74,8 +73,7 @@
    (s/optional-key :props) {s/Keyword s/Any}
    (s/optional-key :env) {s/Keyword s/Any}
    :lhs [Condition]
-   :params #{s/Keyword}
-   })
+   :params #{s/Keyword}})
 
 (def Production
   (s/conditional
@@ -85,76 +83,41 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Schema for the Rete network itself.
 
-(declare BetaNode)
-
-(def JoinNode
-  {:node-type (s/enum :join)
-   :id s/Num
+(def ConditionNode
+  {:node-type (s/enum :join :negation :test :accumulator)
    :condition LeafCondition
-   :join-bindings #{s/Keyword}
-   (s/optional-key :join-filter-expressions) LeafCondition
-   (s/optional-key :env) {s/Keyword s/Any}
-   :children  [(s/recursive #'BetaNode)]})
 
-(def NegationNode
-  {:node-type (s/enum :negation)
-   :id s/Num
-   :condition LeafCondition
-   (s/optional-key :join-filter-expressions) LeafCondition
-   :join-bindings #{s/Keyword}
+   ;; Captured environment in which the condition was defined, like closed variables.
+   ;; Most rules (such as those defined by defrule) have no surrounding
+   ;; environment, but user generated rules might.
    (s/optional-key :env) {s/Keyword s/Any}
-   :children  [(s/recursive #'BetaNode)]})
 
-(def TestNode
-  {:node-type (s/enum :test)
-   :id s/Num
-   :condition TestCondition
-   (s/optional-key :env) {s/Keyword s/Any}
-   :children  [(s/recursive #'BetaNode)]})
+   ;; Variables used to join to other expressions in the network.
+   (s/optional-key :join-bindings) #{s/Keyword}
 
-(def AccumulatorNode
-  {:node-type (s/eq :accumulator)
-   :id s/Num
-   :condition LeafCondition
+   ;; All bindings used by this condition.
+   :used-bindings #{s/Keyword}
+
+   ;; An expression used to filter joined data.
    (s/optional-key :join-filter-expressions) LeafCondition
-   :accumulator s/Any
-   (s/optional-key :env) {s/Keyword s/Any}
-   :join-bindings #{s/Keyword}
-   (s/optional-key :result-binding) s/Keyword
-   :children  [(s/recursive #'BetaNode)]})
+
+   ;; The expression to create the accumulator.
+   (s/optional-key :accumulator) s/Any
+
+   ;; The optional fact or accumulator result binding.
+   (s/optional-key :result-binding) s/Keyword})
 
 (def ProductionNode
-  {:node-type (s/eq :production)
-   :id s/Num
-   :production Production })
+  {:node-type (s/enum :production :query)
 
-(def QueryNode
-  {:node-type (s/eq :query)
-   :id s/Num
-   :query Query})
+   ;; Rule for rule nodes.
+   (s/optional-key :production) Rule
 
-;; Beta network schema.
-(def BetaNode
+   ;; Query for query nodes.
+   (s/optional-key :query) Query
 
-  (s/conditional
-
-   #(= (:node-type %) :join)
-   JoinNode
-
-   #(= (:node-type %) :negation)
-   NegationNode
-
-   #(= (:node-type %) :test)
-   TestNode
-
-   #(= (:node-type %) :accumulator)
-   AccumulatorNode
-
-   #(= (:node-type %) :production)
-   ProductionNode
-
-   #(= (:node-type %) :query)
-   QueryNode))
+   ;; Bindings used in the rule right-hand side.
+   (s/optional-key :bindings) #{s/Keyword}})
 
 ;; Alpha network schema.
 (def AlphaNode
@@ -163,3 +126,18 @@
    (s/optional-key :env) {s/Keyword s/Any}
    ;; IDs of the beta nodes that are the children.
    :beta-children [s/Num]})
+
+;; A graph representing the beta side of the rete network.
+(def BetaGraph
+  {;; Edges from parent to child nodes.
+   :forward-edges {s/Int #{s/Int}}
+
+   ;; Edges from child to parent nodes.
+   :backward-edges {s/Int #{s/Int}}
+
+   ;; Map of identifier to condition nodes.
+   :id-to-condition-node {s/Int (s/either (s/eq :clara.rules.compiler/root-condition)
+                                          ConditionNode)}
+
+   ;; Map of identifier to query or rule nodes.
+   :id-to-production-node {s/Int ProductionNode}})
