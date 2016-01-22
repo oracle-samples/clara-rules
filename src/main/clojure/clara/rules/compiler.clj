@@ -739,6 +739,17 @@
                    accumulator (:from condition)
                    :default condition)
 
+        ;; Convert a test within a negation to a negation of the test. This is necessary
+        ;; because negation nodes expect an additional condition to match against.
+        [node-type condition] (if (and (= node-type :negation)
+                                       (= :test (condition-type condition)))
+
+                                ;; Create a negated version of our test condition.
+                                [:test {:constraints [(list 'not (cons 'and (:constraints condition)))]}]
+
+                                ;; This was not a test within a negation, so keep the previous values.
+                                [node-type condition])
+
         ;; Get the non-equality unifications so we can handle them
         join-filter-expressions (if (and (or (= :accumulator node-type)
                                              (= :negation node-type)

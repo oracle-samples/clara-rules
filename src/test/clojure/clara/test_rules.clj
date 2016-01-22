@@ -1915,6 +1915,27 @@
     (is (= #{ {:?t1 10, :?t2 15}}
            (set (query session distinct-temps-query))))))
 
+(deftest test-test-in-negation
+
+  (let [not-different-temps (dsl/parse-query
+                             []
+                             [[Temperature (= ?a location)]
+                              [WindSpeed (= ?b location)]
+                              [:not [:test (= ?a ?b)]]])
+
+        session (mk-session [not-different-temps])]
+
+    (is (empty? (-> session
+                    (insert (->Temperature 10 "MCI")
+                            (->WindSpeed 10 "MCI"))
+                    (query not-different-temps))))
+
+    (is (= [{:?a "MCI" :?b "ORD"}]
+           (-> session
+               (insert (->Temperature 10 "MCI")
+                       (->WindSpeed 10 "ORD"))
+               (query not-different-temps))))))
+
 (deftest test-bean-support
 
   ;; Use TimeZone for this test as it is an available JavaBean-like object.
