@@ -3247,3 +3247,60 @@
                 first)]
     (is (= {:?t temp}
            res))))
+
+(deftest test-non-binding-equality
+  (let [temps-with-addition (dsl/parse-query [] [[Temperature (= ?t1 temperature)
+                                                              (= "MCI" location )]
+                                                 [Temperature (= ?t2 temperature)
+                                                              (= ?foo (+ 20 ?t1))
+                                                              (= "SFO" location)]
+                                                 [Temperature (= ?t3 temperature)
+                                                              (= ?foo (+ 10 ?t2))
+                                                              (= "ORD" location)]])
+
+        temps-with-negation (dsl/parse-query [] [[Temperature (= ?t1 temperature)
+                                                              (= "MCI" location )]
+                                                 [Temperature (= ?t2 temperature)
+                                                              (= ?foo (+ 20 ?t1))
+                                                              (= "SFO" location)]
+                                                 [:not [Temperature (= ?t3 temperature)
+                                                              (= ?foo (+ 10 ?t2))
+                                                              (= "ORD" location)]]])
+
+
+
+        session  (-> (mk-session [temps-with-addition temps-with-negation] :cache false)
+                     (fire-rules))]
+
+    ;; Test a match.
+    (is (= [{:?t3 30, :?t2 20, :?t1 10, :?foo 30}]
+           (-> session
+               (insert (->Temperature 10 "MCI")
+                       (->Temperature 20 "SFO")
+                       (->Temperature 30 "ORD"))
+               (fire-rules)
+               (query temps-with-addition))))
+
+    ;; Test if not all conditions are satisfied.
+    (is (empty? (-> session
+                    (insert (->Temperature 10 "MCI")
+                            (->Temperature 21 "SFO")
+                            (->Temperature 30 "ORD"))
+                    (fire-rules)
+                    (query temps-with-addition))))
+
+    ;; Test if there is a negated element.
+    (is (empty? (-> session
+                    (insert (->Temperature 10 "MCI")
+                            (->Temperature 20 "SFO")
+                            (->Temperature 30 "ORD"))
+                    (fire-rules)
+                    (query temps-with-negation))))
+
+    ;; Test there is a match when the negated element does not exist.
+    (is (= [{:?t2 20, :?t1 10, :?foo 30}]
+           (-> session
+               (insert (->Temperature 10 "MCI")
+                       (->Temperature 20 "SFO"))
+               (fire-rules)
+               (query temps-with-negation))))))

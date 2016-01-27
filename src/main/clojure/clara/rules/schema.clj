@@ -95,11 +95,15 @@
    ;; Variables used to join to other expressions in the network.
    (s/optional-key :join-bindings) #{s/Keyword}
 
-   ;; All bindings used by this condition.
+   ;; Variable bindings used by expressions in this node.
    :used-bindings #{s/Keyword}
 
    ;; An expression used to filter joined data.
    (s/optional-key :join-filter-expressions) LeafCondition
+
+   ;; Bindings used to perform non-hash joins in the join filter expression.
+   ;; this is a subset of :used-bindings.
+   (s/optional-key :join-filter-join-bindings) #{s/Keyword}
 
    ;; The expression to create the accumulator.
    (s/optional-key :accumulator) s/Any

@@ -200,50 +200,58 @@
                         edata
                         e))))))
 
-(defn- compile-constraints [exp-seq]
-  (if (empty? exp-seq)
-    `((deref ~'?__bindings__))
-    (let [ [exp & rest-exp] exp-seq
-           compiled-rest (compile-constraints rest-exp)
-           variables (into #{}
-                           (filter (fn [item]
-                                     (and (symbol? item)
-                                          (= \? (first (name item)))))
-                                   exp))
-           expression-values (remove variables (rest exp))
-           binds-variables? (and (equality-expression? exp)
-                                 (seq variables))]
-      (when (and binds-variables?
-                 (empty? expression-values))
+(defn- compile-constraints
+  "Compiles a sequence of constraints into a structure that can be evaluated.
 
-        (throw (ex-info (str "Malformed variable binding for " variables ". No associated value.")
-                        {:variables (map keyword variables)})))
+   Callers may also pass a collection of equality-only-variables, which instructs
+   this function to only do an equality check on them rather than create a unification binding."
+  ([exp-seq]
+   (compile-constraints exp-seq #{}))
+  ([exp-seq equality-only-variables]
+   (if (empty? exp-seq)
+     `((deref ~'?__bindings__))
+     (let [ [exp & rest-exp] exp-seq
+            compiled-rest (compile-constraints rest-exp equality-only-variables)
+            variables (into #{}
+                            (filter (fn [item]
+                                      (and (symbol? item)
+                                           (= \? (first (name item)))
+                                           (not (equality-only-variables item))))
+                                    exp))
+            expression-values (remove variables (rest exp))
+            binds-variables? (and (equality-expression? exp)
+                                  (seq variables))]
+       (when (and binds-variables?
+                  (empty? expression-values))
 
-      (if binds-variables?
+         (throw (ex-info (str "Malformed variable binding for " variables ". No associated value.")
+                         {:variables (map keyword variables)})))
 
-        (concat
+       (if binds-variables?
 
-         ;; Bind each variable with the first value we encounter.
-         ;; The additional equality checks are handled below so which value
-         ;; we bind to is not important. So an expression like (= ?x value-1 value-2) will
-         ;; bind ?x to value-1, and then ensure value-1 and value-2 are equal below.
-         (for [variable variables]
-           `(swap! ~'?__bindings__ assoc ~(keyword variable) ~(first expression-values)))
+         (concat
 
-         ;; If there is more than one expression value, we need to ensure they are
-         ;; equal as well as doing the bind. This ensures that value-1 and value-2 are
-         ;; equal.
-         (if (> (count expression-values) 1)
+          ;; Bind each variable with the first value we encounter.
+          ;; The additional equality checks are handled below so which value
+          ;; we bind to is not important. So an expression like (= ?x value-1 value-2) will
+          ;; bind ?x to value-1, and then ensure value-1 and value-2 are equal below.
+          (for [variable variables]
+            `(swap! ~'?__bindings__ assoc ~(keyword variable) ~(first expression-values)))
+
+          ;; If there is more than one expression value, we need to ensure they are
+          ;; equal as well as doing the bind. This ensures that value-1 and value-2 are
+          ;; equal.
+          (if (> (count expression-values) 1)
 
 
-           (list (list 'if (cons '= expression-values) (cons 'do compiled-rest) nil))
-           ;; No additional values to check, so move on to the rest of
-           ;; the expression
-           compiled-rest))
+            (list (list 'if (cons '= expression-values) (cons 'do compiled-rest) nil))
+            ;; No additional values to check, so move on to the rest of
+            ;; the expression
+            compiled-rest))
 
-        ;; No variables to unify, so simply check the expression and
-        ;; move on to the rest.
-        (list (list 'if exp (cons 'do compiled-rest) nil))))))
+         ;; No variables to unify, so simply check the expression and
+         ;; move on to the rest.
+         (list (list 'if exp (cons 'do compiled-rest) nil)))))))
 
 (defn flatten-expression
   "Flattens expression as clojure.core/flatten does, except will flatten
@@ -345,7 +353,7 @@
   "Compiles to a predicate function that ensures the given items can be unified. Returns a ready-to-eval
    function that accepts a token, a fact, and an environment, and returns truthy if the given fact satisfies
    the criteria."
-  [{:keys [type constraints args] :as unification-condition} env]
+  [{:keys [type constraints args] :as unification-condition} ancestor-bindings env]
   (let [accessors (get-fields type)
 
         binding-keys (variables-as-keywords constraints)
@@ -369,14 +377,17 @@
 
         assignments (concat
                      fact-assignments
-                     token-assignments)]
+                     token-assignments)
+
+        equality-only-variables (into #{} (for [binding ancestor-bindings]
+                                            (symbol (name (keyword binding)))))]
 
     `(fn [~'?__token__
          ~(add-meta '?__fact__ type)
           ~destructured-env]
        (let [~@assignments
              ~'?__bindings__ (atom {})]
-         (do ~@(compile-constraints constraints))))))
+         (do ~@(compile-constraints constraints equality-only-variables))))))
 
 (defn- expr-type [expression]
   (if (map? expression)
@@ -774,12 +785,16 @@
                     condition)
 
         ;; Variables used in the condition.
-        cond-bindings (variables-as-keywords (:constraints condition))]
+        cond-bindings (variables-as-keywords (:constraints condition))
+
+        join-filter-bindings (if join-filter-expressions
+                               (variables-as-keywords join-filter-expressions)
+                               nil)]
 
         (cond->
             {:node-type node-type
              :condition condition
-             :used-bindings cond-bindings}
+             :used-bindings (s/union cond-bindings join-filter-bindings)}
 
           (seq env) (assoc :env env)
 
@@ -790,7 +805,9 @@
 
           result-binding (assoc :result-binding result-binding)
 
-          join-filter-expressions (assoc :join-filter-expressions join-filter-expressions))))
+          join-filter-expressions (assoc :join-filter-expressions join-filter-expressions)
+
+          join-filter-bindings (assoc :join-filter-join-bindings (s/intersection join-filter-bindings parent-bindings)))))
 
 (sc/defn ^:private add-node :- schema/BetaGraph
   "Adds a node to the beta graph."
@@ -1094,7 +1111,9 @@
                                     :env (:env beta-node)
                                     :msg "compiling expression join node"}]
              (compile-expr id
-                           (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node))))
+                           (compile-join-filter (:join-filter-expressions beta-node)
+                                                (:join-filter-join-bindings beta-node)
+                                                (:env beta-node))))
            children
            join-bindings)
           (eng/->HashJoinNode
@@ -1117,7 +1136,9 @@
                                   :env (:env beta-node)
                                   :msg "compiling negation with join filter node"}]
            (compile-expr id
-                         (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node))))
+                         (compile-join-filter (:join-filter-expressions beta-node)
+                                              (:join-filter-join-bindings beta-node)
+                                              (:env beta-node))))
          children
          join-bindings)
 
@@ -1171,7 +1192,9 @@
                                     :env (:env beta-node)
                                     :msg "compiling accumulate with join filter node"}]
              (compile-expr id
-                           (compile-join-filter (:join-filter-expressions beta-node) (:env beta-node))))
+                           (compile-join-filter (:join-filter-expressions beta-node)
+                                                (:join-filter-join-bindings beta-node)
+                                                (:env beta-node))))
            (:result-binding beta-node)
            children
            join-bindings)

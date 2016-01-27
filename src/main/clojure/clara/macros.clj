@@ -95,7 +95,9 @@
             `(eng/->ExpressionJoinNode
               ~id
               '~condition
-              ~(com/compile-join-filter (:join-filter-expressions beta-node) {})
+              ~(com/compile-join-filter (:join-filter-expressions beta-node)
+                                        (:join-filter-join-bindings beta-node)
+                                        {})
               ~(gen-beta-network child-ids beta-graph all-bindings)
               ~join-bindings)
             `(eng/->HashJoinNode
@@ -109,7 +111,9 @@
             `(eng/->NegationWithJoinFilterNode
               ~id
               '~condition
-              ~(com/compile-join-filter (:join-filter-expressions beta-node) {})
+              ~(com/compile-join-filter (:join-filter-expressions beta-node)
+                                        (:join-filter-join-bindings beta-node)
+                                        {})
               ~(gen-beta-network child-ids beta-graph all-bindings)
               ~join-bindings)
             `(eng/->NegationNode
@@ -131,7 +135,9 @@
               {:accumulator '~(:accumulator beta-node)
                :from '~condition}
               ~(:accumulator beta-node)
-              ~(com/compile-join-filter (:join-filter-expressions beta-node) {})
+              ~(com/compile-join-filter (:join-filter-expressions beta-node)
+                                        (:join-filter-join-bindings beta-node)
+                                        {})
               ~(:result-binding beta-node)
               ~(gen-beta-network child-ids beta-graph all-bindings)
               ~join-bindings)
