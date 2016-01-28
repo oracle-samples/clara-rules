@@ -645,7 +645,15 @@
 
              constraints (:constraints effective-leaf)
 
-             [bound-variables unbound-variables] (classify-variables constraints)
+             [bound-variables unbound-variables] (if (= :negation (condition-type leaf-condition))
+                                                   ;; Variables used in a negation should be considered
+                                                   ;; unbound since they aren't usable in another condition,
+                                                   ;; so label all variables as unbound.
+                                                   [#{}
+                                                    (apply s/union (classify-variables constraints))]
+
+                                                   ;; It is not a negation, so simply classify variables.
+                                                   (classify-variables constraints))
 
              bound-with-result-bindings (cond-> bound-variables
                                           (:fact-binding effective-leaf) (conj (symbol (name (:fact-binding effective-leaf))))
@@ -662,9 +670,8 @@
           :condition condition
           :is-accumulator (or is-accumulator
                               (= :accumulator
-                                 (condition-type leaf-condition)))}
+                                 (condition-type leaf-condition)))}))
 
-         ))
      {:bound #{}
       :unbound #{}
       :condition condition
@@ -726,6 +733,8 @@
                                    "when an expression uses a previously unbound variable, "
                                    "or if a variable is referenced in a nested part of a parent "
                                    "expression, such as (or (= ?my-expression my-field) ...). " \newline
+                                   "Note that variables used in negations are not bound for subsequent
+                                    rules since the negation can never match." \newline
                                    "Production: " \newline
                                    (:production *compile-ctx*) \newline
                                    "Unbound variables: "
@@ -784,8 +793,13 @@
 
                     condition)
 
+        ;; Variables used in the constraints
+        constraint-bindings (variables-as-keywords (:constraints condition))
+
         ;; Variables used in the condition.
-        cond-bindings (variables-as-keywords (:constraints condition))
+        cond-bindings (if (:fact-binding condition)
+                        (conj constraint-bindings (:fact-binding condition))
+                        constraint-bindings)
 
         join-filter-bindings (if join-filter-expressions
                                (variables-as-keywords join-filter-expressions)

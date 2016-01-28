@@ -2911,7 +2911,10 @@
                                            [Windspeed (= ?loc location)
                                             (< windspeed 50)]
                                            [:not [Windspeed (= ?loc location)
-                                                  (< windspeed ?unbound)]]]])]
+                                                  (< windspeed ?unbound)]]]])
+
+        negation-equality-unbound (dsl/parse-query []
+                                                   [[:not [Temperature (= ?unbound temperature)]]])]
 
     (assert-ex-data {:variables #{'?bogus}}
                     (mk-session [accum-condition]))
@@ -2932,7 +2935,10 @@
                     (mk-session [nested-accum-conditions]))
 
     (assert-ex-data {:variables #{'?unbound}}
-                    (mk-session [bool-conditions]))))
+                    (mk-session [bool-conditions]))
+
+    (assert-ex-data {:variables #{'?unbound}}
+                    (mk-session [negation-equality-unbound]))))
 
 ;; Test for: https://github.com/rbrush/clara-rules/issues/96
 (deftest test-destructured-binding
@@ -3263,11 +3269,8 @@
                                                  [Temperature (= ?t2 temperature)
                                                               (= ?foo (+ 20 ?t1))
                                                               (= "SFO" location)]
-                                                 [:not [Temperature (= ?t3 temperature)
-                                                              (= ?foo (+ 10 ?t2))
-                                                              (= "ORD" location)]]])
-
-
+                                                 [:not [Temperature (= ?foo (+ 10 ?t2))
+                                                                    (= "ORD" location)]]])
 
         session  (-> (mk-session [temps-with-addition temps-with-negation] :cache false)
                      (fire-rules))]
@@ -3304,3 +3307,24 @@
                        (->Temperature 20 "SFO"))
                (fire-rules)
                (query temps-with-negation))))))
+
+(deftest test-join-on-fact-binding
+  (let [join-on-binding (dsl/parse-query []
+                                         [[WindSpeed (= ?t location)]
+                                          [?t <- Temperature]])
+
+        session (mk-session [join-on-binding] :cache false)]
+
+    ;; The bound variable did not match, so we should see nothing.
+    (is (empty? (-> session
+                    (insert (->WindSpeed 10 "MCI")
+                            (->Temperature 10 "MCI"))
+                    (fire-rules)
+                    (query join-on-binding))))
+
+    (is (= [{:?t (->Temperature 10 "MCI")}]
+           (-> session
+               (insert (->WindSpeed 10 (->Temperature 10 "MCI")) ; Hack to force match for testing.
+                       (->Temperature 10 "MCI"))
+               (fire-rules)
+               (query join-on-binding))))))
