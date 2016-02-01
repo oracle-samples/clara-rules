@@ -34,7 +34,7 @@
                         ;; Root beta nodes (join, accumulate, etc.)
                         beta-roots :- [BetaNode]
                         ;; Productions in the rulebase.
-                        productions :- [schema/Production]
+                        productions :- #{schema/Production}
                         ;; Production nodes.
                         production-nodes :- [ProductionNode]
                         ;; Map of queries to the nodes hosting them.
@@ -1078,7 +1078,7 @@
 (sc/defn to-beta-graph :- schema/BetaGraph
 
   "Produces a description of the beta network."
-  [productions :- [schema/Production]]
+  [productions :- #{schema/Production}]
 
   (let [id-counter (atom 0)
         create-id-fn (fn [] (swap! id-counter inc))]
@@ -1462,7 +1462,7 @@
 
 (sc/defn mk-session*
   "Compile the rules into a rete network and return the given session."
-  [productions :- [schema/Production]
+  [productions :- #{schema/Production}
    options :- {sc/Keyword sc/Any}]
   (let [beta-graph (to-beta-graph productions)
         beta-tree (compile-beta-graph beta-graph)
@@ -1502,28 +1502,24 @@
                    :get-alphas-fn get-alphas-fn})))
 
 (defn mk-session
-  "Creates a new session using the given rule source. Thew resulting session
-   is immutable, and can be used with insert, retract, fire-rules, and query functions."
+  "Creates a new session using the given rule source. The resulting session
+  is immutable, and can be used with insert, retract, fire-rules, and query functions."
   ([sources-and-options]
-
-     ;; If an equivalent session has been created, simply reuse it.
-     ;; This essentially memoizes this function unless the caller disables caching.
-     (if-let [session (get @session-cache [sources-and-options])]
+   (let [sources (take-while (complement keyword?) sources-and-options)
+         options (apply hash-map (drop-while (complement keyword?) sources-and-options))
+         productions (into #{}
+                           (mapcat
+                            #(if (satisfies? IRuleSource %)
+                               (load-rules %)
+                               %))
+                           sources)] ; Load rules from the source, or just use the input as a seq.
+     (if-let [session (get @session-cache [productions options])]
        session
-
-       ;; Separate sources and options, then load them.
-       (let [sources (take-while (complement keyword?) sources-and-options)
-             options (apply hash-map (drop-while (complement keyword?) sources-and-options))
-             productions (mapcat
-                          #(if (satisfies? IRuleSource %)
-                             (load-rules %)
-                             %)
-                          sources) ; Load rules from the source, or just use the input as a seq.
-             session (mk-session* productions options)]
+       (let [session (mk-session* productions options)]
 
          ;; Cache the session unless instructed not to.
          (when (get options :cache true)
-           (swap! session-cache assoc [sources-and-options] session))
+           (swap! session-cache assoc [productions options] session))
 
          ;; Return the session.
-         session))))
+         session)))))

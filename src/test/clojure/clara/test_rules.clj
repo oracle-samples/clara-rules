@@ -2238,7 +2238,7 @@
         cold-windy-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]
                                               [WindSpeed (> windspeed 25)]])
 
-        beta-graph (com/to-beta-graph [cold-query cold-windy-query])]
+        beta-graph (com/to-beta-graph #{cold-query cold-windy-query})]
 
     ;; The above rules should share a root condition, so there are
     ;; only two distinct conditions in our network, plus the root node.
@@ -3328,3 +3328,63 @@
                        (->Temperature 10 "MCI"))
                (fire-rules)
                (query join-on-binding))))))
+
+(deftest test-duplicate-rules
+  (let [r (dsl/parse-rule [[Temperature (= ?t temperature)]]
+                          (insert! (->Cold ?t)))
+        q (dsl/parse-query []
+                           [[?c <- Cold]])
+
+        q-res (fn [s]
+                (-> s
+                    (insert (->Temperature 10 "MCI"))
+                    fire-rules
+                    (query q)))
+
+        s1 (mk-session [r q])
+        s2 (mk-session [r r q])
+        s3 (mk-session [r] [r q])]
+    (is (= (q-res s1)
+           (q-res s2)
+           (q-res s3)
+           [{:?c (->Cold 10)}])
+        (str "Duplicate rules should not cause duplicate RHS activations." \newline
+             "s1 res: " (vec (q-res s1)) \newline
+             "s2 res: " (vec (q-res s2)) \newline
+             "s3 res: " (vec (q-res s2)) \newline))))
+
+(deftest test-equivalent-rule-sources-caching
+  (is (instance? clojure.lang.IAtom @#'com/session-cache)
+      "Enforce that this test is revisited if the cache structure (an implementation detail) is changed.  
+       This test should have a clean cache but should also not impact the global cache, which
+       requires resetting the cache for the duration of this test.")
+
+  (let [original-cache (-> #'com/session-cache deref deref)
+        _ (reset! @#'com/session-cache {})
+        s1 (mk-session [test-rule] :cache false)
+        s2 (mk-session [test-rule])
+        s3 (mk-session [test-rule test-rule])
+        s4 (mk-session [test-rule] [test-rule])
+
+        ;; Since functions use reference equality create a single function instance
+        ;; to test reuse when options are the same.
+        alternate-alpha-fn (constantly Object)
+        s5 (mk-session [test-rule] :fact-type-fn alternate-alpha-fn :cache false)
+        s6 (mk-session [test-rule] :fact-type-fn alternate-alpha-fn)
+        s7 (mk-session [test-rule test-rule] :fact-type-fn alternate-alpha-fn)
+        s8 (mk-session [test-rule cold-query] :fact-type-fn alternate-alpha-fn)
+        
+        ;; Find all distinct references, with distinctness determined by reference equality.
+        ;; If the reference to a session is identical to a previous session we infer that
+        ;; the session was the result of a cache hit; if the reference is not identical to
+        ;; a previous session it is the result of a cache miss.
+        distinct-sessions (reduce (fn [existing new]
+                                    (if-not (some (partial identical? new)
+                                                  existing)
+                                      (conj existing new)
+                                      existing))
+                                  []
+                                  [s1 s2 s3 s4 s5 s6 s7 s8])]
+    (is (= distinct-sessions
+           [s1 s2 s5 s6 s8]))
+  (reset! @#'com/session-cache original-cache)))
