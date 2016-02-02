@@ -3388,3 +3388,13 @@
     (is (= distinct-sessions
            [s1 s2 s5 s6 s8]))
   (reset! @#'com/session-cache original-cache)))
+
+(deftest test-try-eval-failures-includes-compile-ctx
+  (let [q1 (dsl/parse-query [] [[:not [Temperature (= ?t temperature)]]])
+        q2 (dsl/parse-query [] [[First (= ?b bogus)]])]
+
+    (assert-ex-data {:production q1}
+                    (mk-session [q1]))
+
+    (assert-ex-data {:condition (-> q2 :lhs first)}
+                    (mk-session [q2]))))
