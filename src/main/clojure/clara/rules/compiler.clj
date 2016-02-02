@@ -1084,7 +1084,8 @@
         create-id-fn (fn [] (swap! id-counter inc))]
 
     (reduce (fn [beta-graph production]
-              (add-production production beta-graph create-id-fn))
+              (binding [*compile-ctx* {:production production}]
+                (add-production production beta-graph create-id-fn)))
 
             empty-beta-graph
             productions)))
