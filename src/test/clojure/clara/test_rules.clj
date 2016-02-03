@@ -3355,7 +3355,7 @@
 
 (deftest test-equivalent-rule-sources-caching
   (is (instance? clojure.lang.IAtom @#'com/session-cache)
-      "Enforce that this test is revisited if the cache structure (an implementation detail) is changed.  
+      "Enforce that this test is revisited if the cache structure (an implementation detail) is changed.
        This test should have a clean cache but should also not impact the global cache, which
        requires resetting the cache for the duration of this test.")
 
@@ -3373,7 +3373,7 @@
         s6 (mk-session [test-rule] :fact-type-fn alternate-alpha-fn)
         s7 (mk-session [test-rule test-rule] :fact-type-fn alternate-alpha-fn)
         s8 (mk-session [test-rule cold-query] :fact-type-fn alternate-alpha-fn)
-        
+
         ;; Find all distinct references, with distinctness determined by reference equality.
         ;; If the reference to a session is identical to a previous session we infer that
         ;; the session was the result of a cache hit; if the reference is not identical to
@@ -3398,3 +3398,119 @@
 
     (assert-ex-data {:condition (-> q2 :lhs first)}
                     (mk-session [q2]))))
+
+(defquery is-cold-at-lhs-query
+  "Query to test calling from the left-hand side."
+  [:?location]
+  [Temperature (< temperature 20) (= location ?location)])
+
+
+(deftest test-simple-query-in-lhs
+  (let [calls-query (dsl/parse-query []
+                                     [[WindSpeed (= ?loc location)]
+                                      [?bindings <- (query is-cold-at-lhs-query :?location ?loc)]])
+
+        session (-> (mk-session [is-cold-at-lhs-query calls-query] :cache false)
+                    (insert (->Temperature 15 "MCI")
+                            (->WindSpeed 30 "MCI"))
+                    (fire-rules))]
+
+    ;; Test simple query call..
+    (is (= [{:?loc "MCI" :?bindings {:?location "MCI"}}]
+           (query session calls-query)))
+
+    ;; Test retraction removes the called query
+    (is (empty? (query (retract session (->WindSpeed 30 "MCI"))
+                       calls-query)))
+
+    ;; Test the nested query call produces mutiple results.
+    (is (= [{:?loc "MCI" :?bindings {:?location "MCI"}}
+            {:?loc "MCI" :?bindings {:?location "MCI"}}]
+           (-> session
+               (insert (->Temperature 10 "MCI"))
+               (fire-rules)
+               (query calls-query))))))
+
+(deftest test-accum-query-in-lhs
+  (let [is-cold-at (assoc (dsl/parse-query [:?location]
+                                           [[Temperature (< temperature 20) (= location ?location)]])
+                          :name "cold-query")
+
+        calls-query (dsl/parse-query []
+                                     [[WindSpeed (= ?loc location)]
+                                      [?all-cold <- (acc/all) :from [(query is-cold-at :?location ?loc)]]])
+
+        session (-> (mk-session [is-cold-at calls-query] :cache false)
+                    (insert (->Temperature 15 "MCI")
+                            (->WindSpeed 30 "MCI"))
+                    (fire-rules))]
+
+    ;; Test a query call works.
+    (is (= [{:?loc "MCI" :?all-cold [{:?location "MCI"}]}]
+           (query session calls-query)))
+
+    ;; Additional items should yield further query matches.
+    (is (= [{:?loc "MCI" :?all-cold [{:?location "MCI"} {:?location "MCI"}]}]
+           (-> session
+               (insert (->Temperature 10 "MCI"))
+               (fire-rules)
+               (query calls-query))))
+
+    ;; Test retraction removes the called query
+    (is (empty? (query (retract session (->WindSpeed 30 "MCI"))
+                       calls-query)))
+
+    ;; Accumulator should still yield result of nothing is accumulated.
+    (is (= [{:?loc "MCI" :?all-cold []}]
+         (query (retract session (->Temperature 15 "MCI"))
+                calls-query)))))
+
+(deftest test-negated-query-in-lhs
+  (let [is-cold-at (assoc (dsl/parse-query [:?location]
+                                           [[Temperature (< temperature 20) (= location ?location)]])
+                          :name "cold-query")
+
+        calls-query (dsl/parse-query []
+                                     [[WindSpeed (= ?loc location)]
+                                      [:not [(query is-cold-at :?location ?loc)]]])
+
+        session (-> (mk-session [is-cold-at calls-query] :cache false)
+                    (insert (->Temperature 15 "MCI")
+                            (->WindSpeed 30 "MCI"))
+                    (fire-rules))]
+
+    ;; Test simple query call..
+    (is (empty? (query session calls-query)))
+
+    ;; Remove negated item should cause query to match.
+    (is (= [{:?loc "MCI"}]
+           (query (retract session (->Temperature 15 "MCI"))
+                  calls-query)))))
+
+
+(deftest test-destructured-query-in-lhs
+  (let [is-cold-at (assoc (dsl/parse-query [:?location]
+                                           [[Temperature (< temperature 20) (= location ?location)]])
+                          :name "cold-query")
+
+        calls-query (dsl/parse-query []
+                                     [[WindSpeed (= ?loc location)]
+                                      [(query is-cold-at :?location ?loc) [{location :?location}] (= ?my-loc location)
+                                                                                                  (.startsWith location "M")]])
+
+        session (mk-session [is-cold-at calls-query] :cache false)]
+
+    ;; Test destructuring is visible to binding.
+    (is (= [{:?loc "MCI" :?my-loc "MCI"}]
+           (-> session
+               (insert (->Temperature 15 "MCI")
+                       (->WindSpeed 30 "MCI"))
+               (fire-rules)
+               (query calls-query))))
+
+    ;; Test filtering applies.
+    (is (empty? (-> session
+                    (insert (->Temperature 15 "ORD")
+                            (->WindSpeed 30 "ORD"))
+                    (fire-rules)
+                    (query calls-query))))))

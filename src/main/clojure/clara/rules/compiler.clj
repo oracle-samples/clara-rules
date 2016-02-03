@@ -500,7 +500,8 @@
                        (when (and (seq? form)
                                   (not (equality-expression? form))
                                   (some (fn [sym] (and (symbol? sym)
-                                                      (.startsWith (name sym) "?")))
+                                                      (.startsWith (name sym) "?")
+                                                      (not= sym '?__fact__)))
                                         (flatten-expression form)))
 
                          (reset! found-complex true))
@@ -519,6 +520,7 @@
   (let [is-negation (= :not (first condition))
         is-exists (= :exists (first condition))
         accumulator (:accumulator condition)
+        is-query (:query condition)
         result-binding (:result-binding condition) ; Get the optional result binding used by accumulators.
         condition (cond
                    is-negation (second condition)
@@ -528,6 +530,7 @@
                    is-negation :negation
                    is-exists :exists
                    accumulator :accumulator
+                   is-query :query
                    (:type condition) :join
                    :else :test)]
 
@@ -562,6 +565,78 @@
                    [condition])]
 
     expanded))
+
+(defn- query-result-type
+  "Returns the type used to insert query results in memory so they can be matched in conditions."
+  [query env]
+
+  (let [query-name (cond
+                     (map? query) (:name query)
+
+                     (symbol? query) (or (->> (keyword query)
+                                              (get env)
+                                              :name)
+
+                                         (when-let [query-var (resolve query)]
+                                           (:name (deref query-var)))
+
+                                         (throw (ex-info (str "Unable to resolve query: " query)
+                                                         {:query query})))
+
+                     (string? query) query
+
+                     :default
+                     (throw (ex-info (str "Invalid query: " query)
+                                     {:query query})))
+
+        qualified-name (if (namespace (keyword query-name))
+                         query-name
+                         (str "clara.query.default/" query-name))
+
+        query-type (keyword qualified-name)]
+
+    ;; Derive the new query type from the result.
+    (derive query-type :clara.rules.engine/query-result)
+
+    query-type))
+
+(defn- convert-query-condition
+  "Converts a query condition into a join condition of the query result type."
+  [condition env]
+  (if (= :query (condition-type condition))
+
+    (let [{:keys [query params constraints args fact-binding]} condition
+            join-type (query-result-type query env)
+
+            ;; Constraints used to match the query. Users may add arbitrarty
+            ;; constraints as well.
+            query-constraints (for [[name value] params]
+                                (list '= value (list 'get '?__fact__ name)))]
+
+        (cond-> {:type join-type
+                 :constraints (concat query-constraints constraints)}
+          args (assoc :args args)
+          fact-binding (assoc :fact-binding fact-binding)))
+
+    ;; The condition is not a query, so simply return it.
+    condition))
+
+(defn- convert-query-nodes [conditions env]
+  "Converts query operations to join nodes of query results."
+  (for [condition conditions]
+
+    (case (condition-type condition)
+
+      ;; Test and join nodes are leafs that cannot contain queries.
+      :test condition
+
+      :join condition
+
+      :query (convert-query-condition condition env)
+
+      :accumulator (assoc condition :from (convert-query-condition (:from condition) env))
+
+      :negation [:not (convert-query-condition (second condition) env)])))
 
 (defn- classify-variables
   "Classifies the variables found in the given contraints into 'bound' vs 'free'
@@ -1033,8 +1108,11 @@
                         (let [;; Convert exists operations to accumulator and test nodes.
                               exists-extracted (extract-exists conjunctions)
 
+                              ;; Convert queries to join nodes.
+                              queries-converted (convert-query-nodes exists-extracted (:env production))
+
                               ;; Compute the new beta graph, ids, and bindings with the expressions.
-                              new-result (add-conjunctions exists-extracted
+                              new-result (add-conjunctions queries-converted
                                                            parent-ids
                                                            (:env production)
                                                            ancestor-bindings
@@ -1074,6 +1152,53 @@
                     {:node-type :query
                      :query production}))))))
 
+(sc/defn ^:private wire-queries :- schema/BetaGraph
+  "Discover queries that are invoked by the left-hand side of other rules
+   and wire them into the graph. This is done by generating a rule node
+   that is a sibling to the query and inserting the query results into the graph
+   with a type tag that matches that specific query."
+  [beta-graph :- schema/BetaGraph
+   create-id-fn]
+
+  (let [;; Map of query name to type expected byt he rule.
+        query-name-to-type (into {}
+                                 (for [query-condition-node (vals (:id-to-condition-node beta-graph))
+                                       :when (isa? (:type (:condition query-condition-node))
+                                                   :clara.rules.engine/query-result)
+                                       :let [query-type (:type (:condition query-condition-node))
+
+                                             query-name (if (= "clara.query.default" (namespace query-type))
+                                                          (name query-type)
+                                                          (str (namespace query-type) "/" (name query-type)))]]
+                                   [query-name query-type]))
+
+        ;; parent-id, query tuples for the new rule do add.
+        parent-ids-to-queries (for [[id query-node] (:id-to-production-node beta-graph)
+                                    :when (query-name-to-type (:name (:query query-node)))]
+                                [(get-in beta-graph [:backward-edges id]) query-node])]
+
+    (loop [beta-graph beta-graph
+           [[parent-ids query-node] & rest-parent-ids-to-queries] parent-ids-to-queries]
+
+           ;; No more queries to wire, so return.
+           (if (nil? parent-ids)
+             beta-graph
+
+             (let [generated-node-id (create-id-fn)
+                   query (:query query-node)
+                   query-type (query-name-to-type (:name query))
+                   assert-query-result-rhs `(clara.rules.engine/insert-query-result! ~query-type ~'?__token__)]
+
+               ;; Generate a rule to fire the results of the query
+               (add-node beta-graph
+                         (seq parent-ids) ; add-node schema expects ids to be sequential
+                         generated-node-id
+                         {:node-type :production
+                          :production (cond-> {:lhs (:lhs query)
+                                               :rhs assert-query-result-rhs}
+
+                                        (:props query) (assoc :props (:props query))
+                                        (:env query) (assoc :env (:env query)))}))))))
 
 (sc/defn to-beta-graph :- schema/BetaGraph
 
@@ -1081,14 +1206,18 @@
   [productions :- #{schema/Production}]
 
   (let [id-counter (atom 0)
-        create-id-fn (fn [] (swap! id-counter inc))]
+        create-id-fn (fn [] (swap! id-counter inc))
 
-    (reduce (fn [beta-graph production]
-              (binding [*compile-ctx* {:production production}]
-                (add-production production beta-graph create-id-fn)))
+        beta-graph (reduce (fn [beta-graph production]
+                             (binding [*compile-ctx* {:production production}]
+                               (add-production production beta-graph create-id-fn)))
 
-            empty-beta-graph
-            productions)))
+                           empty-beta-graph
+                           productions)
+
+        with-queries (wire-queries beta-graph create-id-fn)]
+
+    with-queries))
 
 (sc/defn ^:private compile-node
   "Compiles a given node description into a node usable in the network with the
