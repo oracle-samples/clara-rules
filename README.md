@@ -52,6 +52,6 @@ Clara releases are on [Clojars](https://clojars.org/). Simply add the following 
 
 ## License
 
-Copyright © 2015 Ryan Brush
+Copyright © 2016 Ryan Brush
 
 Distributed under the Eclipse Public License, the same as Clojure.

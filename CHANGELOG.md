@@ -1,5 +1,22 @@
 This is a history of changes to clara-rules.
 
+### 0.10.0
+Clara 0.10 is compatible with previous versions, with a couple caveats. These are:
+
+* The intermediate representation of the Rete network changed as reflected in schema updates in clara.rules.schema. This only affects users that build tooling that inspect the network structure.
+* The order of rule ordering and the state of queries prior to (fire-rules) being called may have changed. This ordering was not guaranteed previously, but users may have depended on it accidentally.
+* ClojureScript users will need to use ClojureScript 1.7.170 or newer.
+
+Here are the specifics on what changed since 0.9.2:
+
+* Fix unification bugs when dealing with nested negations. See [issue 166](https://github.com/rbrush/clara-rules/issues/166).
+* Properly handle tests nested in negation nodes. See [issue 165](https://github.com/rbrush/clara-rules/issues/165).
+* Improve inspect function to explain the insertion of a given fact. See [issue 161](https://github.com/rbrush/clara-rules/issues/161).  
+* Remove duplicate rules and dependency on order of rules when creating sessions. See [issue 157](https://github.com/rbrush/clara-rules/issues/157).
+* Significantly improve performance of building the Rete network when dealing with large disjunctions. See [issue 153](https://github.com/rbrush/clara-rules/issues/153).
+* Allow multiple binding and equality checks in a single expression. See [issue 151](https://github.com/rbrush/clara-rules/issues/151).
+* Ensure variables bounded in a nested, negated conjunction are visible elsewhere in that conjunction. See [149](https://github.com/rbrush/clara-rules/issues/149).
+
 ### 0.9.2
 * Report better error and line number when parsing malformed productions. See issue [144](https://github.com/rbrush/clara-rules/issues/144).
 * Fix truth maintenance bug when using disjunctions. See issue [145](https://github.com/rbrush/clara-rules/pull/145).
