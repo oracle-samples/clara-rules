@@ -31,12 +31,21 @@
    ;; Original constraints preserved for tooling in case a transformation was applied to the condition.
    (s/optional-key :original-constraints) [SExpr]
    (s/optional-key :fact-binding) s/Keyword
+   (s/optional-key :args) s/Any})
+
+;; Condition for calling queries from the left-hand side.
+(def QueryCondition
+  {:query s/Any ; The query to be called.
+   :params {s/Keyword s/Any} ; Params to pass to the query.
+   :constraints [SExpr] ; Constraints for the query.
    (s/optional-key :args) s/Any
-   })
+   (s/optional-key :fact-binding) s/Keyword})
 
 (def AccumulatorCondition
   {:accumulator s/Any
-   :from FactCondition
+   :from (s/conditional
+          :type FactCondition
+          :query QueryCondition)
    (s/optional-key :result-binding) s/Keyword})
 
 (def TestCondition
@@ -46,6 +55,7 @@
   (s/conditional
    :type FactCondition
    :accumulator AccumulatorCondition
+   :query QueryCondition
    :else TestCondition))
 
 (declare Condition)

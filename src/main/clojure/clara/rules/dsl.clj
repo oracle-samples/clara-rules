@@ -43,7 +43,27 @@
               (into info expr-meta))))
     (throw (ex-info message info))))
 
-(defn- construct-condition
+(sc/defn construct-query-condition :- schema/QueryCondition
+  "Creates a query-based condition given the optional result binding."
+  [condition result-binding expr-meta]
+  (let [[[_ query-name & query-params] & args-and-constraints] condition
+
+        ;; Map of param names to values.
+        params (into {}
+                     (for [[param-name param-value] (partition 2 query-params)]
+                       [(keyword param-name) param-value]))
+
+        [args constraints] (if (vector? (first args-and-constraints))
+                             [(first args-and-constraints) (rest args-and-constraints)]
+                             [nil args-and-constraints])]
+
+      (cond-> {:query query-name
+               :params params
+               :constraints constraints}
+        args (assoc :args args)
+        result-binding (assoc :fact-binding result-binding))))
+
+(defn- construct-fact-condition
   "Creates a condition with the given optional result binding when parsing a rule."
   [condition result-binding expr-meta]
   (let [type (if (symbol? (first condition))
@@ -94,6 +114,17 @@
       (if (seq constraints)
         (assoc (meta (first constraints))
           :file *file*)))))
+
+(defn- construct-condition
+  [condition result-binding expr-meta]
+  (if (and (sequential? (first condition))
+           (= 'query (first (first condition))))
+
+    ;; We are working with a query condition.
+    (construct-query-condition condition result-binding expr-meta)
+
+    ;; We are working with a fact condition.
+    (construct-fact-condition condition result-binding expr-meta)))
 
 (defn- parse-condition-or-accum
   "Parse an expression that could be a condition or an accumulator."

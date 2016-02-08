@@ -34,6 +34,9 @@
 ;; with a customized fact type function.
 (derive NegationResult :clara.rules.engine/system-type)
 
+;; Query results injected into working memory are also system types.
+(derive :clara.rules.engine/query-result :clara.rules.engine/system-type)
+
 ;; Schema for the structure returned by the components
 ;; function on the session protocol.
 ;; This is simply a comment rather than first-class schema
@@ -230,6 +233,20 @@
   "Perform the fact retraction."
   [facts]
   (swap! (:pending-updates *current-session*) into [(->PendingUpdate :retract facts)]))
+
+(defn insert-query-result!
+  "This function is used internally to assert the results of queries so they
+   can be matched by other rules."
+  [type-to-assert token]
+  ;; Remove generated items from inserted token.
+  (let [bindings (:bindings token)
+        ;; Remove generated keys from the query result.
+        keys-to-remove (filter (fn [key] (.startsWith ^String (name key)
+                                                     "?__gen__"))
+                               (keys bindings))
+        bindings-to-insert (apply dissoc bindings keys-to-remove)]
+    (insert-facts! [(with-meta bindings-to-insert {:type type-to-assert})]
+                   false)))
 
 ;; Record for the production node in the Rete network.
 (defrecord ProductionNode [id production rhs]
@@ -812,7 +829,7 @@
 
       ;; Add our newly retracted information to our node.
       (mem/add-accum-reduced! memory node join-bindings retracted bindings)
-      
+
       ;; Get all of the previously matched tokens so we can retract and re-send them.
       (doseq [token matched-tokens]
 
@@ -987,7 +1004,7 @@
 
             :let [facts (mapv :fact elements)
                   new-candidates (second (mem/remove-first-of-each facts previous-candidates))]]
-      
+
       ;; Add the new candidates to our node.
       (mem/add-accum-reduced! memory node join-bindings new-candidates bindings)
 
