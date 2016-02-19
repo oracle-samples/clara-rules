@@ -284,3 +284,49 @@
     (is (= 1 (count temp-history)))
     (is (= [{:?his (->TemperatureHistory [temp-10-mci])}]
             temp-history))))
+
+(deftest test-grouping-accum
+  (let [grouping-accum (acc/grouping-by :temperature)
+        grouping-query (dsl/parse-query [] [[?t <- grouping-accum
+                                             :from [Temperature]]])
+
+        convert-return-fn (fn [m]
+                            (if (empty? m)
+                              []
+                              (val (apply max-key key m))))
+        grouping-convert-accum (acc/grouping-by :temperature
+                                                convert-return-fn)
+        grouping-convert-query (dsl/parse-query [] [[?t <- grouping-convert-accum
+                                                     :from [Temperature]]])
+
+        session (-> (mk-session [grouping-query
+                                 grouping-convert-query])
+                    (insert-all [(->Temperature 30 "MCI")
+                                 (->Temperature 10 "MCI")
+                                 (->Temperature 80 "MCI")
+                                 (->Temperature 80 "MCI")]))
+
+        retracted-session (-> session
+                              (retract (->Temperature 80 "MCI")
+                                       (->Temperature 80 "MCI")))]
+
+    (testing "grouping-accum"
+      (is (= {:?t {30 [(->Temperature 30 "MCI")]
+                   10 [(->Temperature 10 "MCI")]
+                   80 [(->Temperature 80 "MCI")
+                       (->Temperature 80 "MCI")]}}
+             (first (query session grouping-query)))))
+
+    (testing "grouping-accum with retraction"
+      (is (= {:?t {30 [(->Temperature 30 "MCI")]
+                   10 [(->Temperature 10 "MCI")]}}
+             (first (query retracted-session grouping-query)))))
+
+    (testing "grouping-accum with custom convert-return-fn (max temp group)"
+      (is (= {:?t [(->Temperature 80 "MCI")
+                   (->Temperature 80 "MCI")]}
+             (first (query session grouping-convert-query)))))
+
+    (testing "grouping-accum with custom convert-return-fn and retraction (max temp group)"
+      (is (= {:?t [(->Temperature 30 "MCI")]}
+             (first (query retracted-session grouping-convert-query)))))))

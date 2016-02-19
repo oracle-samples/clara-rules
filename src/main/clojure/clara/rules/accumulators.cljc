@@ -107,6 +107,27 @@
        :combine-fn wrapped-combine-fn
        :convert-return-fn wrapped-convert-return-fn}))))
 
+(let [grouping-fn (fnil conj [])
+      combine-fn (fn [a b]
+                   (merge-with (comp vec into) a b))]
+  (defn grouping-by
+    "Return a generic grouping accumulator. Behaves like clojure.core/group-by.
+
+  * `field` - required - The field of a fact to group by.
+  * `convert-return-fn` - optional - Converts the resulting grouped
+  data. Defaults to clojure.core/identity."
+    ([field]
+     (grouping-by field identity))
+    ([field convert-return-fn]
+     {:pre [(ifn? convert-return-fn)]}
+     (reduce-to-accum
+      (fn [m x]
+        (let [v (field x)]
+          (update m v grouping-fn x)))
+      {}
+      convert-return-fn
+      combine-fn))))
+
 (defn- comparison-based
   "Creates a comparison-based result such as min or max"
   [field comparator returns-fact supports-retract]
