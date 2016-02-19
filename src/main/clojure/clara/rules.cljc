@@ -91,26 +91,18 @@
 (defn retract!
   "To be executed within a rule's right-hand side, this retracts a fact or facts from the working memory.
 
-   Retracting facts from the right-hand side has slightly different semantics than insertion. As described
-   in the insert! documentation, inserts are logical and will automatically be retracted if the rule
-   that inserted them becomes false. This retract! function does not follow the inverse; retracted items
-   are simply removed, and not re-added if the rule that retracted them becomes false.
+  Retracting facts from the right-hand side has slightly different semantics than insertion. As described
+  in the insert! documentation, inserts are logical and will automatically be retracted if the rule
+  that inserted them becomes false. This retract! function does not follow the inverse; retracted items
+  are simply removed, and not re-added if the rule that retracted them becomes false.
 
-   The reason for this is that retractions remove information from the knowledge base, and doing truth
-   maintenance over retractions would require holding onto all retracted items, which would be an issue
-   in some use cases. This retract! method is included to help with certain use cases, but unless you
-   have a specific need, it is better to simply do inserts on the rule's right-hand side, and let
-   Clara's underlying truth maintenance retract inserted items if their support becomes false."
+  The reason for this is that retractions remove information from the knowledge base, and doing truth
+  maintenance over retractions would require holding onto all retracted items, which would be an issue
+  in some use cases. This retract! method is included to help with certain use cases, but unless you
+  have a specific need, it is better to simply do inserts on the rule's right-hand side, and let
+  Clara's underlying truth maintenance retract inserted items if their support becomes false."
   [& facts]
-  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} eng/*current-session*]
-
-    ;; Update the count so the rule engine will know when we have normalized.
-    (swap! insertions + (count facts))
-
-    (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
-            root alpha-roots]
-
-      (eng/alpha-retract root fact-group transient-memory transport listener))))
+  (eng/rhs-retract-facts! facts))
 
 (defn accumulate
   "DEPRECATED. Use clara.rules.accumulators/accum instead.

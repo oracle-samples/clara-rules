@@ -3398,3 +3398,72 @@
 
     (assert-ex-data {:condition (-> q2 :lhs first)}
                     (mk-session [q2]))))
+
+(deftest test-duplicate-insertions-with-only-one-removed
+  (let [r (dsl/parse-rule [[ColdAndWindy (= ?t temperature)]]
+                          (insert! (->Cold ?t)))
+        q (dsl/parse-query [] [[Cold (= ?t temperature)]])
+        query-session (fn []
+                        (-> (mk-session [r q])
+                            (insert (->ColdAndWindy 10 10))
+                            (insert (->ColdAndWindy 10 10))
+                            (fire-rules)
+                            (retract (->ColdAndWindy 10 10))
+                            (fire-rules)
+                            (query q)))]
+    (is (= [{:?t 10}] (query-session))
+        "Removal of one duplicate fact that causes an immediately downstream rule to fire should not
+         retract insertions that were due to other duplicate facts.")))
+
+(deftest test-tiered-identical-insertions-with-retractions
+  ;; The idea here is to test the behavior when the retraction
+  ;; of a single token should cause multiple tokens to be retracted.
+  (let [r1 (dsl/parse-rule [[First]]
+                           (insert! (->Second) (->Second)))
+        r2 (dsl/parse-rule [[Second]]
+                           (insert! (->Third)))
+        third-query (dsl/parse-query [] [[Third]])
+
+        second-query (dsl/parse-query [] [[Second]])
+
+        none-retracted-session (-> (mk-session [r1 r2 third-query second-query])
+                                   (insert (->First) (->First))
+                                   (fire-rules))
+
+        one-retracted-session (-> none-retracted-session
+                                  (retract (->First)))
+
+        both-retracted-session (-> one-retracted-session
+                                   (retract (->First)))]
+    (is (= (query none-retracted-session second-query)
+           (query none-retracted-session third-query)
+           [{} {} {} {}])
+        "nothing retracted")
+    (is (= (query one-retracted-session second-query)
+           (query one-retracted-session third-query)
+           [{} {}])
+        "one First retracted")
+    (is (= (query both-retracted-session second-query)
+           (query both-retracted-session third-query))
+        "Both First facts retracted")))
+
+(deftest duplicate-reasons-for-retraction-test
+  (let [r1 (dsl/parse-rule [[First]]
+                           ;; As of writing the engine rearranges
+                           ;; this so that the retraction comes last.
+                           (do (retract! (->Cold 5))
+                               (insert! (->Third))))
+        r2 (dsl/parse-rule [[Second]
+                            [:not [Third]]]
+                           (insert! (->Cold 5)))
+        q (dsl/parse-query [] [[Cold (= ?t temperature)]])
+        base-session (mk-session [r1 r2 q])]
+    (is (= (-> base-session
+               (insert (->Second))
+               (fire-rules)
+               (insert (->First))
+               (fire-rules)
+               (query q))
+           [])
+        "A retraction that becomes redundant after reordering of insertions
+         and retractions due to batching should not cause failure.")))

@@ -96,9 +96,7 @@
         session-state (d/session-state session)
 
         restored-session (-> (mk-session [coldest-query])
-                             (restore-session session-state))
-
-        ]
+                             (restore-session session-state))]
 
     ;; Accumulator returns the lowest value.
     (is (= #{{:?t (->Temperature 10 "MCI")}}
@@ -112,18 +110,53 @@
 
         empty-session (mk-session [cold-rule cold-query])
 
-        session (-> empty-session
-                    (insert (->Temperature 10 "MCI"))
-                    (fire-rules))
+        persist-and-restore (fn [session]
+                              (restore-session empty-session
+                                               (d/session-state session)))
 
-        session-state (d/session-state session)
+        cold-result {:?cold (->Cold 10)}]
 
-        restored-session (-> empty-session
-                             (restore-session session-state))]
+    (let [session (-> empty-session
+                      (insert (->Temperature 10 "MCI"))
+                      (fire-rules))
 
-    (is (= [{:?cold (->Cold 10)}]
-           (query restored-session cold-query)))
+          session-state (d/session-state session)
+          
+          restored-session (-> empty-session
+                               (restore-session session-state))]
 
-    ;; Ensure the retraction propagates and removes our inserted item.
-    (is (= []
-           (query (retract restored-session (->Temperature 10 "MCI")) cold-query)))))
+      (is (= [{:?cold (->Cold 10)}]
+             (query restored-session cold-query))
+          "Query for a Cold fact from the restored session.")
+
+      ;; Ensure the retraction propagates and removes our inserted item.
+      (is (= []
+             (query (retract restored-session (->Temperature 10 "MCI")) cold-query))
+          "Validate that the restored session doesn't contain a Cold fact after
+         the Temperature fact that inserted it in the original session is retracted."))
+
+    (let [session (-> empty-session
+                      (insert (->Temperature 10 "MCI"))
+                      (insert (->Temperature 10 "MCI"))
+                      (fire-rules))
+
+          restored-session (persist-and-restore session)]
+
+      (is (= [cold-result cold-result]
+             (query restored-session cold-query))
+          "Two duplicate Cold facts should be restored from the persisted session when there
+           are two duplicate Temperature facts.")
+
+      (is (= (query (retract restored-session (->Temperature 10 "MCI"))
+                    cold-query)
+             [cold-result])
+          "When there are two duplicate Cold facts from two separate Temperature
+           facts and one Temperature fact is retracted we should still have 1 Cold fact.")
+
+      (is (= (query (-> restored-session
+                        (retract (->Temperature 10 "MCI"))
+                        (retract (->Temperature 10 "MCI")))
+                    cold-query)
+             [])
+          "When two duplicate Cold facts are inserted from two duplicate Temperature facts,
+           and both Temperature facts are retracted, no Cold facts should remain."))))

@@ -42,8 +42,14 @@
   ;; accumulated items on this node.
   (get-accum-reduced-complete [memory node])
 
-  ;; Returns insertions that occurred at the given node.
+  ;; Returns insertions that occurred at the given node for the given token.
+  ;; Returns a sequence of the form
+  ;; [facts-inserted-for-one-rule-activation facts-inserted-for-another-rule-activation]
   (get-insertions [memory node token])
+
+  ;; Returns all insertions that occurred in the given node's RHS; this takes the form
+  ;; {token [facts-inserted-for-one-rule-activation facts-inserted-for-another-rule-activation]}
+  (get-insertions-all [memory node])
 
   ;; Returns a map of nodes with pending activations to the activations themselves.
   (get-activations [memory]))
@@ -67,6 +73,7 @@
 
   ;; Add a record that a given fact twas inserted at a given node with
   ;; the given support. Used for truth maintenance.
+  ;; This should be called at most once per rule activation.
   (add-insertions! [memory node token facts])
 
   ;; Removes all records of facts that were inserted at the given node
@@ -210,6 +217,9 @@
      token
      []))
 
+  (get-insertions-all [memory node]
+    (get production-memory (:id node) {}))
+
   (get-activations [memory]
     (apply concat (vals activation-map)))
 
@@ -267,28 +277,52 @@
                             [join-bindings fact-bindings]
                             accum-result))))
 
+  ;; The value under each token in the map should be a sequence
+  ;; of sequences of facts, with each inner sequence coming from a single
+  ;; rule activation.
   (add-insertions! [memory node token facts]
-    (let [token-facts-map (get production-memory (:id node) {})
-          previous-facts (get token-facts-map token [])]
-
+    (let [token-facts-map (get production-memory (:id node) {})]
       (set! production-memory
             (assoc! production-memory
                     (:id node)
-                    (assoc token-facts-map token (into previous-facts facts))))))
+                    (update token-facts-map token conj facts)))))
 
   (remove-insertions! [memory node tokens]
 
     ;; Remove the facts inserted from the given token.
     (let [token-facts-map (get production-memory (:id node) {})
           ;; Get removed tokens for the caller.
-          results (select-keys token-facts-map tokens)]
+          [results
+           new-token-facts-map]
+
+          (loop [results (transient {})
+                 token-map (transient token-facts-map)
+                 to-remove tokens]
+            (if-let [head-token (first to-remove)]
+              ;; Don't use contains? due to http://dev.clojure.org/jira/browse/CLJ-700
+              (if-let [token-insertions (get token-map head-token)]
+                (let [;; There is no particular significance in removing the
+                      ;; first group; we just need to remove exactly one.
+                      [removed-facts & remaining-facts] token-insertions
+                      removed-insertion-map (if (not-empty remaining-facts)
+                                              (assoc! token-map head-token remaining-facts)
+                                              (dissoc! token-map head-token))
+                      prev-token-result (get results head-token [])]
+                  (recur (assoc! results head-token (into prev-token-result removed-facts))
+                         removed-insertion-map
+                         (rest to-remove)))
+                ;; If the token isn't present in the insertions just try the next one.
+                (recur results token-map (rest to-remove)))
+              [(persistent! results)
+               (persistent! token-map)]))]
 
       ;; Clear the tokens and update the memory.
       (set! production-memory
-            (assoc! production-memory
-                    (:id node)
-                    (apply dissoc token-facts-map tokens)))
-
+            (if (not-empty new-token-facts-map)
+              (assoc! production-memory
+                      (:id node)
+                      new-token-facts-map)
+              (dissoc! production-memory (:id node))))
       results))
 
   #?(:clj
@@ -443,6 +477,9 @@
      (get production-memory (:id node) {})
      token
      []))
+
+  (get-insertions-all [memory node]
+    (get production-memory (:id node) {}))
 
   (get-activations [memory]
     (apply concat (vals activation-map)))

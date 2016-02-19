@@ -35,7 +35,7 @@
 
    ;; Map associating node ids and tokens with a vector of facts they had inserted. This is used
    ;; to track truth maintenance, so if a given token is retracted, we can also retract the inferred items.
-   :insertions {[(s/one s/Int "node-id") (s/one Token "token")] [s/Any]}})
+   :insertions {[(s/one s/Int "node-id") (s/one Token "token")] [[s/Any]]}})
 
 (s/defn session-state :- session-state-schema
   " Returns the state of a session as an EDN- or Fressian-serializable data structure. The returned
@@ -75,7 +75,7 @@
         insertions (into {}
                          (for [[id node] id-to-node
                                :when (instance? ProductionNode node)
-                               token (mem/get-tokens-all memory node)]
+                               token (keys (mem/get-insertions-all memory node))]
                            [[(:id node) token] (mem/get-insertions memory node token)] ))]
 
     {:fact-counts fact-counts
@@ -132,9 +132,10 @@
         transient-memory (mem/to-transient memory)]
 
     ;; Add the results to the accumulator node.
-    (doseq [[[id token] inserted-facts] insertions]
-
-      (mem/add-insertions! transient-memory (id-to-node id) token inserted-facts))
+    (doseq [[[id token] inserted-facts] insertions
+            insertion-group inserted-facts]
+      ;; Each insertion group represents a distinct activation of the ProductionNode.
+      (mem/add-insertions! transient-memory (id-to-node id) token insertion-group))
 
     (eng/assemble (assoc components :memory (mem/to-persistent! transient-memory)))))
 

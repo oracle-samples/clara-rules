@@ -121,14 +121,16 @@
      :insertions (into {}
                        (for [[rule rule-node] rule-to-nodes]
                          [rule
-                          (for [token (mem/get-tokens-all memory rule-node)
-                                insertion (mem/get-insertions memory rule-node token)]
+                          (for [token (keys (mem/get-insertions-all memory rule-node))
+                                insertion-group (get (mem/get-insertions-all memory rule-node) token)
+                                insertion insertion-group]
                             {:explanation (first (to-explanations session [token])) :fact insertion})]))
 
      :fact->explanations (apply merge-with into
                                 (for [[rule rule-node] rule-to-nodes
-                                      token (mem/get-tokens-all memory rule-node)
-                                      insertion (mem/get-insertions memory rule-node token)]
+                                      token (keys (mem/get-insertions-all memory rule-node))
+                                      insertion-group (mem/get-insertions memory rule-node token)
+                                      insertion insertion-group]
                                   {insertion [{:rule rule
                                                :explanation (first (to-explanations session [token]))}]}))}))
 
