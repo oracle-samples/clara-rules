@@ -7,7 +7,7 @@
             [clara.rules.testfacts :refer :all]
             [clojure.test :refer :all])
 
-  (import [clara.rules.testfacts Temperature WindSpeed Cold TemperatureHistory
+  (import [clara.rules.testfacts Temperature WindSpeed Cold Hot TemperatureHistory
            ColdAndWindy LousyWeather First Second Third Fourth]))
 
 (deftest test-tracing-toggle
@@ -39,6 +39,23 @@
     (is (= [:add-facts :right-activate :left-activate :add-activations]
            (map :type (t/get-trace session))))))
 
+(deftest test-rhs-retraction-trace
+  (let [cold-rule (dsl/parse-rule [[Temperature (< temperature 20)]]
+                                  (retract! (->Hot :too-hot)))
+        hot-query (dsl/parse-query [] [[?hot <- Hot]])
+        session (-> (mk-session [cold-rule hot-query])
+                    (t/with-tracing)
+                    (insert (->Hot :too-hot))
+                    (fire-rules)
+                    (insert (->Temperature 10 "MCI"))
+                    (fire-rules))]
+    (is (= (map :type (t/get-trace session))
+           [:add-facts :right-activate :left-activate
+            :add-facts :right-activate :left-activate
+            :add-activations :retract-facts :right-retract :left-retract])
+        "Validate that a retract! call in the RHS side of a rule appears in the trace
+         before the :right-retract")))
+        
 (deftest test-accumulate-trace
   (let [lowest-temp (acc/min :temperature :returns-fact true)
         coldest-query (dsl/parse-query [] [[?t <- lowest-temp from [Temperature]]])
