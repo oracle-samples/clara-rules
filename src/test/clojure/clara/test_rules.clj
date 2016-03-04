@@ -13,10 +13,12 @@
             [clojure.edn :as edn]
             [clojure.walk :as walk]
             [clara.sample-ruleset-seq]
-            schema.test)
+            [schema.test])
   (import [clara.rules.testfacts Temperature WindSpeed Cold TemperatureHistory
            ColdAndWindy LousyWeather First Second Third Fourth FlexibleFields]
-          [java.util TimeZone]))
+          [java.util TimeZone]
+          [clara.tools.tracing
+           PersistentTracingListener]))
 
 (use-fixtures :once schema.test/validate-schemas)
 
@@ -43,6 +45,19 @@
       ;; Can't find a match.
       :else
       non-matches)))
+
+(defn get-all-ex-data
+  "Walk a Throwable chain and return a sequence of all data maps
+  from any ExceptionInfo instances in that chain."
+  [e]
+  (let [get-ex-chain (fn get-ex-chain [e]
+                       (if-let [cause (.getCause e)]
+                         (conj (get-ex-chain cause) e)
+                         [e]))]
+    
+    (map ex-data
+         (filter (partial instance? clojure.lang.IExceptionInfo)
+                 (get-ex-chain e)))))
 
 (defmacro assert-ex-data [expected-ex-data form]
   `(try
@@ -3232,6 +3247,41 @@
         (is (re-find #"test-rule-name" (.getMessage e)))
         (is (= {:?x 10} (:bindings (ex-data e))))
         (is (= "test-rule-name" (:name (ex-data e))))))))
+
+(deftest test-retrieve-listeners-from-failed-rhs
+  (let [r1 (dsl/parse-rule [[First]]
+                           (insert! (->Second)))
+        
+        r2 (dsl/parse-rule [[Second]]
+                           (throw (ex-info "Test exception" {})))
+        
+        run-session-traced (fn []
+                             (-> (mk-session [r1 r2])
+                                 (t/with-tracing)
+                                 (insert (->First))
+                                 (fire-rules)))
+
+        run-session-untraced (fn []
+                               (mk-session [r1 r2])
+                               (insert (->First))
+                               (fire-rules))
+
+        listeners-from-trace (fn [e] (mapcat :listeners
+                                             (get-all-ex-data e)))]
+    (try
+      (run-session-traced)
+      (is false "Running the rules in this test should cause an exception.")
+      (catch Exception e
+        (let [listeners (listeners-from-trace e)]
+          (is (some (partial instance? PersistentTracingListener) listeners)
+              "The listeners should be in the ex-data when a RHS throws an exception."))))
+    (try
+      (run-session-untraced)
+      (is false "Running the rules in this test should cause an exception.")
+      (catch Exception e
+        (let [listeners (listeners-from-trace e)]
+          (is (empty? listeners)
+              "When there is only the null listener there should be no listeners in the ex-data"))))))
 
 (deftest test-non-list-seq-form-used-for-non-eq-unification
   (let [non-list-constraint (cons '= '(this (identity ?t)))
