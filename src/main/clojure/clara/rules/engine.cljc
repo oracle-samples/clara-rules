@@ -1108,24 +1108,31 @@
                       (flush-insertions! batched false))
                     (when-let [batched (seq @batched-rhs-retractions)]
                       (flush-rhs-retractions! batched))
-                    (catch #?(:clj Exception
-                                   :cljs :default) e
-
-                                   ;; If the rule fired an exception, help debugging by attaching
-                                   ;; details about the rule itself and cached insertions
-                                   ;; while propagating the cause.
-                                   (let [production (:production node)
-                                         rule-name (:name production)
-                                         rhs (:rhs production)]
-                                     (throw (ex-info (str "Exception in " (if rule-name rule-name (pr-str rhs))
-                                                          " with bindings " (pr-str (:bindings token)))
-                                                     {:bindings (:bindings token)
-                                                      :name rule-name
-                                                      :rhs rhs
-                                                      :batched-logical-insertions @batched-logical-insertions
-                                                      :batched-unconditional-insertions @batched-unconditional-insertions
-                                                      :batched-rhs-retractions @batched-rhs-retractions}
-                                                     e)))))
+                    (catch #?(:clj Exception :cljs :default) e
+                           
+                           ;; If the rule fired an exception, help debugging by attaching
+                           ;; details about the rule itself, cached insertions, and any listeners
+                           ;; while propagating the cause.
+                           (let [production (:production node)
+                                 rule-name (:name production)
+                                 rhs (:rhs production)]
+                             (throw (ex-info (str "Exception in " (if rule-name rule-name (pr-str rhs))
+                                                  " with bindings " (pr-str (:bindings token)))
+                                             {:bindings (:bindings token)
+                                              :name rule-name
+                                              :rhs rhs
+                                              :batched-logical-insertions @batched-logical-insertions
+                                              :batched-unconditional-insertions @batched-unconditional-insertions
+                                              :batched-rhs-retractions @batched-rhs-retractions
+                                              :listeners (try
+                                                           (let [p-listener (l/to-persistent! listener)]
+                                                             (if (l/null-listener? p-listener)
+                                                               []
+                                                               (l/get-children p-listener)))
+                                                           (catch #?(:clj Exception :cljs :default)
+                                                             listener-exception
+                                                             listener-exception))}
+                                             e)))))
 
                   ;; Explicitly flush updates if we are in a no-loop rule, so the no-loop
                   ;; will be in context for child rules.
