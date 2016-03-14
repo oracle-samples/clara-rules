@@ -217,10 +217,12 @@
         transport (eng/LocalTransport.)
 
         ;; The fact-type uses Clojure's type function unless overridden.
-        fact-type-fn (get options :fact-type-fn type)
+        fact-type-fn (or (get options :fact-type-fn)
+                         type)
 
         ;; The ancestors for a logical type uses Clojurescript's ancestors function unless overridden.
-        ancestors-fn (get options :ancestors-fn ancestors)
+        ancestors-fn (or (get options :ancestors-fn)
+                         ancestors)
 
         ;; Create a function that groups a sequence of facts by the collection
         ;; of alpha nodes they target.
@@ -228,16 +230,9 @@
         ;; them for every fact entered.
         get-alphas-fn (create-get-alphas-fn fact-type-fn ancestors-fn rulebase)
 
-        ;; Default sort by higher to lower salience.
-        activation-group-sort-fn (get options :activation-group-sort-fn >)
+        activation-group-sort-fn (eng/options->activation-group-sort-fn options)
 
-        ;; Activation groups use salience, with zero
-        ;; as the default value.
-        activation-group-fn (get options
-                                 :activation-group-fn
-                                 (fn [production]
-                                   (or (some-> production :props :salience)
-                                       0)))
+        activation-group-fn (eng/options->activation-group-fn options)
 
         listener (if-let [listeners (:listeners options)]
                    (l/delegating-listener listeners)

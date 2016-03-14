@@ -1253,3 +1253,60 @@
     (doseq [beta-node (:beta-roots rulebase)]
       (left-activate beta-node {} [empty-token] memory transport l/default-listener))
     (mem/to-persistent! memory)))
+
+(defn options->activation-group-sort-fn
+  "Given the map of options for a session, construct an activation group sorting
+  function that takes into account the user-provided salience and internal salience.
+  User-provided salience is considered first.  Under normal circumstances this function should
+  only be called by Clara itself."
+  [options]
+  (let [user-activation-group-sort-fn (or (get options :activation-group-sort-fn)
+                                          ;; Default to sort by descending numerical order.
+                                          >)]
+
+    ;; Compare user-provided salience first, using either the provided salience function or the default,
+    ;; then use the internal salience if the former does not provide an ordering between the two salience values.
+    (fn [salience1 salience2]
+      (let [forward-result (user-activation-group-sort-fn (nth salience1 0)
+                                                          (nth salience2 0))]
+        (if (number? forward-result)
+          (if (= 0 forward-result)
+            (> (nth salience1 1)
+               (nth salience2 1))
+            forward-result)
+          (let [backward-result (user-activation-group-sort-fn (nth salience2 0)
+                                                               (nth salience1 0))
+                forward-bool (boolean forward-result)
+                backward-bool (boolean backward-result)]
+            ;; Since we just use Clojure functions, for example >, equality may be implied
+            ;; by returning false for comparisons in both directions rather than by returning 0.
+            ;; Furthermore, ClojureScript will use truthiness semantics rather than requiring a
+            ;; boolean (unlike Clojure), so we use the most permissive semantics between Clojure
+            ;; and ClojureScript.
+            (if (not= forward-bool backward-bool)
+              forward-bool
+              (> (nth salience1 1)
+                 (nth salience2 1)))))))))
+
+(def ^:private internal-salience-levels {:default 0
+                                         ;; Extracted negations need to be prioritized over their original
+                                         ;; rules since their original rule could fire before the extracted condition.
+                                         ;; This is a problem if the original rule performs an unconditional insertion
+                                         ;; or has other side effects not controlled by truth maintenance.
+                                         :extracted-negation 1})
+
+(defn options->activation-group-fn
+  "Given a map of options for a session, construct a function that takes a production
+  and returns the activation group to which it belongs, considering both user-provided
+  and internal salience.  Under normal circumstances this function should only be called by
+  Clara itself."
+  [options]
+  (let [rule-salience-fn (or (:activation-group-fn options)
+                             (fn [production] (or (some-> production :props :salience)
+                                                  0)))]
+
+    (fn [production]
+      [(rule-salience-fn production)
+       (internal-salience-levels (or (some-> production :props :clara-rules/internal-salience)
+                                     :default))])))
+
