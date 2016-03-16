@@ -898,6 +898,8 @@
                            ;; Propagate properties like salience to the generated production.
                            (:props production) (assoc :props (:props production))
 
+                           true (assoc-in [:props :clara-rules/internal-salience] :extracted-negation)
+
                                ;; Propagate the the environment (such as local bindings) if applicable.
                            (:env production) (assoc :env (:env production)))
 
@@ -1474,21 +1476,19 @@
         transport (LocalTransport.)
 
         ;; The fact-type uses Clojure's type function unless overridden.
-        fact-type-fn (get options :fact-type-fn type)
+        fact-type-fn (or (get options :fact-type-fn)
+                         type)
 
         ;; The ancestors for a logical type uses Clojure's ancestors function unless overridden.
-        ancestors-fn (get options :ancestors-fn ancestors)
+        ancestors-fn (or (get options :ancestors-fn)
+                         ancestors)
 
-        ;; Default sort by higher to lower salience.
-        activation-group-sort-fn (get options :activation-group-sort-fn >)
+        ;; The default is to sort activations in descending order by their salience.
+        activation-group-sort-fn (eng/options->activation-group-sort-fn options)
 
-        ;; Activation groups use salience, with zero
-        ;; as the default value.
-        activation-group-fn (get options
-                                 :activation-group-fn
-                                 (fn [production]
-                                   (or (some-> production :props :salience)
-                                       0)))
+        ;; The returned salience will be a tuple of the form [rule-salience internal-salience],
+        ;; where internal-salience is considered after the rule-salience and is assigned automatically by the compiler.
+        activation-group-fn (eng/options->activation-group-fn options)
 
         ;; Create a function that groups a sequence of facts by the collection
         ;; of alpha nodes they target.

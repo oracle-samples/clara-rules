@@ -14,7 +14,7 @@
             [clojure.walk :as walk]
             [clara.sample-ruleset-seq]
             [schema.test])
-  (import [clara.rules.testfacts Temperature WindSpeed Cold TemperatureHistory
+  (import [clara.rules.testfacts Temperature WindSpeed Cold Hot TemperatureHistory
            ColdAndWindy LousyWeather First Second Third Fourth FlexibleFields]
           [java.util TimeZone]
           [clara.tools.tracing
@@ -2609,33 +2609,94 @@
   (swap! salience-rule-output conj -50))
 
 (deftest test-salience
+  (doseq [[sort-fn
+           group-fn
+           expected-order]
 
-  (let [rule1 (assoc
-                  (dsl/parse-rule [[Temperature]]
-                                  (swap! salience-rule-output conj 100))
-                :props {:salience 100})
+          [[:default-sort :default-group :forward-order]
+           [:default-sort :salience-group :forward-order]
+           [:default-sort :neg-salience-group :backward-order]
+           
+           [:numeric-greatest-sort :default-group :forward-order]
+           [:numeric-greatest-sort :salience-group :forward-order]
+           [:numeric-greatest-sort :neg-salience-group :backward-order]
 
-        rule2 (assoc
-                  (dsl/parse-rule [[Temperature ]]
-                                  (swap! salience-rule-output conj 50))
-                :props {:salience 50})
+           
+           [:boolean-greatest-sort :default-group :forward-order]
+           [:boolean-greatest-sort :salience-group :forward-order]
+           [:boolean-greatest-sort :neg-salience-group :backward-order]
 
-        rule3 (assoc
-                  (dsl/parse-rule [[Temperature ]]
-                                  (swap! salience-rule-output conj 0))
-                :props {:salience 0})]
+           
+           [:numeric-least-sort :default-group :backward-order]
+           [:numeric-least-sort :salience-group :backward-order]
+           [:numeric-least-sort :neg-salience-group :forward-order]
 
-    ;; Ensure the rule output reflects the salience-defined order.
-    ;; independently of the order of the rules.
-    (dotimes [n 10]
+           [:boolean-least-sort :default-group :backward-order]
+           [:boolean-least-sort :salience-group :backward-order]
+           [:boolean-least-sort :neg-salience-group :forward-order]]]
 
-      (reset! salience-rule-output [])
+    (let [rule1 (assoc
+                 (dsl/parse-rule [[Temperature]]
+                                 (swap! salience-rule-output conj 100))
+                 :props {:salience 100})
 
-      (-> (mk-session (shuffle [rule1 rule3 rule2 salience-rule4]) :cache false)
-          (insert (->Temperature 10 "MCI"))
-          (fire-rules))
+          rule2 (assoc
+                 (dsl/parse-rule [[Temperature ]]
+                                 (swap! salience-rule-output conj 50))
+                 :props {:salience 50})
 
-      (is (= [100 50 0 -50] @salience-rule-output)))))
+          rule3 (assoc
+                 (dsl/parse-rule [[Temperature ]]
+                                 (swap! salience-rule-output conj 0))
+                 :props {:salience 0})
+
+          numeric-greatest-sort (fn [x y]
+                                  (cond
+                                    (= x y) 0
+                                    (> x y) -1
+                                    :else 1))
+
+          numeric-least-sort (fn [x y]
+                               (numeric-greatest-sort y x))
+
+          salience-group-fn (fn [production]
+                              (or (some-> production :props :salience)
+                                  0))
+
+          neg-salience-group-fn (fn [p]
+                                  (- (salience-group-fn p)))]
+
+      ;; Ensure the rule output reflects the salience-defined order.
+      ;; independently of the order of the rules.
+      (dotimes [n 10]
+
+        (reset! salience-rule-output [])
+
+        (-> (com/mk-session [(shuffle [rule1 rule3 rule2 salience-rule4])
+                             :cache false
+                             :activation-group-sort-fn (condp = sort-fn
+                                                         :default-sort nil
+                                                         :numeric-greatest-sort numeric-greatest-sort
+                                                         :numeric-least-sort numeric-least-sort
+                                                         :boolean-greatest-sort  >
+                                                         :boolean-least-sort <)
+                             :activation-group-fn (condp = group-fn
+                                                    :default-group nil
+                                                    :salience-group salience-group-fn
+                                                    :neg-salience-group neg-salience-group-fn)])
+            (insert (->Temperature 10 "MCI"))
+            (fire-rules))
+
+        (let [test-fail-str
+              (str "Failure with sort-fn: " sort-fn ", group-fn: " group-fn ", and expected order: " expected-order)]
+          (condp = expected-order
+            :forward-order
+            (is (= [100 50 0 -50] @salience-rule-output)
+                test-fail-str)
+
+            :backward-order
+            (is (= [-50 0 50 100] @salience-rule-output)
+                test-fail-str)))))))
 
 (deftest test-variable-visibility
   (let [temps-for-locations (dsl/parse-rule [[:location (= ?loc (:loc this))]
@@ -3517,3 +3578,27 @@
            [])
         "A retraction that becomes redundant after reordering of insertions
          and retractions due to batching should not cause failure.")))
+
+(deftest test-complex-nested-truth-maintenance-with-unconditional-insert
+  (let [r (dsl/parse-rule [[Cold (= ?t temperature)]
+                           [:not [:or [ColdAndWindy (= ?t temperature)]
+                                  [Hot (= ?t temperature)]]]]
+                          (insert-unconditional! (->First)))
+        
+        q (dsl/parse-query [] [[First]])
+
+        session->results (fn [session] (-> session
+                                           (insert (->Cold 10) (->Hot 10))
+                                           (fire-rules)
+                                           (query q)))]
+    (is (= (session->results (mk-session [r q]))
+           ;; Validate that equal salience is handled correctly by
+           ;; the activation-group-sort-fn when the user provides
+           ;; a function with a numerical return value.
+           (session->results (mk-session [r q] :activation-group-sort-fn
+                                         (fn [x y]
+                                           (cond
+                                             (= x y) 0
+                                             (> x y) -1
+                                             :else 1))))
+           []))))
