@@ -3602,3 +3602,36 @@
                                              (> x y) -1
                                              :else 1))))
            []))))
+
+
+(def some-rules [(assoc (dsl/parse-query [] [[Temperature (< temperature 40) (= ?t temperature) (= ?l location)]])
+                        :name "cold")
+                 (assoc (dsl/parse-query [] [[Temperature (> temperature 80) (= ?t temperature) (= ?l location)]])
+                        :name "hot")])
+
+(deftest load-rules-from-qualified-symbol
+  ;; Test getting a production by symbol
+  (let [session (-> (mk-session 'clara.test-rules/cold-query)
+                    (insert (->Temperature 35 "BOS"))
+                    (fire-rules))]
+
+    ;; Query by location.
+    (is (= #{{:?l "BOS" :?t 35}}
+           (set (query session cold-query :?l "BOS")))))
+
+  ;; Test getting a sequence of rules by symbol.
+  (let [session (-> (mk-session 'clara.test-rules/some-rules)
+                    (insert (->Temperature 35 "BOS"))
+                    (insert (->Temperature 85 "MIA"))
+                    (fire-rules))]
+
+    ;; Query by location.
+    (is (= #{{:?l "BOS" :?t 35}}
+           (set (query session "cold"))))
+
+    (is (= #{{:?l "MIA" :?t 85}}
+           (set (query session "hot")))))
+
+  ;; Test bogus symbol
+  (is (thrown? clojure.lang.ExceptionInfo
+       (mk-session 'clara.test-rules/bogus-symbol))))

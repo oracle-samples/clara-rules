@@ -246,14 +246,32 @@
    (extend-type clojure.lang.Symbol
      com/IRuleSource
      (load-rules [sym]
-                 ;; Find the rules and queries in the namespace, shred them,
-                 ;; and compile them into a rule base.
-                 (->> (ns-interns sym)
-                      (vals) ; Get the references in the namespace.
-                      (filter #((some-fn :rule :query :production-seq) (meta %))) ; Filter down to rules, queries, and seqs of both.
-                      (mapcat #(if (:production-seq (meta %))
-                                 (deref %)
-                                 [(deref %)]))))))
+       ;; Find the rules and queries in the namespace, shred them,
+       ;; and compile them into a rule base.
+       (if (namespace sym)
+         ;; The symbol is qualified, so load rules in the qualified symbol.
+         (let [resolved (resolve sym)]
+           (when (nil? resolved)
+             (throw (ex-info (str "Unable to resolve rule source: " sym) {:sym sym})))
+
+           (cond
+             ;; The symbol references a rule or query, so just return it
+             (or (:query (meta resolved))
+                 (:rule (meta resolved))) [@resolved]
+
+             ;; The symbol refernces a sequence, so return it.
+             (sequential? @resolved) @resolved
+
+             :default
+             (throw (ex-info (str "The source referenced by " sym " is not valid.") {:sym sym} ))))
+
+         ;; The symbol is not qualified, so treat it as a namespace.
+         (->> (ns-interns sym)
+              (vals) ; Get the references in the namespace.
+              (filter #((some-fn :rule :query :production-seq) (meta %))) ; Filter down to rules, queries, and seqs of both.
+              (mapcat #(if (:production-seq (meta %))
+                         (deref %)
+                         [(deref %)])))))))
 
 #?(:clj
   (defmacro mk-session
