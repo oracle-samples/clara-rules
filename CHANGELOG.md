@@ -1,5 +1,12 @@
 This is a history of changes to clara-rules.
 
+### 0.11.0
+
+* Add a "grouping-by" accumulator. See [issue 164](https://github.com/rbrush/clara-rules/pull/164).
+* Fix truth maintenance when working with equal inserted facts. See [issue 171](https://github.com/rbrush/clara-rules/issues/171).
+* Fix incorrect rule activation edge case when dealing with complex nested negations and unconditional inserts. See [issue 174](https://github.com/rbrush/clara-rules/issues/174).
+* clara.rules/mk-session now loads rules stored in a var if given a qualified symbol for that var. See [issue 177](https://github.com/rbrush/clara-rules/issues/177).
+
 ### 0.10.0
 Clara 0.10 is compatible with previous versions, with a couple caveats. These are:
 
