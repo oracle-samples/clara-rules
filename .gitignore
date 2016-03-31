@@ -2,6 +2,7 @@
 /lib
 /classes
 /checkouts
+/resources/public/js/*
 pom.xml
 pom.xml.asc
 *.jar
@@ -10,4 +11,5 @@ pom.xml.asc
 .lein-failures
 .lein-plugins
 .lein-repl-history
+figwheel_server.log
 *.*~

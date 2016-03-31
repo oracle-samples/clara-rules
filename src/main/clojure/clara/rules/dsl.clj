@@ -227,26 +227,25 @@
     (remove destructuring-sym? (eval `(let [~args nil] (local-syms))))))
 
 (defn parse-rule*
-  "Creates a rule from the DSL syntax using the given environment map."
+  "Creates a rule from the DSL syntax using the given environment map.  *ns*
+   should be bound to the namespace the rule is meant to be defined in."
   ([lhs rhs properties env]
    (parse-rule* lhs rhs properties env {}))
   ([lhs rhs properties env rule-meta]
    (let [conditions (into [] (for [expr lhs]
                                (parse-expression expr rule-meta)))
 
-         rule {:lhs (list 'quote
+         rule {:ns-name (list 'quote (ns-name *ns*))
+               :lhs (list 'quote
                           (mapv #(resolve-vars % (destructure-syms %))
                                 conditions))
                :rhs (list 'quote
-                          (with-meta (resolve-vars rhs
-                                                   (map :fact-binding conditions))
-
-                            (assoc (meta rhs) :file *file*)))}
+                          (vary-meta rhs
+                                     assoc :file *file*))}
 
          symbols (set (filter symbol? (com/flatten-expression (concat lhs rhs))))
          matching-env (into {} (for [sym (keys env)
-                                     :when (symbols sym)
-                                     ]
+                                     :when (symbols sym)]
                                  [(keyword (name sym)) sym]))]
 
      (cond-> rule

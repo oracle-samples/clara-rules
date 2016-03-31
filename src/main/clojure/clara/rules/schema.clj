@@ -60,7 +60,11 @@
    map? LeafCondition))
 
 (def Rule
-  {(s/optional-key :name) s/Str
+  {;; :ns-name is currently used to eval the :rhs form of a rule in the same
+   ;; context that it was originally defined in.  It is optional and only used
+   ;; when given.  It may be used for other purposes in the future.
+   (s/optional-key :ns-name) s/Symbol
+   (s/optional-key :name) s/Str
    (s/optional-key :doc) s/Str
    (s/optional-key :props) {s/Keyword s/Any}
    (s/optional-key :env) {s/Keyword s/Any}
