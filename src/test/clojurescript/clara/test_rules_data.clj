@@ -1,4 +1,6 @@
-(ns clara.test-rules-data)
+(ns clara.test-rules-data
+  (:require [clara.rules]
+            [clara.rules.testfacts]))
 
 (def the-rules
   [{:doc "Rule to determine whether it is indeed cold and windy."

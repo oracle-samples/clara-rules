@@ -1232,9 +1232,10 @@
       (eng/->ProductionNode
        id
        production
-       (binding [*file* (:file (meta (:rhs production)))
-                 *compile-ctx* {:production production
-                                :msg "compiling production node"}]
+       (with-bindings (cond-> {#'*file* (-> production :rhs meta :file)
+                               #'*compile-ctx* {:production production
+                                                :msg "compiling production node"}}
+                        (:ns-name production) (assoc #'*ns* (the-ns (:ns-name production))))
          (compile-expr id
                        (with-meta (compile-action (:bindings beta-node)
                                                   (:rhs production)

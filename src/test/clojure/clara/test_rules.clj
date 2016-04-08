@@ -12,7 +12,7 @@
             [clojure.set :as s]
             [clojure.edn :as edn]
             [clojure.walk :as walk]
-            [clara.sample-ruleset-seq]
+            [clara.sample-ruleset-seq :as srs]
             [schema.test])
   (import [clara.rules.testfacts Temperature WindSpeed Cold Hot TemperatureHistory
            ColdAndWindy LousyWeather First Second Third Fourth FlexibleFields]
@@ -3032,6 +3032,79 @@
 
     (is (= 42 @rule-output))))
 
+(def locals-shadowing-tester
+  "Used to demonstrate local shadowing works in `test-rhs-locals-shadowing-vars` below."
+  :bad)
+
+(deftest test-rhs-locals-shadowing-vars
+  (let [r1 (dsl/parse-rule [[:test]]
+                           (let [{:keys [locals-shadowing-tester]} {:locals-shadowing-tester :good}]
+                             (insert! ^{:type :result}
+                                      {:r :r1
+                                       :v locals-shadowing-tester})))
+        r2 (dsl/parse-rule [[:test]]
+                           (let [locals-shadowing-tester :good]
+                             (insert! ^{:type :result}
+                                      {:r :r2
+                                       :v locals-shadowing-tester})))
+        r3 (dsl/parse-rule [[:test]]
+                           (let [[locals-shadowing-tester] [:good]]
+                             (insert! ^{:type :result}
+                                      {:r :r3
+                                       :v locals-shadowing-tester})))
+        r4 (dsl/parse-rule [[:test]]
+                           (insert-all! (for [_ (range 1)
+                                              :let [locals-shadowing-tester :good]]
+                                          ^{:type :result}
+                                          {:r :r4
+                                           :v locals-shadowing-tester})))
+        q (dsl/parse-query [] [[?r <- :result]])]
+    (is (= #{{:r :r1
+              :v :good}
+             {:r :r2
+              :v :good}
+             {:r :r3
+              :v :good}
+             {:r :r4
+              :v :good}}
+           (set (map :?r
+                     (-> (mk-session [r1 r2 r3 r4 q])
+                         (insert ^{:type :test} {})
+                         fire-rules
+                         (query q))))))))
+
+(deftest test-explicit-rhs-map-can-use-ns-name-for-unqualified-symbols
+  (let [;; The :rhs form only makes sense within the scope of another
+        ;; namespace - i.e. clara.sample-ruleset-seq.
+        ;; Demonstrating this can work, independently of the Clara DSL.
+        r1 {:ns-name 'clara.sample-ruleset-seq
+            :name "r1"
+            :lhs '[{:type :test
+                    :constraints []}]
+            :rhs '(clara.rules/insert! ^{:type :result}
+                                       {:r :r1
+                                        :v all-rules})}
+        ;; However, rule structures are not required to specific a :ns-name if
+        ;; they do not need them.  This would be safe if the :rhs form already
+        ;; had qualified symbols used, which may typically be the case for
+        ;; external tooling.
+        r2 {:name "r2"
+            :lhs '[{:type :test
+                    :constraints []}]
+            :rhs `(insert! ^{:type :result}
+                           {:r :r2
+                            :v locals-shadowing-tester})}
+        q (dsl/parse-query [] [[?r <- :result]])]
+    (is (= #{{:r :r1
+              :v srs/all-rules}
+             {:r :r2
+              :v locals-shadowing-tester}}
+           (set (map :?r
+                     (-> (mk-session [r1 r2 q])
+                         (insert ^{:type :test} {})
+                         fire-rules
+                         (query q))))))))
+
 (deftest test-qualified-equals-for-fact-binding
   (let [get-accum-nodes #(->> %
                               .rulebase
@@ -3062,14 +3135,6 @@
                                       (reset! int-value (Integer/parseInt ?s))
                                       (catch NumberFormatException e
                                         (reset! int-value -1))))]
-
-    ;; the RHS should resolve to the qualified exception name.
-    (is (some #{'java.lang.NumberFormatException}
-              (flatten (:rhs to-int-rule))))
-
-    ;; The static method call should be qualified
-    (is (some #{'java.lang.Integer/parseInt}
-              (flatten (:rhs to-int-rule))))
 
     ;; Test successful integer parse.
     (-> (mk-session [to-int-rule])

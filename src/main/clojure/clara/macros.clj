@@ -155,7 +155,28 @@
           `(eng/->ProductionNode
            ~id
            '~production
-           ~(com/compile-action all-bindings (:rhs production) (:env production)))
+           ;; NOTE:  This is a workaround around allowing the compiler to eval this
+           ;; form in an unknown ns.  It will suffer from var shadowing problems described
+           ;; @ https://github.com/rbrush/clara-rules/issues/178.
+           ;; A better solution may be to enhance dsl/resolve-vars to deal with shadowing
+           ;; correctly in cljs.  This may be easier to do there since the compiler's
+           ;; analyzer may be more exposed than on the clj side.
+           ~(let [resolve-vars #(@#'dsl/resolve-vars (:rhs production)
+                                                     ;; It is unlikely that passing the bindings matters,
+                                                     ;; but all:fact-binding from the LHS conditions were
+                                                     ;; made available here in the past.  However, all
+                                                     ;; bindings begin with "?" which typically means
+                                                     ;; that a rule wouldn't, or at least shouldn't for
+                                                     ;; clarity, start the names of other locals or vars
+                                                     ;; with "?".
+                                                     (mapv (comp symbol name) all-bindings))]
+              (com/compile-action all-bindings
+                                  ;; Using private function for now as a workaround.
+                                  (if (:ns-name production)
+                                    (binding [*ns* (the-ns (:ns-name production))]
+                                      (resolve-vars))
+                                    (resolve-vars))
+                                  (:env production))))
 
           :query
           `(eng/->QueryNode
