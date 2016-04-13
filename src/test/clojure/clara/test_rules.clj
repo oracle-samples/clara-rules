@@ -3721,3 +3721,33 @@
               fire-rules)]
     (is (= #{{:?x 1}} (set (query s alpha))))
     (is (= #{{:?t 1}} (set (query s join-filter))))))
+
+(deftest test-flush-all-updates-before-changing-activation-group
+  (let [results (atom [])
+        r1 (dsl/parse-rule [[:not [Temperature (= temperature 100)]]]
+                           (insert! (->Cold 1))
+                           {:salience 1})
+
+        r2 (dsl/parse-rule [[Cold (= ?t temperature)]]
+                           (insert! (->Temperature ?t "MCI"))
+                           {:salience 1})
+
+        r3 (dsl/parse-rule [[Hot (= ?t temperature)]]
+                           (insert! (->Temperature ?t "MCI")))
+        
+        r4 (dsl/parse-rule [[?ts <- (acc/all :temperature) :from [Temperature]]]
+                           (do (swap! results conj ?ts)
+                               (insert! (->TemperatureHistory ?ts)))
+                           {:salience -1})
+
+        q (dsl/parse-query []
+                           [[TemperatureHistory (= ?ts temperatures)]])
+
+        s (-> (mk-session [r1 r2 r3 r4 q])
+              (insert (->Hot 100))
+              fire-rules)]
+
+    (is (= #{{:?ts [100]}}
+           (set (query s q))))
+    (is (= [[100]]
+           @results))))

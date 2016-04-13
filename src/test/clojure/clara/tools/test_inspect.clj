@@ -53,8 +53,8 @@
       ;; Retrieve the tokens matching the cold query. This test validates
       ;; the tokens contain the expected matching conditions by retrieving
       ;; them directly from the query in question.
-      (is (= [cold-rule-15-explanation cold-rule-10-explanation]
-             (get-in rule-dump [:query-matches cold-query]))
+      (is (= (frequencies [cold-rule-15-explanation cold-rule-10-explanation])
+             (frequencies (get-in rule-dump [:query-matches cold-query])))
           "Query matches test")
 
       ;; Retrieve tokens matching the hot rule.
@@ -68,8 +68,8 @@
           "Insertions test")
 
       ;; Ensure the first condition in the rule matches the expected facts.
-      (is (= [(->Temperature 15 "MCI") (->Temperature 10 "MCI")]
-             (get-in rule-dump [:condition-matches  (first (:lhs cold-rule))]))
+      (is (= (frequencies [(->Temperature 15 "MCI") (->Temperature 10 "MCI")])
+             (frequencies (get-in rule-dump [:condition-matches  (first (:lhs cold-rule))])))
           "Condition matches test")
 
       ;; Test the :fact->explanations key in the inspected session data.
