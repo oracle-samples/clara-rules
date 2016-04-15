@@ -268,6 +268,19 @@
                              (= \? (first (name item))))]
               (keyword  item))))
 
+(defn field-name->accessors-used
+  "Returns a map of field name to accessors for any field names of type used
+   in the constraints."
+  [type constraints]
+  (let [field-name->accessor (get-fields type)
+        all-fields (set (keys field-name->accessor))
+        fields-used (into #{}
+                          (filter all-fields)
+                          (flatten-expression constraints))]
+    (into {}
+          (filter (comp fields-used key))
+          field-name->accessor)))
+
 (defn- add-meta
   "Helper function to add metadata."
   [fact-symbol fact-type]
@@ -289,8 +302,7 @@
   "Returns a function definition that can be used in alpha nodes to test the condition."
   [type destructured-fact constraints result-binding env]
   (let [;; Get a map of fieldnames to access function symbols.
-        accessors (get-fields type)
-
+        accessors (field-name->accessors-used type constraints)
         binding-keys (variables-as-keywords constraints)
         ;; The assignments should use the argument destructuring if provided, or default to accessors otherwise.
         assignments (if destructured-fact
@@ -354,7 +366,7 @@
    function that accepts a token, a fact, and an environment, and returns truthy if the given fact satisfies
    the criteria."
   [{:keys [type constraints args] :as unification-condition} ancestor-bindings env]
-  (let [accessors (get-fields type)
+  (let [accessors (field-name->accessors-used type constraints)
 
         binding-keys (variables-as-keywords constraints)
 
