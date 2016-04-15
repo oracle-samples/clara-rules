@@ -16,6 +16,7 @@
           :metadata {:doc/format :markdown}}
   :javadoc-opts {:package-names "clara.rules"}
   :source-paths ["src/main/clojure"]
+  :resource-paths []
   :test-paths ["src/test/clojure" "src/test/common"]
   :java-source-paths ["src/main/java"]
   :javac-options ["-target" "1.6" "-source" "1.6"]
