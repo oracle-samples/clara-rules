@@ -3700,3 +3700,24 @@
   ;; Test bogus symbol
   (is (thrown? clojure.lang.ExceptionInfo
        (mk-session 'clara.test-rules/bogus-symbol))))
+
+(defprotocol Getter
+  (getX [this])
+  (getY [this]))
+
+(deftype TestBean [x y]
+  Getter
+  (getX [_] x)
+  (getY [_]
+    (throw (ex-info "getY isn't used and shouldn't be accessed by the rules" {}))))
+
+(deftest test-only-used-field-names-accessed
+  (let [alpha (dsl/parse-query [] [[TestBean (= ?x x)]])
+        join-filter (dsl/parse-query [] [[Temperature (= ?t temperature)]
+                                         [TestBean (= ?t x)]])
+        s (-> (mk-session [alpha join-filter])
+              (insert (->TestBean 1 2)
+                      (->Temperature 1 "MCI"))
+              fire-rules)]
+    (is (= #{{:?x 1}} (set (query s alpha))))
+    (is (= #{{:?t 1}} (set (query s join-filter))))))
