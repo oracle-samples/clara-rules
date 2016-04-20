@@ -97,79 +97,45 @@
   (retract-elements [transport memory listener nodes elements])
   (retract-tokens [transport memory listener nodes tokens]))
 
+(defn- propagate-items-to-nodes [transport memory listener nodes items propagate-fn]
+  (doseq [node nodes
+          :let [join-keys (get-join-keys node)]]
+
+    (if (pos? (count join-keys))
+
+      ;; Group by the join keys for the activation.
+      (doseq [[join-bindings item-group] (platform/tuned-group-by #(select-keys (:bindings %) join-keys) items)]
+        (propagate-fn node
+                      join-bindings
+                      item-group
+                      memory
+                      transport
+                      listener))
+
+      ;; The node has no join keys, so just send everything at once
+      ;; (if there is something to send.)
+      (when (seq items)
+        (propagate-fn node
+                      {}
+                      items
+                      memory
+                      transport
+                      listener)))))
 
 ;; Simple, in-memory transport.
 (deftype LocalTransport []
   ITransport
   (send-elements [transport memory listener nodes elements]
-
-    (doseq [node nodes
-            :let [join-keys (get-join-keys node)]]
-
-      (if (> (count join-keys) 0)
-
-        ;; Group by the join keys for the activation.
-        (doseq [[join-bindings element-group] (platform/tuned-group-by #(select-keys (:bindings %) join-keys) elements)]
-          (right-activate node
-                          join-bindings
-                          element-group
-                          memory
-                          transport
-                          listener))
-
-        ;; The node has no join keys, so just send everything at once
-        ;; (if there is something to send.)
-        (when (seq elements)
-          (right-activate node
-                          {}
-                          elements
-                          memory
-                          transport
-                          listener)))))
+    (propagate-items-to-nodes transport memory listener nodes elements right-activate))
 
   (send-tokens [transport memory listener nodes tokens]
-
-    (doseq [node nodes
-            :let [join-keys (get-join-keys node)]]
-
-      (if (> (count join-keys) 0)
-        (doseq [[join-bindings token-group] (platform/tuned-group-by #(select-keys (:bindings %) join-keys) tokens)]
-
-          (left-activate node
-                         join-bindings
-                         token-group
-                         memory
-                         transport
-                         listener))
-
-        ;; The node has no join keys, so just send everything at once.
-        (when (seq tokens)
-          (left-activate node
-                         {}
-                         tokens
-                         memory
-                         transport
-                         listener)))))
+    (propagate-items-to-nodes transport memory listener nodes tokens left-activate))
 
   (retract-elements [transport memory listener nodes elements]
-    (doseq  [[bindings element-group] (platform/tuned-group-by :bindings elements)
-             node nodes]
-      (right-retract node
-                     (select-keys bindings (get-join-keys node))
-                     element-group
-                     memory
-                     transport
-                     listener)))
+    (propagate-items-to-nodes transport memory listener nodes elements right-retract))
 
   (retract-tokens [transport memory listener nodes tokens]
-    (doseq  [[bindings token-group] (platform/tuned-group-by :bindings tokens)
-             node nodes]
-      (left-retract  node
-                     (select-keys bindings (get-join-keys node))
-                     token-group
-                     memory
-                     transport
-                     listener))))
+    (propagate-items-to-nodes transport memory listener nodes tokens left-retract)))
 
 ;; Protocol for activation of Rete alpha nodes.
 (defprotocol IAlphaActivate
@@ -398,6 +364,7 @@
   (right-activate [node join-bindings elements memory transport listener]
 
     (l/right-activate! listener node elements)
+
 
     ;; Add elements to the working memory to support analysis tools.
     (mem/add-elements! memory node join-bindings elements)
