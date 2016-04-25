@@ -1,5 +1,11 @@
 This is a history of changes to clara-rules.
 
+### 0.11.1
+
+* Generated code for the left-hand side should only access fields that are used. See [issue 180](https://github.com/rbrush/clara-rules/pull/180).
+* Fix incorrect qualification of let variables on right-hand side. See [issue 178](https://github.com/rbrush/clara-rules/issues/178).
+* Optimize fact retraction. See [issue 183](https://github.com/rbrush/clara-rules/pull/183).
+
 ### 0.11.0
 
 * Add a "grouping-by" accumulator. See [issue 164](https://github.com/rbrush/clara-rules/pull/164).
