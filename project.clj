@@ -23,7 +23,7 @@
   :clean-targets ^{:protect false} ["resources/public/js" "target"]
   :hooks [leiningen.cljsbuild]
   :cljsbuild {:builds [;; Simple mode compilation for tests.
-                       {:id "simple"
+                       {:id "figwheel"
                         :source-paths ["src/test/clojurescript" "src/test/common"]
                         :figwheel true
                         :compiler {:main "clara.test"
@@ -32,9 +32,14 @@
                                    :asset-path "js/out"
                                    :optimizations :none}}
 
+                       {:id "simple"
+                        :source-paths ["src/test/clojurescript" "src/test/common"]
+                        :compiler {:output-to "target/js/simple.js"
+                                   :optimizations :whitespace}}
+
                        ;; Advanced mode compilation for tests.
                        {:id "advanced"
-                        :source-paths ["src/test/clojurescript"]
+                        :source-paths ["src/test/clojurescript" "src/test/common"]
                         :compiler {:output-to "target/js/advanced.js"
                                    :optimizations :advanced}}]
 

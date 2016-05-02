@@ -1,6 +1,7 @@
 (ns clara.test
   (:require-macros [cljs.test :as test])
   (:require [clara.test-rules]
+            [cljs.test]
             [clara.test-common]))
 
 (enable-console-print!)
