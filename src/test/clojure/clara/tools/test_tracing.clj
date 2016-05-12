@@ -66,9 +66,9 @@
                     (insert (->Temperature 10 "MCI"))
                     (insert (->Temperature 80 "MCI")))]
 
-    (is (= [:add-facts :accum-reduced :left-activate :add-facts
-            :left-retract :accum-reduced :left-activate :add-facts
-            :left-retract :accum-reduced :left-activate]
+    (is (= [:add-facts :accum-reduced :left-activate
+            :add-facts :accum-reduced :left-retract
+            :left-activate :add-facts :accum-reduced]
 
            (map :type (t/get-trace session))))))
 

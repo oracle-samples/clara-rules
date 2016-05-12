@@ -449,36 +449,61 @@
     (is (= #{{:?t (->Temperature 15 "MCI")}}
            (set (query session coldest-query))))))
 
-
+(defn join-filter-equals
+  "Intended to be a test function that is the same as equals, but is not visible to Clara as such
+  and thus forces usage of join filters instead of hash joins"
+  [& args]
+  (apply = args))
 
 (deftest test-joined-accumulator
+  (doseq [[coldest-query node-type] [[(dsl/parse-query []
+                                                       [(WindSpeed (= ?loc location))
+                                                        [?t <- (accumulate
+                                                                :retract-fn identity-retract
+                                                                :reduce-fn (fn [value item]
+                                                                             (if (or (= value nil)
+                                                                                     (< (:temperature item) (:temperature value) ))
+                                                                               item
+                                                                               value)))
+                                                         :from (Temperature (= ?loc location))]])
+                                      "AccumulateNode"]
+                                     [(dsl/parse-query []
+                                                       [(WindSpeed (= ?loc location))
+                                                        [?t <- (accumulate
+                                                                :retract-fn identity-retract
+                                                                :reduce-fn (fn [value item]
+                                                                             (if (or (= value nil)
+                                                                                     (< (:temperature item) (:temperature value) ))
+                                                                               item
+                                                                               value)))
+                                                         :from (Temperature (join-filter-equals ?loc location))]])
+                                      "AccumulateWithJoinFilterNode"]]
 
-  (let [coldest-query (dsl/parse-query []
-                                [(WindSpeed (= ?loc location))
-                                 [?t <- (accumulate
-                                         :retract-fn identity-retract
-                                         :reduce-fn (fn [value item]
-                                                      (if (or (= value nil)
-                                                              (< (:temperature item) (:temperature value) ))
-                                                        item
-                                                        value)))
-                                  :from (Temperature (= ?loc location))]])
+          :let [session (-> (mk-session [coldest-query])
+                            (insert (->Temperature 15 "MCI"))
+                            (insert (->Temperature 10 "MCI"))
+                            (insert (->Temperature 5 "SFO"))
 
-        session (-> (mk-session [coldest-query])
-                    (insert (->Temperature 15 "MCI"))
-                    (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 5 "SFO"))
+                            ;; Insert last to exercise left activation of accumulate node.
+                            (insert (->WindSpeed 30 "MCI")))
 
-                    ;; Insert last to exercise left activation of accumulate node.
-                    (insert (->WindSpeed 30 "MCI")))
-
-        session-retracted (retract session (->WindSpeed 30 "MCI"))]
+                session-retracted (retract session (->WindSpeed 30 "MCI"))
+                
+                session-other-retracted (-> session
+                                            (insert (->WindSpeed 30 "ORD"))
+                                            (retract (->WindSpeed 30 "ORD")))]]
 
     ;; Only the value that joined to WindSpeed should be visible.
     (is (= #{{:?t (->Temperature 10 "MCI") :?loc "MCI"}}
-           (set (query session coldest-query))))
+           (set (query session coldest-query)))
+        (str "Simple one-pass selection of the minimum for node type " node-type))
 
-    (is (empty? (query session-retracted coldest-query)))))
+    (is (= #{{:?t (->Temperature 10 "MCI") :?loc "MCI"}}
+           (-> session-other-retracted (query coldest-query) set))
+        (str "Adding and retracting a Location with another location should have no impact on the previous joined facts for node type " node-type))
+
+    (is (empty? (query session-retracted coldest-query))
+        (str "Retracting the WindSpeed fact that the temperatures joined with should cause the results from the query to be retracted for node type " node-type))))
 
 (deftest test-bound-accumulator-var
   (let [coldest-query (dsl/parse-query [:?loc]
@@ -596,11 +621,10 @@
 
         get-min-temp-under-threshold (dsl/parse-rule [[?threshold <- :temp-threshold]
 
-                                                   [?min-temp <- (acc/min :temperature)
-                                                    :from
-                                                    [Temperature
-                                                     (< temperature (:temperature ?threshold))]]]
-
+                                                      [?min-temp <- (acc/min :temperature)
+                                                       :from
+                                                       [Temperature
+                                                        (< temperature (:temperature ?threshold))]]]
                                                      (insert! (->Cold ?min-temp)))
 
         ;; Test assertion helper.
@@ -608,7 +632,7 @@
 
                                (is (= (count expected-results)
                                       (count (query session get-cold-temp)))
-                                   (str test-name))
+                                   (str test-name (seq (query session get-cold-temp))))
 
                                (is (= (set expected-results)
                                       (set (query session get-cold-temp)))
@@ -621,8 +645,9 @@
         temp-10-lax (->Temperature 10 "LAX")
         temp-20-mci (->Temperature 20 "MCI")
 
-        session (mk-session [get-cold-temp get-min-temp-under-threshold])]
-
+        session (mk-session [get-cold-temp get-min-temp-under-threshold])
+        simple-session (mk-session [get-min-temp-under-threshold])]
+    
     ;; No temp tests - no firing
 
     (assert-query-results 'no-thresh-no-temps
@@ -1051,7 +1076,6 @@
     ;; Retract the added fact and ensure we now match something.
     (is (= #{{}}
            (set (query session-retracted not-cold-or-windy))))))
-
 
 (deftest test-complex-negation
   (let [cold-not-match-temp
@@ -3751,3 +3775,278 @@
            (set (query s q))))
     (is (= [[100]]
            @results))))
+
+(defn constant-accum [v]
+  (accumulate
+   :initial-value v
+   :reduce-fn (constantly v)
+   :combine-fn (constantly v)
+   :retract-fn (constantly v)
+   :convert-return-fn identity))
+
+(deftest test-constant-accum-bindings-downstream-accumulate-node
+  (let [r1 (dsl/parse-rule [[?result <- (constant-accum []) :from [Cold (= ?temperature temperature)]]]
+                           (insert! (->TemperatureHistory [?result ?temperature])))
+        r2 (dsl/parse-rule [[Hot (= ?hot-temp temperature)]
+                            [?result <- (constant-accum []) :from [Cold (< temperature ?hot-temp)
+                                                                   (= ?temperature temperature)]]]
+                           (insert! (->TemperatureHistory [?result ?temperature])))
+        q1 (dsl/parse-query [] [[TemperatureHistory (= ?temps temperatures)]])]
+    
+    (doseq [[empty-session node-type] [[(mk-session [r1 q1] :cache false)
+                                        "AccumulateNode"]
+                                       [(mk-session [r2 q1] :cache false)
+                                        "AccumulateWithJoinFilterNode"]]]
+
+      (is (= (-> empty-session
+                 fire-rules
+                 (insert (Cold. 10) (Hot. 100))
+                 fire-rules
+                 (query q1))
+             [{:?temps [[] 10]}])
+          (str "Single Cold fact with double firing for node type " node-type))
+
+      (is (= (-> empty-session
+                 (insert (Cold. 10) (Hot. 100))
+                 fire-rules
+                 (query q1))
+             [{:?temps [[] 10]}])
+          (str "Single Cold fact with single firing for node type " node-type))
+
+      (is (= (-> empty-session
+                 fire-rules
+                 (insert (->Cold 10) (->Cold 20) (Hot. 100))
+                 fire-rules
+                 (query q1)
+                 frequencies)
+             {{:?temps [[] 10]} 1
+              {:?temps [[] 20]} 1})
+          (str "Two Cold facts with double firing for node type " node-type))
+
+      (is (= (-> empty-session
+                 fire-rules
+                 (insert (->Cold 10) (->Cold 20) (Hot. 100))
+                 fire-rules
+                 (query q1)
+                 frequencies)
+             {{:?temps [[] 10]} 1
+              {:?temps [[] 20]} 1})
+          (str "Two Cold facts with single firing for node type " node-type))
+
+      ;; FIXME: The correct assertion here is on equality to {:?temps [[] nil]}.
+      ;; Since (->Cold 10) is retracted we should use the initial value here.
+      ;; This is an existing defect that has been logged at https://github.com/rbrush/clara-rules/issues/188
+      (is (= (-> empty-session
+                 (insert (->Cold 10) (->Hot 100))
+                 (fire-rules)
+                 (retract (->Cold 10))
+                 (fire-rules)
+                 (query q1))
+             [{:?temps [[] 10]}])
+          (str "Retracting all elements that matched an accumulator with an initial value "
+               \newline
+               "should cause the facts inserted to use nil as the binding for bindings on the accumulator."
+               \newline
+               "Accumulator node type: " node-type)))))
+
+(deftest nil-accumulate-node-test
+  (let [r1 (dsl/parse-rule [[?r <- (constant-accum nil) :from [Cold]]]
+                           (insert! (->TemperatureHistory ?r)))
+        r2 (dsl/parse-rule [[Hot (= ?hot-temp temperature)]
+                            [?r <- (constant-accum nil) :from [Cold (< temperature ?hot-temp)]]]
+                           (insert! (->TemperatureHistory ?r)))
+        q (dsl/parse-query [] [[TemperatureHistory (= ?temps temperatures)]])
+        empty-session (mk-session [r1 q] :cache false)]
+
+    (doseq [[empty-session node-type] [[(mk-session [r1 q] :cache false)
+                                        "AccumulateNode"]
+                                       [(mk-session [r2 q] :cache false)
+                                        "AccumulateWithJoinFilterNode"]]]
+      (is (= (-> empty-session
+                 fire-rules
+                 (query q))
+             [])
+          (str "A nil initial value with no matching elements should not propagate from a " node-type))
+
+      (is (= (-> empty-session
+                 (insert (->Cold 10))
+                 fire-rules
+                 (query q))
+             [])
+          (str "A nil initial value with matching elements should still not propagate if the final result is nil.")))))
+
+(deftest test-multiple-minimum-accum-retractions
+  (let [coldest-rule-1 (dsl/parse-rule [[?coldest-temp <- (acc/min :temperature :returns-fact true) :from [ColdAndWindy]]]
+                                       (insert! (->Cold (:temperature ?coldest-temp))))
+        
+        coldest-rule-2 (dsl/parse-rule [[Hot (= ?max-temp temperature)]
+                                        [?coldest-temp <- (acc/min :temperature :returns-fact true) :from [ColdAndWindy (< temperature ?max-temp)]]]
+                                       (insert! (->Cold (:temperature ?coldest-temp))))
+        
+        cold-query (dsl/parse-query [] [[Cold (= ?t temperature)]])]
+
+    (doseq [[empty-session node-type]
+
+            [[(mk-session [coldest-rule-1 cold-query] :cache false) "AccumulateNode"]
+             [(mk-session [coldest-rule-2 cold-query] :cache false) "AccumulateWithJoinFilterNode"]]]
+
+      ;; Note: in the tests below we deliberately insert or retract one fact at a time and then fire the rules.  The idea
+      ;; is to verify that even accumulator activations and retractions that do not immediately change the tokens propagated
+      ;; downstream are registered appropriately for the purpose of truth maintenance later.  This pattern ensures that we have
+      ;; distinct activations and retractions.
+      
+      (let [all-temps-session (-> empty-session
+                                  (insert (->ColdAndWindy 10 10) (->Hot 100))
+                                  fire-rules
+                                  ;; Even though the minimum won't change, the addition of an additional
+                                  ;; fact with the same minimum changes how many of these facts can be retracted
+                                  ;; before the minimum propagated downstream changes.
+                                  (insert (->ColdAndWindy 10 10))
+                                  fire-rules
+                                  (insert (->ColdAndWindy 20 20))
+                                  fire-rules)
+
+            one-min-retracted-session (-> all-temps-session
+                                          ;; Even though the minimum won't change after a single retraction, we now only need
+                                          ;; one retraction to change the minimum rather than two.
+                                          (retract (->ColdAndWindy 10 10))
+                                          fire-rules)
+
+            all-min-retracted  (-> one-min-retracted-session
+                                   (retract (->ColdAndWindy 10 10))
+                                   fire-rules)]
+
+        (is (= (query all-temps-session cold-query)
+               [{:?t 10}])
+            (str "With all 3 ColdAndWindy facts in the session the minimum of 10 should be chosen for node type " node-type))
+
+        (is (= (query one-min-retracted-session cold-query)
+               [{:?t 10}])
+            (str "With only one of the ColdAndWindy facts of a temperature of 10 retracted the minimum is still 10 for node type " node-type))
+
+        (is (= (query all-min-retracted cold-query)
+               [{:?t 20}])
+            (str "With both ColdAndWindy facts with a temperature of 10, the new minimum is 20 for node type " node-type))))))
+
+(deftest test-no-retractions-of-nil-initial-value-accumulator-results
+  (doseq [:let [cold-query (dsl/parse-query [] [[Cold (= ?t temperature)]])]
+          [coldest-temp node-type] [[(dsl/parse-rule [[Hot]
+                                                      [?coldest-temp <- (acc/min :temperature) :from [ColdAndWindy]]]
+                                                     (insert! (->Cold ?coldest-temp)))
+                                     "AccumulateNode"]
+                                    [(dsl/parse-rule [[Hot (= ?max-temp temperature)]
+                                                      [?coldest-temp <- (acc/min :temperature) :from [ColdAndWindy (< temperature ?max-temp)]]]
+                                                     (insert! (->Cold ?coldest-temp)))
+                                     "AccumulateWithJoinFilterNode"]]]
+
+    (is (empty? (-> (mk-session [coldest-temp cold-query] :cache false)
+                    (insert (->Hot 100))
+                    fire-rules
+                    (query cold-query)))
+        (str "There should be no Cold fact since the initial value is nil for node type " node-type))
+
+    (is (= (-> (mk-session [coldest-temp cold-query] :cache false)
+               (insert (->Cold nil) (->Hot 100))
+               fire-rules
+               (query cold-query))
+           [{:?t nil}])
+        (str "The accumulator should not fire but we directly inserted a Cold fact for node type " node-type))
+
+    (is (= (-> (mk-session [coldest-temp cold-query] :cache false)
+               (insert (->Cold nil) (->Hot 100))
+               fire-rules
+               (insert (->ColdAndWindy 10 10))
+               fire-rules
+               (query cold-query)
+               frequencies)
+           (frequencies [{:?t nil} {:?t 10}]))
+        (str "We should not retract a nil initial value when the accumulator becomes met in case a fact with the relevant nil" \newline
+             " is in the session for other reasons for node type" node-type))
+
+    (is (= (-> (mk-session [coldest-temp cold-query] :cache false)
+               (insert (->Cold nil) (->Hot 100))
+               fire-rules
+               (retract (->Hot 100))
+               fire-rules
+               (query cold-query))
+           [{:?t nil}])
+        (str "Calling left-retract on an accumulator node that has not previously propagated should not cause a retraction of " \newline
+             "facts that could be in the session for other reasons."))))
+
+;; This is intended for use in test-nil-initial-value-accum-with-unsafe-convert-return-fn;
+;; it is pulled out into a def because the symbol needs to be resolvable.
+(def nil-unsafe-accum-init-value-test
+  (accumulate
+   :initial-value nil
+   ;; Propagate whichever argument is not nil.
+   :reduce-fn (fn [a b] (if a
+                          a
+                          b))
+   ;; Propagate whichever argument is not nil.
+   :combine-fn (fn [a b] (if a
+                           a
+                           b))
+   :retract-fn (fn [& _] (throw (ex-info "This accumulator should not retract." {})))
+   :convert-return-fn (fn [v]
+                        (if-not (nil? v)
+                          v
+                          (throw (ex-info "Convert-return-fn was called with nil." {}))))))
+
+;; The reason for this test is that nil initial values on accumulators prevent propagation of the initial value,
+;; which meant prior to issue 182 that the convert-return-fn of an accumulator with a nil initial value need not
+;; be nil-safe.
+(deftest test-nil-initial-value-accum-with-unsafe-convert-return-fn
+  (doseq [:let [cold-query (dsl/parse-query [] [[Cold (= ?t temperature)]])]
+          [coldest-temp-rule node-type] [[(dsl/parse-rule [[Hot]
+                                                           [?coldest-temp <- nil-unsafe-accum-init-value-test :from [ColdAndWindy]]]
+                                                          (insert! (->Cold ?coldest-temp)))
+                                          "AccumulateNode"]
+                                         [(dsl/parse-rule [[Hot (= ?max-temp temperature)]
+                                                           [?coldest-temp <- nil-unsafe-accum-init-value-test :from [ColdAndWindy (< temperature ?max-temp)]]]
+                                                          (insert! (->Cold ?coldest-temp)))
+                                          "AccumulateWithJoinFilterNode"]]]
+    (is (empty? (-> (mk-session [coldest-temp-rule cold-query] :cache false)
+                    (insert (->Hot 100))
+                    fire-rules
+                    (query cold-query)))
+        (str "There should be no propagated value since the initial-value is nil for node type: " node-type))
+
+    (is (= (-> (mk-session [coldest-temp-rule cold-query] :cache false)
+               (insert (->Hot 100) (->ColdAndWindy 10 10))
+               fire-rules
+               (query cold-query))
+           [{:?t (->ColdAndWindy 10 10)}])
+        (str "The convert-return-fn should not be called with nil as its argument even once something exists to propagate for node type: " node-type))))
+
+(deftest test-accum-without-change-in-result-no-downstream-propagation
+  (let [r1-atom (atom [])
+        r1 (dsl/parse-rule [[?coldest-temp <- (acc/min :temperature) :from [Cold]]]
+                           (swap! r1-atom conj ?coldest-temp))
+        r2-atom (atom [])
+        r2 (dsl/parse-rule [[?lowest-hot <- (acc/min :temperature) :from [Hot]]
+                            [?coldest-temp <- (acc/min :temperature) :from [Cold (< temperature ?lowest-hot)]]]
+                           (swap! r2-atom conj ?coldest-temp))]
+    
+    (reset! r1-atom [])
+    (-> (mk-session [r1] :cache false)
+        (insert (->Cold 10))
+        fire-rules
+        (insert (->Cold 10))
+        fire-rules)
+    (is (= (frequencies @r1-atom)
+           {10 1})
+        "The minimum temperature accum should only propagate once through an AccumulateNode.")
+    (reset! r1-atom [])
+
+    (reset! r2-atom [])
+    (-> (mk-session [r2] :cache false)
+        (insert (->Cold 10) (->Hot 100))
+        fire-rules
+        (insert (->Cold 10))
+        fire-rules)
+    (is (= (frequencies @r2-atom)
+           {10 1})
+        "The minimum temperature accum should only propagate once through an AccumulateWithJoinFilterNode.")
+    (reset! r2-atom [])))
+        
+        
