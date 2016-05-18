@@ -19,6 +19,25 @@
 
     (is (= {:?t 80} (first (query session hottest))))))
 
+(deftest test-max-min-retract-to-nothing
+  (doseq [accum [(acc/min :temperature) (acc/max :temperature)]
+          :let [cold-temp (dsl/parse-rule [[?t <- accum :from [Temperature]]]
+                                          (insert! (->Cold ?t)))
+                cold-query (dsl/parse-query [] [[Cold (= ?temp temperature)]])
+
+                with-cold (-> (mk-session [cold-temp cold-query] :cache false)
+                              (insert (->Temperature 10 "MCI"))
+                              fire-rules)]]
+    (is (= (query with-cold cold-query)
+           [{:?temp 10}])
+        "Without retraction there should be a Cold fact with a temperature of 10")
+    (is (= (-> with-cold
+               (retract (->Temperature 10 "MCI"))
+               fire-rules
+               (query cold-query))
+           [])
+        "When the original temperature is retracted and we go back to having no matching facts the downstream facts should be retracted.")))
+
 (deftest test-max-no-retract
   (let [hottest (dsl/parse-query [] [[?t <- (acc/max :temperature :supports-retract false) :from [Temperature]]])
 
@@ -185,9 +204,19 @@
         session (-> (mk-session [all all-field])
                     (insert (->Temperature 80 "MCI"))
                     (insert (->Temperature 80 "MCI"))
-                    (insert (->Temperature 90 "MCI")))
+                    (insert (->Temperature 90 "MCI"))
+                    fire-rules)
 
-        retracted (retract session (->Temperature 80 "MCI"))]
+        retracted (-> session
+                      (retract (->Temperature 80 "MCI"))
+                      fire-rules)
+
+        all-retracted (-> session
+                          (retract (->Temperature 80 "MCI"))
+                          (retract (->Temperature 80 "MCI"))
+                          (retract (->Temperature 90 "MCI"))
+                          fire-rules)]
+    
 
     ;; Ensure expected items are there. We sort the query results
     ;; since ordering isn't guaranteed.
@@ -215,7 +244,46 @@
            (-> (query retracted all-field)
                (first)
                (:?t)
-               (sort))))))
+               (sort))))
+
+    (is (= []
+           (-> (query all-retracted all-field)
+               first
+               :?t))
+        "Retracting all values should cause a return to the initial value of
+        an empty sequence.")))
+
+(deftest test-accum-all-with-bindings
+  (let [mci-temps [(->Temperature 10 "MCI")
+                   (->Temperature 20 "MCI")]
+        sfo-temps [(->Temperature 10 "SFO")
+                   (->Temperature 20 "SFO")]
+        temp-rule (dsl/parse-rule [[?temps <- (acc/all) :from [Temperature (< temperature 25) (= ?location location)]]]
+                                  (insert! (->TemperatureHistory (sort-by :temperature ?temps))))
+
+        temp-history-query (dsl/parse-query [] [[TemperatureHistory (= ?temps temperatures)]])
+
+        all-temps-session (-> (mk-session [temp-rule temp-history-query] :cache false)
+                              (insert-all (concat mci-temps sfo-temps))
+                              fire-rules)]
+
+
+    (is (= (-> all-temps-session
+               (query temp-history-query)
+               frequencies)
+           {{:?temps mci-temps} 1
+            {:?temps sfo-temps} 1}))
+
+    (is (= (-> (apply retract all-temps-session mci-temps)
+               fire-rules
+               (query temp-history-query)
+               frequencies)
+           ;; FIXME: Retracting all of the facts under a binding when other bindings are present
+           ;; should cause the downstream fact to be retracted and not replaced.  The correct
+           ;; expectation here is {{:?temps sfo-temps} 1}.
+           ;; https://github.com/rbrush/clara-rules/issues/189 has been logged for this.
+           {{:?temps []} 1
+            {:?temps sfo-temps} 1}))))
 
 (deftest test-reduce-to-accum-max
   (let [max-accum (acc/reduce-to-accum

@@ -654,9 +654,8 @@
 
 (defn- retract-accumulated
   "Helper function to retract an accumulated value."
-  [node accum-condition accumulator result-binding token result fact-bindings transport memory listener]
-  (let [converted-result ((:convert-return-fn accumulator) result)
-        new-facts (conj (:matches token) [converted-result (:id node)])
+  [node accum-condition accumulator result-binding token converted-result fact-bindings transport memory listener]
+  (let [new-facts (conj (:matches token) [converted-result (:id node)])
         new-bindings (merge (:bindings token)
                             fact-bindings
                             (when result-binding
@@ -668,9 +667,8 @@
 
 (defn- send-accumulated
   "Helper function to send the result of an accumulated value to the node's children."
-  [node accum-condition accumulator result-binding token result fact-bindings transport memory listener]
-  (let [converted-result ((:convert-return-fn accumulator) result)
-        new-bindings (merge (:bindings token)
+  [node accum-condition accumulator result-binding token converted-result fact-bindings transport memory listener]
+  (let [new-bindings (merge (:bindings token)
                             fact-bindings
                             (when result-binding
                               { result-binding
@@ -687,7 +685,7 @@
               (= previous-result converted-result))
 
       (send-tokens transport memory listener (:children node)
-                 [(->Token (conj (:matches token) [converted-result (:id node)]) new-bindings)]))))
+                   [(->Token (conj (:matches token) [converted-result (:id node)]) new-bindings)]))))
 
 (defn- has-keys?
   "Returns true if the given map has all of the given keys."
@@ -695,50 +693,67 @@
   (every? (partial contains? m) keys))
 
 ;; The AccumulateNode hosts Accumulators, a Rete extension described above, in the Rete network
-;; It behavios similarly to a JoinNode, but performs an accumulation function on the incoming
+;; It behaves similarly to a JoinNode, but performs an accumulation function on the incoming
 ;; working-memory elements before sending a new token to its descendents.
 (defrecord AccumulateNode [id accum-condition accumulator result-binding children binding-keys]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport listener]
-    (let [previous-results (mem/get-accum-reduced-all memory node join-bindings)]
+    (let [previous-results (mem/get-accum-reduced-all memory node join-bindings)
+          convert-return-fn (:convert-return-fn accumulator)]
       (mem/add-tokens! memory node join-bindings tokens)
 
       (doseq [token tokens]
 
         (cond
 
-         ;; If there are previously accumulated results to propagate, simply use them.
-         (seq previous-results)
-         (doseq [[fact-bindings previous] previous-results]
-           (send-accumulated node accum-condition accumulator result-binding token previous fact-bindings transport memory listener))
+          ;; If there are previously accumulated results to propagate, simply use them.
+          (seq previous-results)
+          (doseq [[fact-bindings previous] previous-results
+                  :let [converted (when (some? previous)
+                                    (convert-return-fn previous))]
+                  :when (some? converted)]
+            (send-accumulated node accum-condition accumulator result-binding token
+                              converted fact-bindings transport memory listener))
 
-         ;; There are no previously accumulated results, but we still may need to propagate things
-         ;; such as a sum of zero items.
-         ;; If all variables in the accumulated item are bound and an initial
-         ;; value is provided, we can propagate the initial value as the accumulated item.
+          ;; There are no previously accumulated results, but we still may need to propagate things
+          ;; such as a sum of zero items.
+          ;; If all variables in the accumulated item are bound and an initial
+          ;; value is provided, we can propagate the initial value as the accumulated item.
 
-         (and (has-keys? (:bindings token)
-                         binding-keys) ; All bindings are in place.
-              (:initial-value accumulator)) ; An initial value exists that we can propagate.
-         (let [fact-bindings (select-keys (:bindings token) binding-keys)
-               previous (:initial-value accumulator)]
+          (and (has-keys? (:bindings token)
+                          binding-keys) ; All bindings are in place.
+               (some? (:initial-value accumulator))) ; An initial value exists that we can propagate.
+          (let [fact-bindings (select-keys (:bindings token) binding-keys)
+                initial-value (:initial-value accumulator)
+                ;; Note that we check that the :initial-value is non-nil above, which is why we
+                ;; don't need (when initial-value (convert-return-fn initial-value)) here.
+                initial-converted (convert-return-fn initial-value)]
+            
+            (l/add-accum-reduced! listener node join-bindings initial-value fact-bindings)
 
-           ;; Send the created accumulated item to the children.
-           (send-accumulated node accum-condition accumulator result-binding token previous fact-bindings transport memory listener)
+            ;; Add it to the working memory.
+            (mem/add-accum-reduced! memory node join-bindings initial-value fact-bindings)
 
-           (l/add-accum-reduced! listener node join-bindings previous fact-bindings)
+            (when (some? initial-converted)
+              
+              ;; Send the created accumulated item to the children.
+              (send-accumulated node accum-condition accumulator result-binding token
+                                initial-converted fact-bindings transport memory listener))) 
 
-           ;; Add it to the working memory.
-           (mem/add-accum-reduced! memory node join-bindings previous fact-bindings))
-
-         ;; Propagate nothing if the above conditions don't apply.
-         :default nil))))
+          ;; Propagate nothing if the above conditions don't apply.
+          :default nil))))
 
   (left-retract [node join-bindings tokens memory transport listener]
-    (let [previous-results (mem/get-accum-reduced-all memory node join-bindings)]
+    (let [convert-return-fn (:convert-return-fn accumulator)
+          previous-results (mem/get-accum-reduced-all memory node join-bindings)]
       (doseq [token (mem/remove-tokens! memory node join-bindings tokens)
-              [fact-bindings previous] previous-results]
-        (retract-accumulated node accum-condition accumulator result-binding token previous fact-bindings transport memory listener))))
+              [fact-bindings previous] previous-results
+              :let [previous-converted (when (some? previous)
+                                         (convert-return-fn previous))]
+              ;; A nil previous result should not have been propagated before.
+              :when (some? previous-converted)]
+        (retract-accumulated node accum-condition accumulator result-binding token
+                             previous-converted fact-bindings transport memory listener))))
 
   (get-join-keys [node] binding-keys)
 
@@ -754,36 +769,86 @@
                  (r/map :fact element-group))]))
 
   (right-activate-reduced [node join-bindings reduced-seq  memory transport listener]
+    
     ;; Combine previously reduced items together, join to matching tokens,
     ;; and emit child tokens.
-    (doseq [:let [matched-tokens (mem/get-tokens memory node join-bindings)]
+    (doseq [:let [convert-return-fn (:convert-return-fn accumulator)
+                  matched-tokens (mem/get-tokens memory node join-bindings)]
             [bindings reduced] reduced-seq
-            :let [previous (mem/get-accum-reduced memory node join-bindings bindings)]]
+            :let [previous (mem/get-accum-reduced memory node join-bindings bindings)
+                  previously-reduced? (not= previous :clara.rules.memory/no-accum-reduced)
+                  combined (if previously-reduced?
+                             ((:combine-fn accumulator) previous reduced)
+                             reduced)
+                  converted (when (some? combined)
+                              (convert-return-fn combined))
 
-      (if (not= :clara.rules.memory/no-accum-reduced previous)
+                  ;; The convert-return-fn should not be expected to handle the internal Clara implementation
+                  ;; detail of the :clara.rules.memory/no-accum-reduced keyword.  It is valid to simply consider
+                  ;; this keyword a nil converted result here since both it and nil are things that do not represent
+                  ;; valid data to propagate downstream and will cause all downstream Rete operations on this data
+                  ;; to be suppressed.
+                  
+                  previous-converted (when (and previously-reduced?
+                                                (some? previous))
+                                       (convert-return-fn previous))]]
 
-        ;; A previous value was reduced, so we need to retract it.
+      (l/add-accum-reduced! listener node join-bindings combined bindings)
+
+      (mem/add-accum-reduced! memory node join-bindings combined bindings)
+
+      (cond
+
+        (not previously-reduced?)
+        
+        (let [initial-value (:initial-value accumulator)
+              ;; If the initial value (not the converted return value) is nil, then the accumulator will not propagate.
+              ;; This was existing behavior prior to issue 182.  As a result, convert-return-fn values that are not nil
+              ;; safe were supported.  We avoid calling the convert-return-fn if the initial value is nil in order to
+              ;; avoid breaking such code.
+              initial-converted (when (some? initial-value)
+                                  (convert-return-fn initial-value))]
+          (do 
+            ;; A nil initial value should not have been propagated.
+            (doseq [:when (some? initial-converted)
+                    token matched-tokens]
+              ;; Note that retract-accumulated will add the result binding.
+              (retract-accumulated node accum-condition accumulator result-binding token initial-converted
+                                   {} transport memory listener))
+
+            ;; We only want to propagate the new value if it is non-nil.
+            (doseq [:when (some? converted)
+                    token matched-tokens]
+              (send-accumulated node accum-condition accumulator result-binding token converted bindings transport memory listener))))
+
+        (and (nil? previous-converted)
+             (nil? converted))
+        nil ;; Do nothing when the result was nil before and after.
+
+        (nil? converted)
         (doseq [token matched-tokens]
           (retract-accumulated node accum-condition accumulator result-binding token
-                               previous bindings transport memory listener))
+                               previous-converted bindings transport memory listener))
 
-        ;; The accumulator has an initial value that is effectively the previous result when
-        ;; there was no previous item, so retract it.
-        (when-let [initial-value (:initial-value accumulator)]
-          (doseq [token matched-tokens]
-            (retract-accumulated node accum-condition accumulator result-binding token initial-value
-                                 {result-binding initial-value} transport memory listener))))
-
-      ;; Combine the newly reduced values with any previous items.
-      (let [combined (if (not= :clara.rules.memory/no-accum-reduced previous)
-                       ((:combine-fn accumulator) previous reduced)
-                       reduced)]
-
-        (l/add-accum-reduced! listener node join-bindings combined bindings)
-
-        (mem/add-accum-reduced! memory node join-bindings combined bindings)
+        (nil? previous-converted)
         (doseq [token matched-tokens]
-          (send-accumulated node accum-condition accumulator result-binding token combined bindings transport memory listener)))))
+          (send-accumulated node accum-condition accumulator result-binding token converted bindings transport memory listener))
+        
+
+        ;; If there are previous results, then propagate downstream if the new result differs from the previous result.  If the new
+        ;; result is equal to the previous result don't do anything.  Note that the memory has already been updated with the new combined value,
+        ;; which may be needed for truth maintenance later.
+        (not= converted previous-converted)
+
+        ;; There is no requirement that we doseq over all retractions then doseq over propagations; we could just as easily doseq over tokens at the top level and
+        ;; retract and propagate for each token in turn.  In the absence of hard evidence either way, doing it this way is just an educated guess as to
+        ;; which is likely to be more performant.
+        (do
+          (doseq [token matched-tokens]
+            (retract-accumulated node accum-condition accumulator result-binding token
+                                 previous-converted bindings transport memory listener))
+          (doseq [token matched-tokens]
+            (send-accumulated node accum-condition accumulator result-binding token converted bindings transport memory listener))))))
 
   IRightActivate
   (right-activate [node join-bindings elements memory transport listener]
@@ -800,7 +865,8 @@
 
   (right-retract [node join-bindings elements memory transport listener]
 
-    (doseq [:let [matched-tokens (mem/get-tokens memory node join-bindings)]
+    (doseq [:let [convert-return-fn (:convert-return-fn accumulator)
+                  matched-tokens (mem/get-tokens memory node join-bindings)]
             [bindings elements] (platform/tuned-group-by :bindings elements)
             :let [previous (mem/get-accum-reduced memory node join-bindings bindings)]
 
@@ -809,100 +875,128 @@
 
             ;; Compute the new version with the retracted information.
             :let [facts (mapv :fact elements)
-                  retracted (r/reduce (:retract-fn accumulator) previous facts)]]
+                  retracted (r/reduce (:retract-fn accumulator) previous facts)
+                  retracted-converted (when (some? retracted)
+                                        (convert-return-fn retracted))
+                  previous-converted (when (some? previous)
+                                       (convert-return-fn previous))]]
 
       ;; Add our newly retracted information to our node.
       (mem/add-accum-reduced! memory node join-bindings retracted bindings)
-      
-      ;; Get all of the previously matched tokens so we can retract and re-send them.
-      (doseq [token matched-tokens]
 
-        ;; Retract the previous token.
-        (retract-accumulated node accum-condition accumulator result-binding token previous bindings transport memory listener)
+      (cond
+        (and (nil? previous-converted)
+             (nil? retracted-converted))
+        nil
 
-        ;; Send a new accumulated token with our new, retracted information.
-        (when retracted
-          (send-accumulated node accum-condition accumulator result-binding token retracted bindings transport memory listener))))))
+        (nil? previous-converted)
+        (doseq [token matched-tokens]
+          (send-accumulated node accum-condition accumulator result-binding token retracted-converted bindings transport memory listener))
+
+        (nil? retracted-converted)
+        (doseq [token matched-tokens]
+          (retract-accumulated node accum-condition accumulator result-binding token previous-converted bindings transport memory listener))
+
+        (not= retracted-converted previous-converted)
+
+        ;; There is no requirement that we doseq over all retractions then doseq over propagations; we could just as easily doseq over tokens at the top level and
+        ;; retract and propagate for each token in turn.  In the absence of hard evidence either way, doing it this way is just an educated guess as to
+        ;; which is likely to be more performant.
+        (do
+          (doseq [token matched-tokens]
+            (retract-accumulated node accum-condition accumulator result-binding token previous-converted bindings transport memory listener))
+          (doseq [token matched-tokens]
+            (send-accumulated node accum-condition accumulator result-binding token retracted-converted bindings transport memory listener)))))))
 
 (defn- do-accumulate
-  "Runs the actual accumulation.  Returns the accumulated value if there are candidate facts
-   that match the join filter or if there is an :initial-value to propagate from the accumulator.
-   If neither of these conditions are true, ::no-accum-result is returned to indicate so.
-   Note:  A returned value of nil is not the same as ::no-accum-result.  A nil value may be the result
-          of running the accumulator over facts matching the token."
+  "Runs the actual accumulation.  Returns the accumulated value."
   [accumulator join-filter-fn token candidate-facts]
   (let [filtered-facts (filter #(join-filter-fn token % {}) candidate-facts)] ;; TODO: and env
-
-    (if (or (:initial-value accumulator) (seq filtered-facts))
+    (if (seq filtered-facts)
       (r/reduce (:reduce-fn accumulator)
                 (:initial-value accumulator)
                 filtered-facts)
-      ::no-accum-result)))
+      (:initial-value accumulator))))
 
 ;; A specialization of the AccumulateNode that supports additional tests
 ;; that have to occur on the beta side of the network. The key difference between this and the simple
 ;; accumulate node is the join-filter-fn, which accepts a token and a fact and filters out facts that
 ;; are not consistent with the given token.
 (defrecord AccumulateWithJoinFilterNode [id accum-condition accumulator join-filter-fn
-                                            result-binding children binding-keys]
+                                         result-binding children binding-keys]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport listener]
 
     ;; Facts that are candidates for matching the token are used in this accumulator node,
     ;; which must be filtered before running the accumulation.
-    (let [grouped-candidate-facts (mem/get-accum-reduced-all memory node join-bindings)]
+    (let [convert-return-fn (:convert-return-fn accumulator)
+          grouped-candidate-facts (mem/get-accum-reduced-all memory node join-bindings)]
       (mem/add-tokens! memory node join-bindings tokens)
 
       (doseq [token tokens]
 
         (cond
 
-         (seq grouped-candidate-facts)
-         (doseq [[fact-bindings candidate-facts] grouped-candidate-facts
+          (seq grouped-candidate-facts)
+          (doseq [[fact-bindings candidate-facts] grouped-candidate-facts
 
-                 ;; Filter to items that match the incoming token, then apply the accumulator.
-                 :let [accum-result (do-accumulate accumulator join-filter-fn token candidate-facts)]
+                  ;; Filter to items that match the incoming token, then apply the accumulator.
+                  :let [accum-result (do-accumulate accumulator join-filter-fn token candidate-facts)
+                        converted-result (when (some? accum-result)
+                                           (convert-return-fn accum-result))] 
 
-                 ;; There is nothing to propagate if nothing was accumulated.
-                 :when (not= ::no-accum-result accum-result)]
+                  :when (some? converted-result)]
 
-           (send-accumulated node accum-condition accumulator result-binding token accum-result fact-bindings transport memory listener))
+            (send-accumulated node accum-condition accumulator result-binding token
+                              converted-result fact-bindings transport memory listener))
 
-         ;; There are no previously accumulated results, but we still may need to propagate things
-         ;; such as a sum of zero items.
-         ;; If all variables in the accumulated item are bound and an initial
-         ;; value is provided, we can propagate the initial value as the accumulated item.
+          ;; There are no previously accumulated results, but we still may need to propagate things
+          ;; such as a sum of zero items.
+          ;; If all variables in the accumulated item are bound and an initial
+          ;; value is provided, we can propagate the initial value as the accumulated item.
 
-         (and (has-keys? (:bindings token)
-                         binding-keys) ; All bindings are in place.
-              (:initial-value accumulator)) ; An initial value exists that we can propagate.
-         (let [fact-bindings (select-keys (:bindings token) binding-keys)
-               initial-value (:initial-value accumulator)]
+          (and (has-keys? (:bindings token)
+                          binding-keys) ; All bindings are in place.
+               ;; We need to not propagate nil initial values, regardless of whether the convert-return-fn
+               ;; makes them non-nil, in order to not break existing code; this is discussed more in the
+               ;; right-activate-reduced implementation.
+               (some? (:initial-value accumulator))) ; An initial value exists that we can propagate.
+          (let [fact-bindings (select-keys (:bindings token) binding-keys)
+                initial-value (:initial-value accumulator)
+                ;; Note that we check the the :initial-value is non-nil above, which is why we
+                ;; don't need (when initial-value (convert-return-fn initial-value)) here.
+                converted-result (convert-return-fn initial-value)]
 
-           ;; Send the created accumulated item to the children.
-           (send-accumulated node accum-condition accumulator result-binding token initial-value fact-bindings transport memory listener)
+            ;; This accumulator keeps candidate facts rather than fully reduced values in the working memory,
+            ;; since the reduce operation must occur per token. Since there are no candidate facts
+            ;; in this flow, just put an empty vector into our memory.
+            (l/add-accum-reduced! listener node join-bindings [] fact-bindings)
+            (mem/add-accum-reduced! memory node join-bindings [] fact-bindings)
 
-           ;; This accumulator keeps candidate facts rather than fully reduced values in the working memory,
-           ;; since the reduce operation must occur per token. Since there are no candidate facts
-           ;; in this flow, just put an empty vector into our memory.
-           (l/add-accum-reduced! listener node join-bindings [] fact-bindings)
-           (mem/add-accum-reduced! memory node join-bindings [] fact-bindings))
+            (when (some? converted-result)
+              ;; Send the created accumulated item to the children.
+              (send-accumulated node accum-condition accumulator result-binding token
+                                converted-result fact-bindings transport memory listener))
 
-         ;; Propagate nothing if the above conditions don't apply.
-         :default nil))))
+            ;; Propagate nothing if the above conditions don't apply.
+            :default nil)))))
 
   (left-retract [node join-bindings tokens memory transport listener]
 
-    (let [grouped-candidate-facts (mem/get-accum-reduced-all memory node join-bindings)]
+    (let [convert-return-fn (:convert-return-fn accumulator)
+          grouped-candidate-facts (mem/get-accum-reduced-all memory node join-bindings)]
       (doseq [token (mem/remove-tokens! memory node join-bindings tokens)
               [fact-bindings candidate-facts] grouped-candidate-facts
 
-              :let [accum-result (do-accumulate accumulator join-filter-fn token candidate-facts)]
+              :let [accum-result (do-accumulate accumulator join-filter-fn token candidate-facts)
+                    retracted-converted (when (some? accum-result)
+                                          (convert-return-fn accum-result))]
 
-              ;; There is nothing to retract if nothing was accumulated.
-              :when (not= ::no-accum-result accum-result)]
+              ;; A nil retracted previous result should not have been propagated before.
+              :when (some? retracted-converted)]
 
-        (retract-accumulated node accum-condition accumulator result-binding token accum-result fact-bindings transport memory listener))))
+        (retract-accumulated node accum-condition accumulator result-binding token
+                             retracted-converted fact-bindings transport memory listener))))
 
   (get-join-keys [node] binding-keys)
 
@@ -920,34 +1014,12 @@
 
     ;; Combine previously reduced items together, join to matching tokens,
     ;; and emit child tokens.
-    (doseq [:let [matched-tokens (mem/get-tokens memory node join-bindings)]
+    (doseq [:let [convert-return-fn (:convert-return-fn accumulator)
+                  matched-tokens (mem/get-tokens memory node join-bindings)]
             [bindings candidates] binding-candidates-seq
             :let [previous-candidates (mem/get-accum-reduced memory node join-bindings bindings)
                   previously-reduced? (not= :clara.rules.memory/no-accum-reduced previous-candidates)
                   previous-candidates (when previously-reduced? previous-candidates)]]
-
-      (if previously-reduced?
-
-       ;; Items were previously reduced that matched the bindings, so retract them to
-       ;; allow the newly accumulated result to propagate.
-       (doseq [token matched-tokens
-
-               :let [previous-accum-result (do-accumulate accumulator join-filter-fn token previous-candidates)]
-
-               ;; There is nothing to retract if nothing was accumulated.
-               :when (not= ::no-accum-result previous-accum-result)]
-
-         (retract-accumulated node accum-condition accumulator result-binding token
-                              previous-accum-result bindings transport memory listener))
-
-       ;; No items were previously reduced, but there may be an initial value that still needs to be
-       ;; retracted.
-       (when-let [initial-value (:initial-value accumulator)]
-
-         (doseq [token matched-tokens]
-
-           (retract-accumulated node accum-condition accumulator result-binding token initial-value
-                                {result-binding initial-value} transport memory listener))))
 
       ;; Combine the newly reduced values with any previous items.
       (let [combined-candidates (into previous-candidates candidates)]
@@ -957,12 +1029,56 @@
         (mem/add-accum-reduced! memory node join-bindings combined-candidates bindings)
         (doseq [token matched-tokens
 
-                :let [accum-result (do-accumulate accumulator join-filter-fn token combined-candidates)]
+                :let [accum-result (do-accumulate accumulator join-filter-fn token combined-candidates)
 
-                ;; There is nothing to propagate if nothing was accumulated.
-                :when (not= ::no-accum-result accum-result)]
+                      previous-accum-result (when previously-reduced?
+                                              (do-accumulate accumulator join-filter-fn token previous-candidates))
+                      
+                      previous-converted (when (some? previous-accum-result)
+                                           (convert-return-fn previous-accum-result))
+                      
+                      new-converted (when (some? accum-result)
+                                      (convert-return-fn accum-result))]]
 
-          (send-accumulated node accum-condition accumulator result-binding token accum-result bindings transport memory listener)))))
+          (cond
+            
+            (not previously-reduced?)
+            (let [initial-value (:initial-value accumulator)
+                  ;; If the initial value (not the converted return value) is nil, then the accumulator will not propagate.
+                  ;; This was existing behavior prior to issue 182.  As a result, convert-return-fn values that are not nil
+                  ;; safe were supported.  We avoid calling the convert-return-fn if the initial value is nil in order to
+                  ;; avoid breaking such code.
+                  initial-converted (when (some? initial-value)
+                                      (convert-return-fn initial-value))]
+              (do
+                ;; A nil initial value should not have been propagated.
+                (when (some? initial-converted)
+                  ;; Note that retract-accumulated will add the result binding.
+                  (retract-accumulated node accum-condition accumulator result-binding token initial-converted
+                                       {} transport memory listener))
+
+                ;; We only want to propagate the initial value if it is non-nil.
+                (when (some? new-converted)
+                  (send-accumulated node accum-condition accumulator result-binding token new-converted bindings transport memory listener))))
+
+            ;; When both the new and previous result were nil do nothing.
+            (and (nil? previous-converted)
+                 (nil? new-converted))
+            nil
+
+            (nil? new-converted)
+            (retract-accumulated node accum-condition accumulator result-binding token
+                                 previous-converted bindings transport memory listener)
+
+            (nil? previous-converted)
+            (send-accumulated node accum-condition accumulator result-binding token new-converted bindings transport memory listener)
+
+            (not= new-converted previous-converted)
+            
+            (do
+              (retract-accumulated node accum-condition accumulator result-binding token
+                                   previous-converted bindings transport memory listener)
+              (send-accumulated node accum-condition accumulator result-binding token new-converted bindings transport memory listener)))))))
 
   IRightActivate
   (right-activate [node join-bindings elements memory transport listener]
@@ -979,7 +1095,8 @@
 
   (right-retract [node join-bindings elements memory transport listener]
 
-    (doseq [:let [matched-tokens (mem/get-tokens memory node join-bindings)]
+    (doseq [:let [convert-return-fn (:convert-return-fn accumulator)
+                  matched-tokens (mem/get-tokens memory node join-bindings)]
             [bindings elements] (platform/tuned-group-by :bindings elements)
             :let [previous-candidates (mem/get-accum-reduced memory node join-bindings bindings)]
 
@@ -997,15 +1114,32 @@
 
               ;; Compute the new version with the retracted information.
               :let [previous-result (do-accumulate accumulator join-filter-fn token previous-candidates)
-                    new-result (do-accumulate accumulator join-filter-fn token new-candidates)]]
+                    
+                    new-result (do-accumulate accumulator join-filter-fn token new-candidates)
+                    
+                    previous-converted (when (some? previous-result)
+                                         (convert-return-fn previous-result))
+                    
+                    new-converted (when (some? new-result)
+                                    (convert-return-fn new-result))]]
 
-        ;; Retract the previous token if something was previously accumulated.
-        (when (not= ::no-accum-result previous-result)
-          (retract-accumulated node accum-condition accumulator result-binding token previous-result bindings transport memory listener))
+        (cond
+       
+          ;; When both the previous and new results are nil do nothing.
+          (and (nil? previous-converted)
+               (nil? new-converted))
+          nil
 
-        ;; Send a new accumulated token with our new, retracted information when there is a new result.
-        (when (and new-result (not= ::no-accum-result new-result))
-          (send-accumulated node accum-condition accumulator result-binding token new-result bindings transport memory listener))))))
+          (nil? new-converted)
+          (retract-accumulated node accum-condition accumulator result-binding token previous-converted bindings transport memory listener)
+
+          (nil? previous-converted)
+          (send-accumulated node accum-condition accumulator result-binding token new-converted bindings transport memory listener)
+
+          (not= previous-converted new-converted)
+          (do
+            (retract-accumulated node accum-condition accumulator result-binding token previous-converted bindings transport memory listener)
+            (send-accumulated node accum-condition accumulator result-binding token new-converted bindings transport memory listener)))))))
 
 (defn variables-as-keywords
   "Returns symbols in the given s-expression that start with '?' as keywords"
