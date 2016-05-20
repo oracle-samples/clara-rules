@@ -102,6 +102,40 @@
   (to-persistent! [memory]))
 
 #?(:clj
+   (defn- coll-empty?
+     "Returns true if the collection is empty.  Does not call seq due to avoid
+      overhead that may cause for non-persistent collection types, e.g.
+      java.util.LinkedList, etc."
+     [^java.util.Collection coll]
+     (or (nil? coll) (.isEmpty coll))))
+
+#?(:clj
+   (defn- list-remove!
+     "Removes the item, to-remove, from the given list, lst.  If it is found and
+      removed, returns true.  Otherwise returns false.  Only removes the first 
+      element in the list that is equal to to-remove.  If others are equal, they
+      will not be removed.  This is similar to java.util.List.remove(Object) 
+      lst is updated in place for performance.  This implies that the list must 
+      support the mutable list interface, namely via the
+      java.util.List.listIterator()."
+     [^java.util.List lst to-remove]
+     (if-not (coll-empty? lst)
+       (let [li (.listIterator lst)]
+         (loop [x (.next li)]
+           (cond
+             (= to-remove x)
+             (do
+               (.remove li)
+               true)
+
+             (.hasNext li)
+             (recur (.next li))
+
+             :else
+             false)))
+       false)))
+
+#?(:clj
    (defn- add-all!
      "Adds all items from source to the destination dest collection
       destructively.  Avoids using Collection.addAll() due to unnecessary
@@ -113,7 +147,7 @@
      dest))
 
 #?(:clj
-   (defn- ^java.util.Deque ->linked-list
+   (defn- ^java.util.List ->linked-list
      "Creates a new java.util.LinkedList from the coll, but avoids using
       Collection.addAll(Collection) since there is unnecessary overhead 
       in this of calling Collection.toArray() on coll."
@@ -123,14 +157,6 @@
        (add-all! (java.util.LinkedList.) coll))))
 
 #?(:clj
-   (defn- coll-empty?
-     "Returns true if the collection is empty.  Does not call seq due to avoid
-      overhead that may cause for non-persistent collection types, e.g.
-      java.util.LinkedList, etc."
-     [^java.util.Collection coll]
-     (or (nil? coll) (.isEmpty coll))))
-
-#?(:clj
    (defn- remove-first-of-each!
      "Remove the first instance of each item in the given remove-seq that
       appears in the collection coll.  coll is updated in place for
@@ -138,12 +164,12 @@
       collection interface method Collection.remove(Object).  Returns the
       items that were found and removed from coll.  For immutable collection
       removal, use the non-destructive remove-first-of-each defined below."
-     [remove-seq ^java.util.Collection coll]
+     [remove-seq ^java.util.List coll]
      ;; Optimization for special case of one item to remove,
      ;; which occurs frequently.
      (if (= 1 (count remove-seq))
        (let [to-remove (first remove-seq)]
-         (if (.remove coll to-remove)
+         (if (list-remove! coll to-remove)
            [to-remove]
            []))
        
@@ -154,7 +180,7 @@
          (if to-remove
            (recur (first remove-seq)
                   (next remove-seq)
-                  (if (.remove coll to-remove)
+                  (if (list-remove! coll to-remove)
                     (conj! removed to-remove)
                     removed))
            ;; If this is expensive, using a mutable collection maybe good to
@@ -533,12 +559,12 @@
                 ;; mutable.  The reasoning here is the same as in the
                 ;; case of remove-elements! above.
                 persistent? (coll? value)
-                ^java.util.Deque value (if persistent?
+                ^java.util.Queue value (if persistent?
                                          (->linked-list value)
                                          value)
                 activation (when-not (.isEmpty value)
                              (.remove value))]
-
+            
             (cond
               ;; This activation group is empy now, so remove it from
               ;; the map entirely.

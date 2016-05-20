@@ -4174,3 +4174,41 @@
                (query cold-and-windy-query))
            [{:?t false}])
         (str "The minimum temperature should retract back to boolean false for node type " node-type))))     
+
+(definterface Marker)
+(defrecord Type1 [] Marker)
+(defrecord Type2 [] Marker)
+
+(deftest test-retract-diff-types-equal-fields-common-ancestor-type
+  (let [q (dsl/parse-query []
+                           [[?m <- Marker]])
+        init-state (-> (mk-session [q])
+                       (insert (->Type1)
+                               (->Type2))
+                       fire-rules)
+        retract1 (-> init-state
+                     (retract (->Type1))
+                     fire-rules)
+        retract2 (-> retract1
+                     (retract (->Type1))
+                     fire-rules)]
+    
+    (is (= (frequencies [{:?m (->Type1)}
+                         {:?m (->Type2)}])
+           (frequencies (query init-state q))))
+
+    ;; Retracted two objects that are different classes, but with
+    ;; a common ancestor class do not clash with one another.  Only
+    ;; facts with the same class will be retracted.
+    ;; This distinction is important in cases like Clojure's record
+    ;; types.  When using java.lang.Object.equals() on Clojure records
+    ;; they do not take into account the type of the the record.
+    ;; Records act as generic java.util.Map's in this sense.
+    ;; When Clojure records are compared with clojure.core/= however,
+    ;; the type of the records must be equal as well.  Since we are using
+    ;; Java collection types in our retraction workflow of the JVM transient
+    ;; working memory right now, it is important that we don't fall prey to
+    ;; this subtle difference with Java equals vs Clojure equals on records.
+    (is (= (frequencies [{:?m (->Type2)}])
+           (frequencies (query retract1 q))
+           (frequencies (query retract2 q))))))
