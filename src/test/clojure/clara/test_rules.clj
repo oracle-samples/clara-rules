@@ -807,6 +807,29 @@
                     accum-join-filter-q
                     "AccumulateWithJoinFilterNode")))
 
+(deftest test-retract-fact-never-inserted-from-accum
+  (testing "AccumulateNode"
+    (let [p (dsl/parse-query [] [[?s <- (acc/sum :temperature) :from [Temperature (= ?t temperature)]]])
+          res (-> (mk-session [p])
+                  (insert (->Temperature 10 "LAX"))
+                  (retract (->Temperature 10 "MCI")) ; retracted under same bindings as inserted, but never actually inserted
+                  fire-rules
+                  (query p))]
+      (is (= (frequencies [{:?s 10 :?t 10}])
+             (frequencies res)))))
+  
+  (testing "AccumulateWithJoinFilterNode"
+    (let [p (dsl/parse-query [] [[Cold (= ?t temperature)]
+                                 [?s <- (acc/sum :temperature) :from [Temperature (< ?t temperature)]]])
+          res (-> (mk-session [p])
+                  (insert (->Cold 9)
+                          (->Temperature 10 "LAX"))
+                  (retract (->Temperature 10 "MCI")) ; retracted, but never inserted in the first place
+                  fire-rules
+                  (query p))]
+      (is (= (frequencies [{:?s 10 :?t 9}])
+             (frequencies res))))))
+
 (deftest ^{:doc "A test that ensures that when candidate facts are grouped by bindings in a
                  join filter accumulator that has an initial-value to propagate, that the value
                  is propagated for empty groups."}
@@ -862,6 +885,33 @@
              {:?his (->TemperatureHistory [temp-10-mci])}}
 
            (set two-groups-no-init)))))
+
+(deftest test-multi-accumulators-together-with-initial-value
+  (let [r (dsl/parse-rule [[?f <- (acc/all) :from [First]]
+                           [?s <- (acc/all) :from [Second]]]
+                          (insert! ^{:type :test} {:f ?f :s ?s}))
+        q (dsl/parse-query []
+                           [[?test <- :test]])
+        s (mk-session [r q])
+
+        batch-inserts (-> s
+                          (insert (->First) (->Second))
+                          fire-rules
+                          (query q))
+
+        single-inserts (-> s
+                           (insert (->First))
+                           (insert (->Second))
+                           fire-rules
+                           (query q))]
+    (is (= 1
+           (count batch-inserts)
+           (count single-inserts)))
+
+    (is (= #{{:?test {:f [(->First)]
+                      :s [(->Second)]}}}
+           (set batch-inserts)
+           (set single-inserts)))))
 
 (deftest test-retract-initial-value
   (clara.rules.compiler/clear-session-cache!)
@@ -3876,16 +3926,18 @@
               {:?temps [[] 20]} 1})
           (str "Two Cold facts with single firing for node type " node-type))
 
-      ;; FIXME: The correct assertion here is on equality to {:?temps [[] nil]}.
-      ;; Since (->Cold 10) is retracted we should use the initial value here.
-      ;; This is an existing defect that has been logged at https://github.com/rbrush/clara-rules/issues/188
       (is (= (-> empty-session
                  (insert (->Cold 10) (->Hot 100))
                  (fire-rules)
                  (retract (->Cold 10))
                  (fire-rules)
                  (query q1))
-             [{:?temps [[] 10]}])
+             (if (= "AccumulateWithJoinFilterNode" node-type)
+               [{:?temps [[] 10]}]
+               ;; FIXME: The correct assertion here is on equality to {:?temps [[] nil]}.
+               ;; Since (->Cold 10) is retracted we should use the initial value here.
+               ;; This is an existing defect that has been logged at https://github.com/rbrush/clara-rules/issues/188
+               [{:?temps [[] nil]}]))
           (str "Retracting all elements that matched an accumulator with an initial value "
                \newline
                "should cause the facts inserted to use nil as the binding for bindings on the accumulator."
@@ -4179,8 +4231,7 @@
                                          (IllegalStateException. (str "This test should only compare false and numeric values, "
                                                                       \newline not
                                                                       "a numeric value to another numeric value")))))
-                          false
-                          true))
+                          false))
 
 (deftest test-false-field-in-accum
   (doseq [:let [cold-and-windy-query (dsl/parse-query [] [[ColdAndWindy (= ?t temperature)]])]

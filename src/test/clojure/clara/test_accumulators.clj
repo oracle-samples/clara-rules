@@ -15,9 +15,16 @@
         session (-> (mk-session [hottest])
                     (insert (->Temperature 30 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI")))]
+                    (insert (->Temperature 80 "MCI"))
+                    fire-rules)
+        session-with-retract (-> session
+                                 (insert (->Temperature 100 "MCI"))
+                                 (retract (->Temperature 100 "MCI"))
+                                 fire-rules)]
 
-    (is (= {:?t 80} (first (query session hottest))))))
+    (is (= {:?t 80}
+           (first (query session hottest))
+           (first (query session-with-retract hottest))))))
 
 (deftest test-max-min-retract-to-nothing
   (doseq [accum [(acc/min :temperature) (acc/max :temperature)]
@@ -37,19 +44,6 @@
                (query cold-query))
            [])
         "When the original temperature is retracted and we go back to having no matching facts the downstream facts should be retracted.")))
-
-(deftest test-max-no-retract
-  (let [hottest (dsl/parse-query [] [[?t <- (acc/max :temperature :supports-retract false) :from [Temperature]]])
-
-        session (-> (mk-session [hottest])
-                    (insert (->Temperature 30 "MCI"))
-                    (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI"))
-                    (retract (->Temperature 80 "MCI")))]
-
-    ;; The max value is still 80 since this version does nothing on retraction.
-    (is (= {:?t 80} (first (query session hottest))))))
-
 
 (deftest test-min-max-average
   (let [coldest  (dsl/parse-query [] [[?t <- (acc/min :temperature) :from [Temperature]]])
@@ -278,12 +272,7 @@
                fire-rules
                (query temp-history-query)
                frequencies)
-           ;; FIXME: Retracting all of the facts under a binding when other bindings are present
-           ;; should cause the downstream fact to be retracted and not replaced.  The correct
-           ;; expectation here is {{:?temps sfo-temps} 1}.
-           ;; https://github.com/rbrush/clara-rules/issues/189 has been logged for this.
-           {{:?temps []} 1
-            {:?temps sfo-temps} 1}))))
+           {{:?temps sfo-temps} 1}))))
 
 (deftest test-reduce-to-accum-max
   (let [max-accum (acc/reduce-to-accum

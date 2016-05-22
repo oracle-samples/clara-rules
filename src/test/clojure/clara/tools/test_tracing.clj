@@ -70,7 +70,20 @@
             :add-facts :accum-reduced :left-retract
             :left-activate :add-facts :accum-reduced]
 
-           (map :type (t/get-trace session))))))
+           (map :type (t/get-trace session)))))
+
+  (testing "remove-accum-reduced"
+    (let [all-temps (dsl/parse-query [] [[?t <- (acc/all) from [Temperature]]])
+          
+          session (-> (mk-session [all-temps])
+                      (t/with-tracing)
+                      fire-rules
+                      (insert (->Temperature 15 "MCI"))
+                      fire-rules)]
+
+      (is (= [:add-facts :remove-accum-reduced :accum-reduced :left-retract :left-activate]
+
+             (map :type (t/get-trace session)))))))
 
 (deftest test-insert-trace
  (let [cold-rule (dsl/parse-rule [[Temperature (= ?temperature temperature) (< temperature 20)]]

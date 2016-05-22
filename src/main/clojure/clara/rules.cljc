@@ -111,18 +111,16 @@
 
    * An initial-value to be used with the reduced operations.
    * A reduce-fn that can be used with the Clojure Reducers library to reduce items.
-   * A combine-fn that can be used with the Clojure Reducers library to combine reduced items.
-   * A retract-fn that can remove a retracted fact from a previously reduced computation
+   * An optional combine-fn that can be used with the Clojure Reducers library to combine reduced items.
+   * An optional retract-fn that can remove a retracted fact from a previously reduced computation
    * An optional convert-return-fn that converts the reduced data into something useful to the caller.
      Simply uses identity by default.
     "
   [& {:keys [initial-value reduce-fn combine-fn retract-fn convert-return-fn] :as args}]
   (eng/map->Accumulator
-   (merge
-    {:combine-fn reduce-fn ; Default combine function is simply the reduce.
-     :convert-return-fn identity ; Default conversion does nothing, so use identity.
-     }
-    args)))
+   (merge {;; Default conversion does nothing, so use identity.
+           :convert-return-fn identity}
+          args)))
 
 #?(:cljs
   (defrecord Rulebase [alpha-roots beta-roots productions queries production-nodes query-nodes id-to-node]))
