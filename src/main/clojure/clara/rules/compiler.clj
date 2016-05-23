@@ -461,6 +461,8 @@
 
         :test expression
 
+        ;; Note that :exists does not support further nested boolean conditions.
+        ;; It is just syntax sugar over an accumulator.
         :exists expression
 
         ;; Double negation, so just return the expression under the second negation.
@@ -476,7 +478,7 @@
     ;; For all others, recursively process the children.
     (let [children (map to-dnf (rest expression))
           ;; Get all conjunctions, which will not conain any disjunctions since they were processed above.
-          conjunctions (filter #(#{:and :condition :not} (expr-type %)) children)]
+          conjunctions (filter #(#{:and :condition :not :exists} (expr-type %)) children)]
 
       ;; If there is only one child, the and or or operator can simply be eliminated.
       (if (= 1 (count children))
