@@ -268,7 +268,13 @@
          ;; The symbol is not qualified, so treat it as a namespace.
          (->> (ns-interns sym)
               (vals) ; Get the references in the namespace.
-              (filter #((some-fn :rule :query :production-seq) (meta %))) ; Filter down to rules, queries, and seqs of both.
+              (filter var?)
+              (filter (comp (some-fn :rule :query :production-seq) meta)) ; Filter down to rules, queries, and seqs of both.
+              ;; If definitions are created dynamically (i.e. are not reflected in an actual code file)
+              ;; it is possible that they won't have :line metadata, so we have a default of 0.
+              (sort (fn [v1 v2]
+                      (compare (or (:line (meta v1)) 0)
+                               (or (:line (meta v2)) 0))))
               (mapcat #(if (:production-seq (meta %))
                          (deref %)
                          [(deref %)])))))))

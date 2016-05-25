@@ -1523,12 +1523,26 @@
   ([sources-and-options]
    (let [sources (take-while (complement keyword?) sources-and-options)
          options (apply hash-map (drop-while (complement keyword?) sources-and-options))
-         productions (into #{}
-                           (mapcat
-                            #(if (satisfies? IRuleSource %)
-                               (load-rules %)
-                               %))
-                           sources)] ; Load rules from the source, or just use the input as a seq.
+         productions (->> sources
+                          ;; Load rules from the source, or just use the input as a seq.
+                          (mapcat #(if (satisfies? IRuleSource %)
+                                     (load-rules %)
+                                     %))                                        
+                          (map (fn [n production]
+                                 (vary-meta production assoc ::rule-load-order (or n 0)))
+                               (range))
+                          ;; Ensure that we choose the earliest occurrence of a rule for the purpose of rule order.
+                          ;; There are Clojure core functions for distinctness, of course, but none of them seem to guarantee
+                          ;; which instance will be chosen in case of duplicates.
+                          (reduce (fn [previous new-production]
+                                    ;; Contains? is broken for transient sets; see http://dev.clojure.org/jira/browse/CLJ-700
+                                    ;; Since all values in this set should be truthy, we can just use the set as a function instead.
+                                    (if (previous new-production)
+                                      previous
+                                      (conj! previous new-production)))
+                                  (transient #{}))
+                          persistent!)]
+
      (if-let [session (get @session-cache [productions options])]
        session
        (let [session (mk-session* productions options)]
