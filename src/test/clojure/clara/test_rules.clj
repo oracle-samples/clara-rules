@@ -13,6 +13,7 @@
             [clojure.edn :as edn]
             [clojure.walk :as walk]
             [clara.sample-ruleset-seq :as srs]
+            [clara.order-ruleset :as order-rules]
             [schema.test])
   (import [clara.rules.testfacts Temperature WindSpeed Cold Hot TemperatureHistory
            ColdAndWindy LousyWeather First Second Third Fourth FlexibleFields]
@@ -4212,3 +4213,150 @@
     (is (= (frequencies [{:?m (->Type2)}])
            (frequencies (query retract1 q))
            (frequencies (query retract2 q))))))
+
+(deftest test-rule-order-respected
+  (let [fire-order (atom [])
+        rule-A (dsl/parse-rule [[Cold]]
+                               (swap! fire-order conj :A))
+        rule-B (dsl/parse-rule [[Cold]]
+                               (swap! fire-order conj :B))]
+
+    (reset! fire-order [])
+
+    (-> (mk-session [rule-A rule-B] :cache false)
+        (insert (->Cold 10))
+        fire-rules)
+    (is (= @fire-order [:A :B])
+        "Rule order in a seq of rule structures should be respected")
+
+    (reset! fire-order [])
+
+    (-> (mk-session [rule-B rule-A] :cache false)
+        (insert (->Cold 10))
+        fire-rules)
+    (is (= @fire-order [:B :A])
+        "Validate that when we reverse the seq of rule structures the firing order is reversed.")
+
+    (reset! fire-order [])
+
+    (binding [order-rules/*rule-order-atom* fire-order]
+      (-> (mk-session [rule-A] 'clara.order-ruleset :cache false)
+          (insert (->Cold 10))
+          fire-rules)
+      (is (= @fire-order [:A :C :D])
+          "Rules should fire in the order they appear in a namespace.  A rule that is before that namespace
+           in the rule sources should fire first."))
+
+    (reset! fire-order [])
+
+    (binding [order-rules/*rule-order-atom* fire-order]
+      (-> (mk-session 'clara.order-ruleset [rule-A] :cache false)
+          (insert (->Cold 10))
+          fire-rules)
+      (is (= @fire-order [:C :D :A])
+          "Rules should fire in the order they appear in a namespace.  A rule that is after that namespace
+           in the rule sources should fire later."))
+
+    (reset! fire-order [])
+
+    (let [rule-C-line (-> #'order-rules/rule-C meta :line)
+          rule-D-line (-> #'order-rules/rule-D meta :line)]
+      (alter-meta! #'order-rules/rule-C (fn [m] (assoc m :line rule-D-line)))
+      (alter-meta! #'order-rules/rule-D (fn [m] (assoc m :line rule-C-line)))
+
+      (binding [order-rules/*rule-order-atom* fire-order]
+        (-> (mk-session 'clara.order-ruleset :cache false)
+            (insert (->Cold 10))
+            fire-rules))
+
+      (is (= @fire-order [:D :C])
+          "When we alter the metadata of the rules to reverse their line order their
+           firing order should also be reversed.")
+
+      ;; Reset the line metadata on the rules to what it was previously.
+      (alter-meta! #'order-rules/rule-C (fn [m] (assoc m :line rule-C-line))) 
+      (alter-meta! #'order-rules/rule-D (fn [m] (assoc m :line rule-D-line))))
+
+    (reset! fire-order [])
+
+    (binding [order-rules/*rule-order-atom* fire-order
+              order-rules/*rule-seq-prior* [rule-A rule-B]]
+      (-> (mk-session 'clara.order-ruleset :cache false)
+          (insert (->Cold 10))
+          fire-rules)
+      (is (= @fire-order [:A :B :C :D])
+          "When a :production-seq occurs before defrules, the rules in the :production-seq
+           should fire before those rules and in the order they are in in the :production-seq."))
+
+    (reset! fire-order [])
+
+    (binding [order-rules/*rule-order-atom* fire-order
+              order-rules/*rule-seq-after* [rule-A rule-B]]
+      (-> (mk-session 'clara.order-ruleset :cache false)
+          (insert (->Cold 10))
+          fire-rules)
+      (is (= @fire-order [:C :D :A :B])
+          "When a :production-seq occurs after defrules, the rules in the :production-seq
+           should fire after those rules and in the order they are in in the :production-seq."))
+
+    (reset! fire-order [])
+
+    (binding [order-rules/*rule-order-atom* fire-order
+              order-rules/*rule-seq-after* [rule-B rule-A]]
+      (-> (mk-session 'clara.order-ruleset :cache false)
+          (insert (->Cold 10))
+          fire-rules)
+      (is (= @fire-order [:C :D :B :A])
+          "Validate that when the order of rules in the :production-seq is reversed those rules
+           fire in the reversed order"))
+
+    (reset! fire-order [])
+
+    (-> (mk-session [rule-A (assoc-in rule-B [:props :salience] 1)] :cache false)
+        (insert (->Cold 10))
+        fire-rules)
+    (is (= @fire-order [:B :A])
+        "Validate that when explicit salience is present it overrides rule order.")
+
+    (reset! fire-order [])
+
+    (-> (mk-session [rule-A rule-B rule-A] :cache false)
+        (insert (->Cold 10))
+        fire-rules)
+    (is (= @fire-order [:A :B])
+        "Validate that the first occurence of a rule is used for rule ordering when it occurs multiple times.")
+
+    (reset! fire-order [])))
+
+(deftest test-force-multiple-transient-transitions-activation-memory
+  ;; The objective of this test is to verify that activation memory works
+  ;; properly after going through persistent/transient shifts, including shifts
+  ;; that empty it (i.e. firing the rules.)
+  (let [rule (dsl/parse-rule [[ColdAndWindy]]
+                             (insert! (->Cold 10)))
+        cold-query (dsl/parse-query [] [[Cold (= ?t temperature)]])
+
+        empty-session (mk-session [rule cold-query] :cache false)
+
+        windy-fact (->ColdAndWindy 20 20)]
+    
+    (is (= (-> empty-session
+               (insert windy-fact)
+               (insert windy-fact)
+               fire-rules
+               (query cold-query))
+           [{:?t 10} {:?t 10}])
+        "Make two insert calls forcing the memory to go through a persistent/transient transition
+         in between insert calls.")
+
+    (is (= (-> empty-session
+               (insert windy-fact)
+               (insert windy-fact)
+               fire-rules
+               (insert windy-fact)
+               (insert windy-fact)
+               fire-rules
+               (query cold-query))
+           (repeat 4 {:?t 10}))
+        "Validate that we can still go through a persistent/transient transition in the memory
+         after firing rules causes the activation memory to be emptied.")))
