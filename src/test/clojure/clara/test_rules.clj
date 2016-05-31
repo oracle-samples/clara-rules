@@ -3329,6 +3329,48 @@
                (query wind-and-temp)
                (set))))))
 
+(deftest test-exists-inside-boolean-conjunction-and-disjunction
+  (let [or-rule (dsl/parse-rule [[:or
+                                  [:exists [ColdAndWindy]]
+                                  [:exists [Temperature (< temperature 20)]]]]
+                                (insert! (->Cold nil)))
+
+        and-rule (dsl/parse-rule [[:and
+                                   [:exists [ColdAndWindy]]
+                                   [:exists [Temperature (< temperature 20)]]]]
+                                 (insert! (->Cold nil)))
+
+        cold-query (dsl/parse-query [] [[Cold (= ?t temperature)]])
+
+        or-session (mk-session [or-rule cold-query] :cache false)
+
+        and-session (mk-session [and-rule cold-query] :cache false)]
+
+    (is (empty? (-> or-session
+                    fire-rules
+                    (query cold-query)))
+        "Verify that :exists under an :or does not fire if nothing meeting the :exists is present")
+
+    (is (= (-> or-session
+               (insert (->ColdAndWindy 10 10))
+               fire-rules
+               (query cold-query))
+           [{:?t nil}])
+        "Validate that :exists can match under a boolean :or condition.")
+
+    (is (empty? (-> and-session
+                    (insert (->ColdAndWindy 10 10))
+                    fire-rules
+                    (query cold-query)))
+        "Validate that :exists under an :and condition without both conditions does not cause the rule to fire.")
+
+    (is (= (-> and-session
+               (insert (->ColdAndWindy 10 10) (->Temperature 10 "MCI"))
+               fire-rules
+               (query cold-query))
+           [{:?t nil}])
+        "Validate that :exists can match under a boolean :and condition.")))
+
 ;; Test for https://github.com/rbrush/clara-rules/issues/142
 (deftest test-beta-binding
   "Tests bind operation that must happen on the beta side of the network"
@@ -4212,3 +4254,4 @@
     (is (= (frequencies [{:?m (->Type2)}])
            (frequencies (query retract1 q))
            (frequencies (query retract2 q))))))
+
