@@ -208,8 +208,9 @@
   ([exp-seq]
    (compile-constraints exp-seq #{}))
   ([exp-seq equality-only-variables]
+
    (if (empty? exp-seq)
-     `((deref ~'?__bindings__))
+     `(deref ~'?__bindings__)
      (let [ [exp & rest-exp] exp-seq
             compiled-rest (compile-constraints rest-exp equality-only-variables)
             variables (into #{}
@@ -221,37 +222,44 @@
             expression-values (remove variables (rest exp))
             binds-variables? (and (equality-expression? exp)
                                   (seq variables))]
+
        (when (and binds-variables?
                   (empty? expression-values))
-
          (throw (ex-info (str "Malformed variable binding for " variables ". No associated value.")
                          {:variables (map keyword variables)})))
 
        (if binds-variables?
 
-         (concat
+         ;; Bind each variable with the first value we encounter.
+         ;; The additional equality checks are handled below so which value
+         ;; we bind to is not important. So an expression like (= ?x value-1 value-2) will
+         ;; bind ?x to value-1, and then ensure value-1 and value-2 are equal below.
 
-          ;; Bind each variable with the first value we encounter.
-          ;; The additional equality checks are handled below so which value
-          ;; we bind to is not important. So an expression like (= ?x value-1 value-2) will
-          ;; bind ?x to value-1, and then ensure value-1 and value-2 are equal below.
-          (for [variable variables]
-            `(swap! ~'?__bindings__ assoc ~(keyword variable) ~(first expression-values)))
+         ;; First assign each value in a let, so it is visible to subsequent expressions.
+         `(let [~@(for [variable variables
+                        let-expression [variable (first expression-values)]]
+                    let-expression)]
 
-          ;; If there is more than one expression value, we need to ensure they are
-          ;; equal as well as doing the bind. This ensures that value-1 and value-2 are
-          ;; equal.
-          (if (> (count expression-values) 1)
+            ;; Update the bindings produced by this expression.
+            ~@(for [variable variables]
+                `(swap! ~'?__bindings__ assoc ~(keyword variable) ~variable))
+
+            ;; If there is more than one expression value, we need to ensure they are
+            ;; equal as well as doing the bind. This ensures that value-1 and value-2 are
+            ;; equal.
+            ~(if (> (count expression-values) 1)
 
 
-            (list (list 'if (cons '= expression-values) (cons 'do compiled-rest) nil))
-            ;; No additional values to check, so move on to the rest of
-            ;; the expression
-            compiled-rest))
+               `(if ~(cons '= expression-values) ~compiled-rest nil)
+               ;; No additional values to check, so move on to the rest of
+               ;; the expression
+               compiled-rest)
+            )
 
          ;; No variables to unify, so simply check the expression and
          ;; move on to the rest.
-         (list (list 'if exp (cons 'do compiled-rest) nil)))))))
+         `(if ~exp ~compiled-rest nil))))))
+
 
 (defn flatten-expression
   "Flattens expression as clojure.core/flatten does, except will flatten
@@ -326,7 +334,7 @@
           ~destructured-env] ;; TODO: add destructured environment parameter...
        (let [~@assignments
              ~'?__bindings__ (atom ~initial-bindings)]
-         (do ~@(compile-constraints constraints))))))
+         ~(compile-constraints constraints)))))
 
 ;; FIXME: add env...
 (defn compile-test [tests]
@@ -399,7 +407,7 @@
           ~destructured-env]
        (let [~@assignments
              ~'?__bindings__ (atom {})]
-         (do ~@(compile-constraints constraints equality-only-variables))))))
+         ~(compile-constraints constraints equality-only-variables)))))
 
 (defn- expr-type [expression]
   (if (map? expression)
@@ -506,15 +514,16 @@
           (let [disjunctions (mapcat rest (filter #(#{:or} (expr-type %)) children))]
             (cons :or (concat disjunctions conjunctions))))))))
 
-(defn- non-equality-unification? [expression]
-  "Returns true if the given expression does a non-equality unification against a variable,
-   indicating it can't be solved by simple unification."
+(defn- non-equality-unification? [expression previously-bound]
+  "Returns true if the given expression does a non-equality unification against a variable that
+   is not in the previously-bound set, indicating it can't be solved by simple unification."
   (let [found-complex (atom false)
         process-form (fn [form]
                        (when (and (seq? form)
                                   (not (equality-expression? form))
                                   (some (fn [sym] (and (symbol? sym)
-                                                      (.startsWith (name sym) "?")))
+                                                      (.startsWith (name sym) "?")
+                                                      (not (previously-bound sym))))
                                         (flatten-expression form)))
 
                          (reset! found-complex true))
@@ -593,13 +602,18 @@
             (if (and (seq? constraint) (equality-expression? constraint))
               [(->> (rest constraint)
                     (filterv is-variable?)
+                    ;; A variable that was marked unbound in a previous expression should
+                    ;; not be considered bound.
+                    (remove free-variables)
                     (into bound-variables))
                ;; Any other variables in a nested form are now considered "free".
                (->> (rest constraint)
                     ;; We already have checked this level symbols for bound variables.
                     (remove symbol?)
                     flatten-expression
-                    (filterv is-variable?)
+                    (filter is-variable?)
+                    ;; Variables previously bound in an expression are not free.
+                    (remove bound-variables)
                     (into free-variables))]
 
               ;; Binding forms are not supported nested within other forms, so
@@ -607,6 +621,8 @@
               [bound-variables
                (->> (flatten-expression constraint)
                     (filterv is-variable?)
+                    ;; Variables previously bound in an expression are not free.
+                    (remove bound-variables)
                     (into free-variables))]))
           [#{} #{}]
           constraints))
@@ -760,6 +776,15 @@
                  updated-bindings
                  still-unsatisfied))))))
 
+(defn- non-equality-unifications
+  "Returns a set of unifications that do not use equality-based checks."
+  [constraints]
+  (let [[bound-variables unbound-variables] (classify-variables constraints)]
+    (into #{}
+          (for [constraint constraints
+                :when (non-equality-unification? constraint bound-variables)]
+            constraint))))
+
 (sc/defn condition-to-node :- schema/ConditionNode
   "Converts a condition to a node structure."
   [condition :- schema/Condition
@@ -784,25 +809,25 @@
                                 ;; This was not a test within a negation, so keep the previous values.
                                 [node-type condition])
 
-        ;; Get the non-equality unifications so we can handle them
-        join-filter-expressions (if (and (or (= :accumulator node-type)
-                                             (= :negation node-type)
-                                             (= :join node-type))
-                                         (some non-equality-unification? (:constraints condition)))
+        ;; Get the set of non-equality unifications that cannot be resolved locally to the rule.
+        non-equality-unifications (if (or (= :accumulator node-type)
+                                          (= :negation node-type)
+                                          (= :join node-type))
+                                    (non-equality-unifications (:constraints condition))
+                                    #{})
 
-                                    (assoc condition :constraints (filterv non-equality-unification? (:constraints condition)))
+        ;; If there are any non-equality unitifications, create a join with filter expression to handle them.
+        join-filter-expressions (if (seq non-equality-unifications)
+
+                                    (assoc condition :constraints (filterv non-equality-unifications (:constraints condition)))
 
                                     nil)
 
         ;; Remove instances of non-equality constraints from accumulator
         ;; and negation nodes, since those are handled with specialized node implementations.
-        condition (if (and (or (= :accumulator node-type)
-                               (= :negation node-type)
-                               (= :join node-type))
-                           (some non-equality-unification? (:constraints condition)))
-
+        condition (if (seq non-equality-unifications)
                     (assoc condition
-                      :constraints (into [] (remove non-equality-unification? (:constraints condition)))
+                      :constraints (into [] (remove non-equality-unifications (:constraints condition)))
                       :original-constraints (:constraints condition))
 
                     condition)
