@@ -71,6 +71,9 @@
   ;; Adds the result of a reduced accumulator execution to the given memory and node.
   (add-accum-reduced! [memory node join-bindings accum-result fact-bindings])
 
+  ;; Removes the result of a reduced accumulator execution to the given memory and node.
+  (remove-accum-reduced! [memory node join-bindings fact-bindings])
+
   ;; Add a record that a given fact twas inserted at a given node with
   ;; the given support. Used for truth maintenance.
   ;; This should be called at most once per rule activation.
@@ -546,6 +549,21 @@
                   (assoc-in (get accum-memory (:id node) {})
                             [join-bindings fact-bindings]
                             accum-result))))
+
+  (remove-accum-reduced! [memory node join-bindings fact-bindings]
+    (let [node-id (:id node)
+          node-id-mem (get accum-memory node-id {})
+          join-mem (dissoc (get node-id-mem join-bindings) fact-bindings)
+          node-id-mem (if (empty? join-mem)
+                        (dissoc node-id-mem join-bindings)
+                        (assoc node-id-mem join-bindings join-mem))]
+      (set! accum-memory
+            (if (empty? node-id-mem)
+              (dissoc! accum-memory
+                       node-id)
+              (assoc! accum-memory
+                      node-id
+                      node-id-mem)))))
 
   ;; The value under each token in the map should be a sequence
   ;; of sequences of facts, with each inner sequence coming from a single

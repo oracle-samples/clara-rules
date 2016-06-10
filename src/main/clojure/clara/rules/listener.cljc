@@ -16,6 +16,7 @@
   (retract-facts! [listener facts])
   (retract-facts-logical! [listener node token facts])
   (add-accum-reduced! [listener node join-bindings result fact-bindings])
+  (remove-accum-reduced! [listener node join-bindings fact-bindings])
   (add-activations! [listener node activations])
   (remove-activations! [listener node activations])
   (fire-rules! [listener node])
@@ -41,6 +42,8 @@
   (retract-facts-logical! [listener node token facts]
     listener)
   (add-accum-reduced! [listener node join-bindings result fact-bindings]
+    listener)
+  (remove-accum-reduced! [listener node join-bindings fact-bindings]
     listener)
   (add-activations! [listener node activations]
     listener)
@@ -95,6 +98,10 @@
   (add-accum-reduced! [listener node join-bindings result fact-bindings]
     (doseq [child children]
       (add-accum-reduced! child node join-bindings result fact-bindings)))
+
+  (remove-accum-reduced! [listener node join-bindings fact-bindings]
+    (doseq [child children]
+      (remove-accum-reduced! child node join-bindings fact-bindings)))
 
   (add-activations! [listener node activations]
     (doseq [child children]

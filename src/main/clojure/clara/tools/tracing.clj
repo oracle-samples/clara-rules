@@ -45,6 +45,12 @@
                             :result result
                             :fact-bindings fact-bindings}))
 
+  (remove-accum-reduced! [listener node join-bindings fact-bindings]
+    (append-trace listener {:type :remove-accum-reduced
+                            :node-id (:id node)
+                            :join-bindings join-bindings
+                            :fact-bindings fact-bindings}))
+
   (add-activations! [listener node activations]
     (append-trace listener {:type :add-activations :node-id (:id node) :tokens (map :token activations)}))
 

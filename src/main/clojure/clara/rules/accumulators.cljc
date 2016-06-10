@@ -5,7 +5,6 @@
             [schema.core :as s])
   (:refer-clojure :exclude [min max distinct count]))
 
-
 (defn accum
   "Creates a new accumulator. Users are encouraged to use a pre-defined
    accumulator in this namespace if one fits their needs. (See min, max, all,
@@ -16,8 +15,8 @@
 
    * An initial-value to be used with the reduced operations.
    * A reduce-fn that can be used with the Clojure Reducers library to reduce items.
-   * A combine-fn that can be used with the Clojure Reducers library to combine reduced items.
-   * A retract-fn that can remove a retracted fact from a previously reduced computation.
+   * An optional combine-fn that can be used with the Clojure Reducers library to combine reduced items.
+   * An optional retract-fn that can remove a retracted fact from a previously reduced computation.
    * An optional convert-return-fn that converts the reduced data into something useful to the caller.
      Simply uses identity by default.
     "
@@ -28,15 +27,13 @@
                (s/optional-key :combine-fn) s/Any
                (s/optional-key :convert-return-fn) s/Any
                :reduce-fn s/Any
-               :retract-fn s/Any}
+               (s/optional-key :retract-fn) s/Any}
               accum-map)
 
   (eng/map->Accumulator
-   (merge
-    {:combine-fn reduce-fn ; Default combine function is simply the reduce.
-     :convert-return-fn identity ; Default conversion does nothing, so use identity.
-     }
-    accum-map)))
+   (merge {;; Default conversion does nothing, so use identity.
+           :convert-return-fn identity}
+          accum-map)))
 
 (defn- drop-one-of
   "Removes one instance of the given value from the sequence."
@@ -44,7 +41,6 @@
   (let [pred #(not= value %)]
     (into (take-while pred items)
           (rest (drop-while pred items)))))
-
 
 (defn reduce-to-accum
   "Creates an accumulator using a given reduce function with optional initial value and
@@ -67,49 +63,22 @@
 
    Callers may optionally pass in an initial value (which defaults to nil),
    a function to transform the value returned by the reduce (which defaults to identity),
-   and a function to combine two reduced results (which uses the reduce-fn by default)."
+   and a function to combine two reduced results (which uses the reduce-fn to add new 
+   items to the same reduced value by default)."
 
   ([reduce-fn]
    (reduce-to-accum reduce-fn nil))
   ([reduce-fn initial-value]
    (reduce-to-accum reduce-fn initial-value identity))
   ([reduce-fn initial-value convert-return-fn]
-   (reduce-to-accum reduce-fn initial-value convert-return-fn reduce-fn))
+   (reduce-to-accum reduce-fn initial-value convert-return-fn nil))
   ([reduce-fn initial-value convert-return-fn combine-fn]
+   (accum (cond-> {:initial-value initial-value
+                   :reduce-fn reduce-fn
+                   :convert-return-fn convert-return-fn}
+            combine-fn (assoc :combine-fn combine-fn)))))
 
-   (let [wrapped-initial-value (if (nil? initial-value)
-                                  nil
-                                  [[] initial-value])
-
-         wrapped-reduce-fn (fn [[seen reduced] item]
-                              [(conj (or seen []) item) (reduce-fn reduced item)])
-
-         wrapped-combine-fn (let [wrapper-combine-fn (or combine-fn reduce-fn)]
-                               (fn [[seen1 reduced1] [seen2 reduced2]]
-                                 [(concat seen1 seen2) (wrapper-combine-fn reduced1 reduced2)]))
-
-         wrapped-retract-fn (fn [[seen _] retracted]
-                               (reduce wrapped-reduce-fn
-                                       wrapped-initial-value
-                                       (let [[left right] (split-with (partial not= retracted) seen)]
-                                         (concat left (rest right)))))
-
-         wrapped-convert-return-fn (if (nil? convert-return-fn)
-                                      (fn [[_ reduced]]
-                                        reduced)
-                                      (fn [[_ reduced]]
-                                        (convert-return-fn reduced)))]
-
-     (accum
-      {:initial-value wrapped-initial-value
-       :reduce-fn wrapped-reduce-fn
-       :retract-fn wrapped-retract-fn
-       :combine-fn wrapped-combine-fn
-       :convert-return-fn wrapped-convert-return-fn}))))
-
-(let [grouping-fn (fnil conj [])
-      combine-fn (fn [a b]
-                   (merge-with (comp vec into) a b))]
+(let [grouping-fn (fnil conj [])]
   (defn grouping-by
     "Return a generic grouping accumulator. Behaves like clojure.core/group-by.
 
@@ -125,12 +94,11 @@
         (let [v (field x)]
           (update m v grouping-fn x)))
       {}
-      convert-return-fn
-      combine-fn))))
+      convert-return-fn))))
 
 (defn- comparison-based
   "Creates a comparison-based result such as min or max"
-  [field comparator returns-fact supports-retract]
+  [field comparator returns-fact]
   (let [reduce-fn (fn [previous value]
                     (if previous
                       (if (comparator (field previous) (field value))
@@ -141,44 +109,27 @@
         convert-return-fn (if returns-fact
                             identity
                             field)]
-
-    (if supports-retract
-      (reduce-to-accum reduce-fn nil convert-return-fn)
-
-      ;; No need to support retraction, so we can
-      ;; create a more efficient accumulator directly.
-      (accum
-       {:reduce-fn reduce-fn
-        ;; Retract does nothing.
-        :retract-fn (fn [value item] value)
-        :convert-return-fn convert-return-fn}))))
-
+    (accum
+     {:reduce-fn reduce-fn
+      :convert-return-fn convert-return-fn})))
 
 (defn min
   "Returns an accumulator that returns the minimum value of a given field.
 
    The caller may provide the following options:
 
-   * :returns-fact Returns the fact rather than the field value if set to true. Defaults to false.
-   * :supports-retract Keeps the history of facts used so the minimum value can be updated if
-     the previous fact with the minimum value is retracted. This guarantees the expected
-     behavior in the face of retractions but comes at the cost of maintaining all matching facts."
-
-  [field & {:keys [returns-fact supports-retract] :or {supports-retract true}}]
-  (comparison-based field < returns-fact supports-retract))
+   * :returns-fact Returns the fact rather than the field value if set to true. Defaults to false."
+  [field & {:keys [returns-fact]}]
+  (comparison-based field < returns-fact))
 
 (defn max
   "Returns an accumulator that returns the maximum value of a given field.
 
    The caller may provide the following options:
 
-   * :returns-fact Returns the fact rather than the field value if set to true. Defaults to false.
-   * :supports-retract Keeps the history of facts used so the minimum value can be updated if
-     the previous fact with the minimum value is retracted. This guarantees the expected
-     behavior in the face of retractions but comes at the cost of maintaining all matching facts."
-
-  [field & {:keys [returns-fact supports-retract] :or {supports-retract true}}]
-  (comparison-based field > returns-fact supports-retract))
+   * :returns-fact Returns the fact rather than the field value if set to true. Defaults to false."
+  [field & {:keys [returns-fact]}]
+  (comparison-based field > returns-fact))
 
 (defn average
   "Returns an accumulator that returns the average value of a given field."
@@ -223,14 +174,12 @@
      (accum
       {:initial-value #{}
        :reduce-fn (fn [items value] (conj items value))
-       :retract-fn (fn [items retracted] (disj items retracted))
-       :combine-fn set/union}))
+       :retract-fn (fn [items retracted] (disj items retracted))}))
   ([field]
      (accum
       {:initial-value #{}
        :reduce-fn (fn [items value] (conj items (field value)))
-       :retract-fn (fn [items retracted] (disj items (field retracted)))
-       :combine-fn set/union})))
+       :retract-fn (fn [items retracted] (disj items (field retracted)))})))
 
 (defn all
   "Returns an accumulator that preserves all accumulated items.
@@ -239,11 +188,9 @@
      (accum
       {:initial-value []
        :reduce-fn (fn [items value] (conj items value))
-       :retract-fn (fn [items retracted] (drop-one-of items retracted))
-       :combine-fn concat}))
+       :retract-fn (fn [items retracted] (drop-one-of items retracted))}))
   ([field]
      (accum
       {:initial-value []
        :reduce-fn (fn [items value] (conj items (field value)))
-       :retract-fn (fn [items retracted] (drop-one-of items (field retracted)))
-       :combine-fn concat})))
+       :retract-fn (fn [items retracted] (drop-one-of items (field retracted)))})))
