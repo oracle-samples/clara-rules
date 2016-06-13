@@ -414,7 +414,6 @@
     :condition
     (first expression)))
 
-
 (defn- cartesian-join
   "Performs a cartesian join to distribute disjunctions for disjunctive normal form.,
   This distributing each disjunction across every other disjunction and also across each
@@ -886,12 +885,12 @@
                      forward-path
                      (if forward-previous
                        (conj forward-previous target-id)
-                       #{target-id}))
+                       (sorted-set target-id)))
                     (assoc-in
                      backward-path
                      (if backward-previous
                        (conj backward-previous source-id)
-                       #{source-id})))))
+                       (sorted-set source-id))))))
 
             beta-graph
             source-ids)))
@@ -955,10 +954,10 @@
      :beta-with-negations beta-graph}))
 
 ;; A beta graph with no nodes.
-(def ^:private empty-beta-graph {:forward-edges {}
-                                 :backward-edges {}
-                                 :id-to-condition-node {0 ::root-condition}
-                                 :id-to-production-node {}})
+(def ^:private empty-beta-graph {:forward-edges (sorted-map)
+                                 :backward-edges (sorted-map)
+                                 :id-to-condition-node (sorted-map 0 ::root-condition)
+                                 :id-to-production-node (sorted-map)})
 
 (sc/defn ^:private add-conjunctions :- {:beta-graph schema/BetaGraph
                                         :new-ids [sc/Int]
@@ -989,9 +988,16 @@
                            fact-binding (conj fact-binding))
 
             ;; Find children that all parent nodes have.
-            common-children-ids (apply s/union (-> (:forward-edges beta-graph)
-                                                   (select-keys parent-ids)
-                                                   (vals)))
+            common-children-ids (into
+                                 ;; Since we require that id-to-condition-nodes have an equal value to "node" under the ID
+                                 ;; for this to be used, the order of this set probably doesn't matter in most cases.  However, in any possible edge
+                                 ;; cases where there are equal nodes under different IDs, sorting the set will add determinism.
+                                 ;; Having different nodes under the same
+                                 ;; ID would be a bug, but having an equivalent node under multiple IDs wouldn't necessarily be one.
+                                 (sorted-set)
+                                 (apply s/union (-> (:forward-edges beta-graph)
+                                                    (select-keys parent-ids)
+                                                    (vals))))
 
 
             id-to-condition-nodes (:id-to-condition-node beta-graph)
@@ -1087,8 +1093,7 @@
                           {:beta-graph (:beta-graph new-result)
                            :new-ids (into (:new-ids previous-result) (:new-ids new-result))
                            :bindings (set/union (:bindings previous-result)
-                                                (:bindings new-result)) }
-                          ))
+                                                (:bindings new-result))}))
 
                       ;; Initial reduce value, combining previous graph, parent ids, and ancestor variable bindings.
                       {:beta-graph beta-with-negations
@@ -1324,7 +1329,8 @@
                                          id-to-compile
                                          (get id-to-production-node id-to-compile))
 
-                    ;; Get the children.
+                    ;; Get the children.  The children should be sorted because the
+                    ;; id-to-compiled-nodes map is sorted.
                     children (->> (get forward-edges id-to-compile)
                                  (select-keys id-to-compiled-nodes)
                                  (vals))]
@@ -1343,9 +1349,11 @@
                                        ;; 0 is the id of the root node.
                                        (= #{0} (get backward-edges id-to-compile))
                                        children
-                                       compile-expr))))
-              )
-            {}
+                                       compile-expr)))))
+            ;; The node IDs have been determined before now, so we just need to sort the map returned.
+            ;; This matters because the engine will left-activate the beta roots with the empty token
+            ;; in the order that this map is seq'ed over.
+            (sorted-map)
             ids-to-compile)))
 
 
@@ -1368,11 +1376,17 @@
                                    (update-in node-map [[condition env]] conj node-id)
                                    (assoc node-map [condition env] [node-id])))
                                {}
-                               condition-to-node-ids)]
+                               condition-to-node-ids)
+
+        ;; We sort the alpha nodes by the ordered sequence of the node ids they correspond to
+        ;; in order to make the order of alpha nodes for any given type consistent.  Note that we
+        ;; coerce to a vector because we need a type that is comparable.
+        condition-to-node-entries (sort-by (fn [[k v]] (-> v sort vec))
+                                           condition-to-node-map)]
 
     ;; Compile conditions into functions.
     (vec
-     (for [[[condition env] node-ids] condition-to-node-map
+     (for [[[condition env] node-ids] condition-to-node-entries
            :when (:type condition) ; Exclude test conditions.
            ]
 
@@ -1507,7 +1521,20 @@
   "Compile the rules into a rete network and return the given session."
   [productions :- #{schema/Production}
    options :- {sc/Keyword sc/Any}]
-  (let [beta-graph (to-beta-graph productions)
+  (let [;; We need to put the productions in a sorted set here, instead of in mk-session, since we don't want
+        ;; a sorted set in the session-cache.  If we did only rule order would be used to compare set equality
+        ;; for finding a cache hit, and we want to use the entire production, which a non-sorted set does.
+        ;; When using a sorted set, for constant options,
+        ;; any session creation with n productions would be a cache hit if any previous session had n productions.
+        ;; Furthermore, we can avoid the work of sorting the set until we know that there was a cache miss.
+        ;;
+        ;; Note that this ordering is not for correctness; we are just trying to increase consistency of rulebase compilation,
+        ;; and hopefully thereby execution times, from run to run.
+        productions (into (sorted-set-by (fn [a b]
+                                           (< (-> a meta ::rule-load-order)
+                                              (-> b meta ::rule-load-order))))
+                          productions)
+        beta-graph (to-beta-graph productions)
         beta-tree (compile-beta-graph beta-graph)
         beta-root-ids (-> beta-graph :forward-edges (get 0)) ; 0 is the id of the virtual root node.
         beta-roots (vals (select-keys beta-tree beta-root-ids))

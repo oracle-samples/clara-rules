@@ -1967,29 +1967,27 @@
     (is (= #{{:?item (->Fourth)}}
            (set (query session item-query))))))
 
+(deftest test-node-id-map
+  (let [cold-rule (dsl/parse-rule [[Temperature (< temperature 20)]]
+                                  (println "Placeholder"))
+        windy-rule (dsl/parse-rule [[WindSpeed (> windspeed 25)]]
+                                   (println "Placeholder"))
 
-(comment ;; FIXME: node ids are currently not consistent...
-  (deftest test-node-id-map
-    (let [cold-rule (dsl/parse-rule [[Temperature (< temperature 20)]]
-                             (println "Placeholder"))
-          windy-rule (dsl/parse-rule [[WindSpeed (> windspeed 25)]]
-                              (println "Placeholder"))
+        rulebase  (.rulebase (mk-session [cold-rule windy-rule]))
 
-          rulebase  (mk-session [cold-rule windy-rule])
+        cold-rule2 (dsl/parse-rule [[Temperature (< temperature 20)]]
+                                   (println "Placeholder"))
+        windy-rule2 (dsl/parse-rule [[WindSpeed (> windspeed 25)]]
+                                    (println "Placeholder"))
 
-          cold-rule2 (dsl/parse-rule [[Temperature (< temperature 20)]]
-                              (println "Placeholder"))
-          windy-rule2 (dsl/parse-rule [[WindSpeed (> windspeed 25)]]
-                               (println "Placeholder"))
+        rulebase2 (.rulebase (mk-session [cold-rule2 windy-rule2]))]
 
-          rulebase2 (mk-session [cold-rule2 windy-rule2])]
+    ;; The keys should be consistent between maps since the rules are identical.
+    (is (= (keys (:id-to-node rulebase))
+           (keys (:id-to-node rulebase2))))
 
-      ;; The keys should be consistent between maps since the rules are identical.
-      (is (= (keys (:id-to-node rulebase))
-             (keys (:id-to-node rulebase2))))
-
-      ;; Ensure there are beta and production nodes as expected.
-      (is (= 4 (count (:id-to-node rulebase)))))))
+    ;; Ensure there are beta and production nodes as expected.
+    (is (= 4 (count (:id-to-node rulebase))))))
 
 (deftest test-simple-test
   (let [distinct-temps-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t1 temperature)]
