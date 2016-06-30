@@ -28,10 +28,11 @@
 (def BetaNode (sc/either ProductionNode QueryNode HashJoinNode ExpressionJoinNode
                          NegationNode TestNode AccumulateNode))
 
-;; A rulebase -- essentially an immutable Rete network with a collection of alpha and beta nodes and supporting structure.
+;; A rulebase -- essentially an immutable Rete network with a collection of
+;; alpha and beta nodes and supporting structure.
 (sc/defrecord Rulebase [;; Map of matched type to the alpha nodes that handle them.
                         alpha-roots :- {sc/Any [AlphaNode]}
-                        ;; Root beta nodes (join, accumulate, etc.)
+                        ;; Root beta nodes (join, accumulate, etc.).
                         beta-roots :- [BetaNode]
                         ;; Productions in the rulebase.
                         productions :- #{schema/Production}
@@ -39,7 +40,7 @@
                         production-nodes :- [ProductionNode]
                         ;; Map of queries to the nodes hosting them.
                         query-nodes :- {sc/Any QueryNode}
-                        ;; May of id to one of the beta nodes (join, accumulate, etc)
+                        ;; Map of id to one of the beta nodes (join, accumulate, etc).
                         id-to-node :- {sc/Num BetaNode}])
 
 (def ^:private reflector
@@ -1579,7 +1580,7 @@
                           ;; Load rules from the source, or just use the input as a seq.
                           (mapcat #(if (satisfies? IRuleSource %)
                                      (load-rules %)
-                                     %))                                        
+                                     %))
                           (map (fn [n production]
                                  (vary-meta production assoc ::rule-load-order (or n 0)))
                                (range))
