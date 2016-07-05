@@ -102,6 +102,9 @@
    ;; Variable bindings used by expressions in this node.
    :used-bindings #{s/Keyword}
 
+   ;; Variable bindings used in the constraints that are not present in the ancestors of this node.
+   :new-bindings #{s/Keyword}
+
    ;; An expression used to filter joined data.
    (s/optional-key :join-filter-expressions) LeafCondition
 
@@ -148,4 +151,7 @@
                                           ConditionNode)}
 
    ;; Map of identifier to query or rule nodes.
-   :id-to-production-node {s/Int ProductionNode}})
+   :id-to-production-node {s/Int ProductionNode}
+
+   ;; Map of identifier to new bindings created by the corresponding node.
+   :id-to-new-bindings {s/Int #{s/Keyword}}})

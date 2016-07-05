@@ -68,7 +68,7 @@
 (sc/defn gen-beta-network :- [sc/Any] ; Returns a sequence of compiled nodes.
   "Generates the beta network from the beta tree. "
   ([node-ids :- #{sc/Int}              ; Nodes to compile.
-    {:keys [id-to-production-node id-to-condition-node forward-edges] :as beta-graph} :- schema/BetaGraph
+    {:keys [id-to-production-node id-to-condition-node id-to-new-bindings forward-edges] :as beta-graph} :- schema/BetaGraph
     parent-bindings :- #{sc/Keyword}]
      (vec
       (for [id node-ids
@@ -86,7 +86,9 @@
                                        ;; Optional fact binding from a condition.
                                        (:fact-binding condition) (conj (:fact-binding condition))
                                        ;; Optional accumulator result.
-                                       (:result-binding beta-node) (conj (:result-binding beta-node)))]]
+                                       (:result-binding beta-node) (conj (:result-binding beta-node)))
+
+                  new-bindings (get id-to-new-bindings id)]]
 
         (case (:node-type beta-node)
 
@@ -140,7 +142,8 @@
                                         {})
               ~(:result-binding beta-node)
               ~(gen-beta-network child-ids beta-graph all-bindings)
-              ~join-bindings)
+              ~join-bindings
+              ~new-bindings)
 
             `(eng/->AccumulateNode
               ~id
@@ -149,7 +152,8 @@
               ~(:accumulator beta-node)
               ~(:result-binding beta-node)
               ~(gen-beta-network child-ids beta-graph all-bindings)
-              ~join-bindings))
+              ~join-bindings
+              ~new-bindings))
 
           :production
           `(eng/->ProductionNode

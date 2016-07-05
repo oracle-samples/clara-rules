@@ -706,7 +706,7 @@
 ;; The AccumulateNode hosts Accumulators, a Rete extension described above, in the Rete network.
 ;; It behaves similarly to a JoinNode, but performs an accumulation function on the incoming
 ;; working-memory elements before sending a new token to its descendents.
-(defrecord AccumulateNode [id accum-condition accumulator result-binding children binding-keys]
+(defrecord AccumulateNode [id accum-condition accumulator result-binding children binding-keys new-bindings]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport listener]
     (let [previous-results (mem/get-accum-reduced-all memory node join-bindings)
@@ -1048,7 +1048,7 @@
 ;; accumulate node is the join-filter-fn, which accepts a token and a fact and filters out facts that
 ;; are not consistent with the given token.
 (defrecord AccumulateWithJoinFilterNode [id accum-condition accumulator join-filter-fn
-                                         result-binding children binding-keys]
+                                         result-binding children binding-keys new-bindings]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport listener]
 
