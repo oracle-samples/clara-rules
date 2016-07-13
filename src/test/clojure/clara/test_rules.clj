@@ -4419,6 +4419,47 @@
 
     (reset! fire-order [])))
 
+(deftest test-rule-order-respected-by-batched-inserts
+  (let [qholder (atom [])
+
+        r1 (dsl/parse-rule [[Temperature (= ?t temperature)]]
+                           (insert! (->Cold ?t)))
+        r2 (dsl/parse-rule [[Temperature (= ?t temperature)]]
+                           (insert! (->Hot ?t)))
+
+        ;; Make two "alpha roots" that the 2 rules above insertions will need to propagate to.
+        q1 (dsl/parse-query [] [[?c <- Cold  (swap! qholder conj :cold)]])
+        q2 (dsl/parse-query [] [[?h <- Hot (swap! qholder conj :hot)]])
+        
+        order1 (mk-session [r1 r2 q1 q2] :cache false)
+        order2 (mk-session [r2 r1 q1 q2] :cache false)
+
+        run-session (fn [s]
+                      (let [s (-> s
+                                  (insert (->Temperature 10 "MCI")) 
+                                  fire-rules)]
+                        [(-> s (query q1) frequencies)
+                         (-> s (query q2) frequencies)]))
+        
+        [res11 res12] (run-session order1)
+        holder1 @qholder
+        _ (reset! qholder [])
+        
+        [res21 res22] (run-session order2)
+        holder2 @qholder
+        _ (reset! qholder [])]
+
+    ;; Sanity check that the query matches what is expected.
+    (is (= (frequencies [{:?c (->Cold 10)}])
+           res11
+           res21))
+    (is (= (frequencies [{:?h (->Hot 10)}])
+           res12
+           res22))
+    
+    (is (= [:cold :hot] holder1))
+    (is (= [:hot :cold] holder2))))
+
 (deftest test-force-multiple-transient-transitions-activation-memory
   ;; The objective of this test is to verify that activation memory works
   ;; properly after going through persistent/transient shifts, including shifts

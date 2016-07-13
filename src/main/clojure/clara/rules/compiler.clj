@@ -1499,9 +1499,12 @@
                                ;; Internal system types always use Clojure's type mechanism.
                                (type fact)
                                ;; All other types defer to the provided function.
-                               (fact-type-fn fact))))]
+                               (fact-type-fn fact))))
+
+        alpha-roots (get merged-rules :alpha-roots)]
+
     (fn [facts]
-      (for [[fact-type facts] (platform/tuned-group-by fact-grouping-fn facts)]
+      (for [[fact-type facts] (platform/group-by-seq fact-grouping-fn facts)]
 
         (if-let [alpha-nodes (get @alpha-map fact-type)]
 
@@ -1511,15 +1514,16 @@
           ;; The alpha nodes weren't cached for the type, so get them now.
           (let [ancestors (conj (ancestors-fn fact-type) fact-type)
 
-                ;; Get all alpha nodes for all ancestors.
-                new-nodes (distinct
-                           (reduce
-                            (fn [coll ancestor]
-                              (concat
-                               coll
-                               (get-in merged-rules [:alpha-roots ancestor])))
-                            []
-                            ancestors))]
+                ;; Get all alpha nodes for all ancestors.  Keep them sorted to maintain
+                ;; deterministic ordering of fact propagation across the network.
+                ;; Alpha nodes do not have a :node-id of their own right now, so sort
+                ;; by the :node-id of their :children.
+                new-nodes (sort-by #(mapv :node-id (:children %))
+                                   (into []
+                                         (comp (map #(get alpha-roots %))
+                                               cat
+                                               (distinct))
+                                         ancestors))]
 
             (swap! alpha-map assoc fact-type new-nodes)
             [new-nodes facts]))))))

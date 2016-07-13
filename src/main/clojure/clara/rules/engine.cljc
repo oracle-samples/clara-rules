@@ -104,7 +104,7 @@
     (if (pos? (count join-keys))
 
       ;; Group by the join keys for the activation.
-      (doseq [[join-bindings item-group] (platform/tuned-group-by #(select-keys (:bindings %) join-keys) items)]
+      (doseq [[join-bindings item-group] (platform/group-by-seq #(select-keys (:bindings %) join-keys) items)]
         (propagate-fn node
                       join-bindings
                       item-group
@@ -805,7 +805,7 @@
   IAccumRightActivate
   (pre-reduce [node elements]
     ;; Return a seq tuples with the form [binding-group facts-from-group-elements].
-    (for [[bindings element-group] (platform/tuned-group-by :bindings elements)]
+    (for [[bindings element-group] (platform/group-by-seq :bindings elements)]
       [bindings (mapv :fact element-group)]))
 
   (right-activate-reduced [node join-bindings fact-seq memory transport listener]
@@ -948,7 +948,7 @@
     (doseq [:let [convert-return-fn (:convert-return-fn accumulator)
                   matched-tokens (mem/get-tokens memory node join-bindings)
                   has-matches? (seq matched-tokens)]
-            [bindings elements] (platform/tuned-group-by :bindings elements)
+            [bindings elements] (platform/group-by-seq :bindings elements)
 
             :let [previous (mem/get-accum-reduced memory node join-bindings bindings)
                   has-previous? (not= :clara.rules.memory/no-accum-reduced previous)
@@ -1130,7 +1130,7 @@
     ;; Return a map of bindings to the candidate facts that match them. This accumulator
     ;; depends on the values from parent facts, so we defer actually running the accumulator
     ;; until we have a token.
-    (for [[bindings element-group] (platform/tuned-group-by :bindings elements)]
+    (for [[bindings element-group] (platform/group-by-seq :bindings elements)]
       [bindings (map :fact element-group)]))
 
   (right-activate-reduced [node join-bindings binding-candidates-seq memory transport listener]
@@ -1220,7 +1220,7 @@
 
     (doseq [:let [convert-return-fn (:convert-return-fn accumulator)
                   matched-tokens (mem/get-tokens memory node join-bindings)]
-            [bindings elements] (platform/tuned-group-by :bindings elements)
+            [bindings elements] (platform/group-by-seq :bindings elements)
             :let [previous-candidates (mem/get-accum-reduced memory node join-bindings bindings)]
 
             ;; No need to retract anything if there was no previous item.
