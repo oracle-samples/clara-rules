@@ -1,6 +1,8 @@
 language: clojure
 lein: lein2
-script: lein2 test
+script:
+  - lein2 test
+  - lein2 test :generative
 # Workaround for https://github.com/travis-ci/travis-ci/issues/4691
 sudo: required
 jdk:
