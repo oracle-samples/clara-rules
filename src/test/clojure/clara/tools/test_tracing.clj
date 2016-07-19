@@ -81,7 +81,7 @@
                       (insert (->Temperature 15 "MCI"))
                       fire-rules)]
 
-      (is (= [:add-facts :remove-accum-reduced :accum-reduced :left-retract :left-activate]
+      (is (= [:add-facts :accum-reduced :left-retract :left-activate]
 
              (map :type (t/get-trace session)))))))
 
