@@ -315,33 +315,6 @@
     (is (= {:?t 120} (first (query session sum))))
     (is (= {:?t 90} (first (query retracted sum))))))
 
-(deftest test-retract-initial-value
-
-  (let [get-temp-history (dsl/parse-query [] [[?his <- TemperatureHistory]])
-
-        get-temps-under-threshold (dsl/parse-rule [[?temps <- (acc/all) :from [Temperature (= ?loc location)]]]
-                                                  (insert! (->TemperatureHistory ?temps)))
-
-        temp-10-mci (->Temperature 10 "MCI")
-
-        temp-history (-> (mk-session [get-temp-history get-temps-under-threshold])
-
-                         (insert temp-10-mci)
-                         (fire-rules)
-                         (query get-temp-history))
-
-        empty-history (-> (mk-session [get-temp-history get-temps-under-threshold])
-                          (fire-rules)
-                          (query get-temp-history))]
-
-    (is (= 1 (count empty-history)))
-    (is (= [{:?his (->TemperatureHistory [])}]
-            empty-history))
-
-    (is (= 1 (count temp-history)))
-    (is (= [{:?his (->TemperatureHistory [temp-10-mci])}]
-            temp-history))))
-
 (deftest test-grouping-accum
   (let [grouping-accum (acc/grouping-by :temperature)
         grouping-query (dsl/parse-query [] [[?t <- grouping-accum
