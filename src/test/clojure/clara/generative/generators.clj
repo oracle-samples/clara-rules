@@ -21,7 +21,8 @@
                                                     :retract (apply retract session (:facts op))
                                                     :fire (fire-rules session))]
                                   new-session))
-                              session ops)]))
+                              session ops)]
+    final-session))
 
 (defn ^:private retract-before-insertion?
   "Given a sequence of operations, determine if the number of retractions of any fact exceeds the number
@@ -83,7 +84,7 @@
    are added will be present.  The default number of such pairs allowed to be added per insertion
    is 1."
   [ops :- [SessionOperation]
-   {:keys [dup-level] :or {:dup-level 1}}]
+   {:keys [dup-level] :or {dup-level 0}}]
   (let [dup-ops-seqs (ops->add-insert-retract ops dup-level)
         permutations (mapcat combo/permutations dup-ops-seqs)]
     
