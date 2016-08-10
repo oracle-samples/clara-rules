@@ -204,15 +204,6 @@
     ;; There is nothing to remove.
     (empty? remove-seq) [[] coll]
 
-    ;; Optimization for special case of one item to remove,
-    ;; which occurs frequently.
-    (= 1 (count remove-seq))
-
-    (let [item-to-remove (first remove-seq)
-          [before-it [it & after-it]] (split-with #(not= item-to-remove %) coll)
-          removed (if it [it] [])]
-      [removed (into before-it after-it)])
-
     ;; Otherwise, perform a linear search for items to remove.
     :else (loop [f (first coll)
                  r (rest coll)

@@ -830,10 +830,7 @@
       (is (= (frequencies [{:?s 10 :?t 9}])
              (frequencies res))))))
 
-(deftest ^{:doc "A test that ensures that when candidate facts are grouped by bindings in a
-                 join filter accumulator that has an initial-value to propagate, that the value
-                 is propagated for empty groups."}
-  test-accumulator-with-init-and-binding-groups
+(deftest test-accumulator-with-init-and-binding-groups
   (let [get-temp-history (dsl/parse-query [] [[?his <- TemperatureHistory]])
 
         get-temps-under-threshold (dsl/parse-rule [[?threshold <- :temp-threshold]
@@ -868,17 +865,14 @@
                                fire-rules
                                (query get-temp-history))]
 
-    (is (= [{:?his (->TemperatureHistory [])}]
-           (-> session
-               (insert thresh-11)
-               fire-rules
-               (query get-temp-history))))
-
-    (is (= 2 (count two-groups-one-init)))
-    (is (= #{{:?his (->TemperatureHistory [])}
-             {:?his (->TemperatureHistory [temp-10-mci])}}
-
-           (set two-groups-one-init)))
+    (is (empty?
+         (-> session
+             (insert thresh-11)
+             fire-rules
+             (query get-temp-history))))
+    
+    (is (= (frequencies [{:?his (->TemperatureHistory [temp-10-mci])}])
+           (frequencies two-groups-one-init)))
 
     (is (= 2 (count two-groups-no-init)))
     (is (= #{{:?his (->TemperatureHistory [temp-15-lax])}
@@ -971,15 +965,10 @@
                           (fire-rules)
                           (query get-temp-history))]
 
-    (is (= 1 (count empty-history)))
-    (is (= [{:?his (->TemperatureHistory [])}]
-            empty-history))
+    (is (empty? empty-history))
 
-    (is (= 2 (count temp-history)))
-    (is (= #{{:?his (->TemperatureHistory [])}
-             {:?his (->TemperatureHistory [temp-10-mci])}}
-
-           (set temp-history)))))
+    (is (= (frequencies [{:?his (->TemperatureHistory [temp-10-mci])}])
+           (frequencies temp-history)))))
 
 (deftest test-join-to-result-binding
   (let [same-wind-and-temp (dsl/parse-query
@@ -3929,10 +3918,7 @@
                  (retract (->Cold 10))
                  (fire-rules)
                  (query q1))
-             (if (= "AccumulateWithJoinFilterNode" node-type)
-               ;; FIXME: This should be an empty sequence; see issue 102.
-               [{:?temps [[] 10]}]
-               []))
+             [])
           (str "Retracting all elements that matched an accumulator with an initial value "
                \newline
                "should cause all facts downstream from the accumulator to be retracted when the accumulator creates binding groups."
@@ -4137,53 +4123,71 @@
                             [?t <- (assoc (acc/all) :convert-return-fn (constantly []))
                              :from [Temperature (= ?loc location) (= ?degrees temperature)]]]
                            (insert! (->TemperatureHistory [?loc ?degrees])))
-        q (dsl/parse-query [] [[TemperatureHistory (= ?ts temperatures)]])
-        empty-session (mk-session [r1 q] :cache false)]
+        r2 (dsl/parse-rule [[?w <- WindSpeed (= ?loc location)]
+                            [?t <- (assoc (acc/all) :convert-return-fn (constantly []))
+                             ;; Note that only the binding that comes from a previous condition can use a filter function
+                             ;; other than equality.  The = symbol is special-cased to potentially create a new binding;
+                             ;; if we used (join-filter-equals ?degrees temperature) here we would have an invalid rule constraint.
+                             :from [Temperature (join-filter-equals ?loc location) (= ?degrees temperature)]]]
+                           (insert! (->TemperatureHistory [?loc ?degrees])))
+        q (dsl/parse-query [] [[TemperatureHistory (= ?ts temperatures)]])]
 
-    (is (= (-> empty-session
-               (insert (->WindSpeed 10 "MCI") (->Temperature 20 "MCI"))
-               fire-rules
-               (query q))
-           [{:?ts ["MCI" 20]}]))
+    (doseq [[empty-session join-type] [[(mk-session [r1 q] :cache false) "simple hash join"]
+                                       [(mk-session [r2 q] :cache false) "filter join"]]]
 
-    (is (= (-> empty-session
-               (insert (->WindSpeed 10 "MCI") (->Temperature 20 "MCI"))
-               fire-rules
-               (retract (->WindSpeed 10 "MCI"))
-               fire-rules
-               (insert (->WindSpeed 10 "MCI"))
-               fire-rules
-               (query q))
-           [{:?ts ["MCI" 20]}])
-        "Removing a token and reinserting it should leave element history in an AccumulateNode intact.")))
+      (is (= (-> empty-session
+                 (insert (->WindSpeed 10 "MCI") (->Temperature 20 "MCI"))
+                 fire-rules
+                 (query q))
+             [{:?ts ["MCI" 20]}])
+          (str "Basic sanity test of rules for a " join-type))
+
+      (is (= (-> empty-session
+                 (insert (->WindSpeed 10 "MCI") (->Temperature 20 "MCI"))
+                 fire-rules
+                 (retract (->WindSpeed 10 "MCI"))
+                 fire-rules
+                 (insert (->WindSpeed 10 "MCI"))
+                 fire-rules
+                 (query q))
+             [{:?ts ["MCI" 20]}])
+          (str "Removing a token and reinserting it should leave element history intact when accumulating with a " join-type)))))
 
 (deftest test-accumulate-with-bindings-from-parent
   (let [r1 (dsl/parse-rule [[?w <- WindSpeed (= ?loc location)]
                             [?ts <- (acc/all) :from [Temperature (= ?loc location)]]]
                            (insert! (->TemperatureHistory [?loc (map :temperature ?ts)])))
-        q (dsl/parse-query [] [[TemperatureHistory (= ?ts temperatures)]])
-
-        empty-session (mk-session [r1 q] :cache false)]
+        r2 (dsl/parse-rule [[?w <- WindSpeed (= ?loc location)]
+                            [?ts <- (acc/all) :from [Temperature (join-filter-equals ?loc location)]]]
+                           (insert! (->TemperatureHistory [?loc (map :temperature ?ts)])))
+        q (dsl/parse-query [] [[TemperatureHistory (= ?ts temperatures)]])]
     
-    (is (= (-> empty-session
-               (insert (->WindSpeed 10 "MCI"))
-               fire-rules
-               (query q))
-           [{:?ts ["MCI" []]}]))
+    (doseq [[empty-session join-type] [[(mk-session [r1 q] :cache false) "simple hash join"]
+                                       [(mk-session [r2 q] :cache false) "filter join"]]]
+      
+      (is (= (-> empty-session
+                 (insert (->WindSpeed 10 "MCI"))
+                 fire-rules
+                 (query q))
+             [{:?ts ["MCI" []]}])
+          (str "Simple case of joining with an empty accumulator with binding from a parent" \newline
+               "for a " join-type))
 
-    (is (= (-> empty-session
-               (insert (->WindSpeed 10 "MCI") (->Temperature 20 "MCI"))
-               fire-rules
-               (query q))
-           [{:?ts ["MCI" [20]]}]))
+      (is (= (-> empty-session
+                 (insert (->WindSpeed 10 "MCI") (->Temperature 20 "MCI"))
+                 fire-rules
+                 (query q))
+             [{:?ts ["MCI" [20]]}])
+          (str "Simple case of joining with a non-empty accumulator with a binding from a parent" \newline
+               "for a " join-type))
 
-    (is (= (-> empty-session
-               (insert (->WindSpeed 10 "MCI") (->Temperature 20 "LAX"))
-               fire-rules
-               (query q))
-           [{:?ts ["MCI" []]}])
-        (str "Creation of a non-equal binding from a parent node " \newline
-             "should not allow an accumulator to fire for another binding value"))))
+      (is (= (-> empty-session
+                 (insert (->WindSpeed 10 "MCI") (->Temperature 20 "LAX"))
+                 fire-rules
+                 (query q))
+             [{:?ts ["MCI" []]}])
+          (str "Creation of a non-equal binding from a parent node " \newline
+               "should not allow an accumulator to fire for another binding value for a " join-type)))))
 
 (deftest test-accumulate-with-explicit-nil-binding-value
   (let [binding-from-self (dsl/parse-rule [[?hot-facts <- (acc/all) :from [Hot (= ?t temperature)]]]
@@ -4191,6 +4195,12 @@
         binding-from-parent (dsl/parse-rule [[Cold (= ?t temperature)]
                                              [?hot-facts <- (acc/all) :from [Hot (= ?t temperature)]]]
                                             (insert! (->Temperature [?t []] "MCI")))
+
+        ;; Intended to test AccumulateWithJoinFilterNode since the constraint will not be a simple
+        ;; hash join due to the indirection of =.
+        binding-from-parent-non-equals (dsl/parse-rule [[Cold (= ?t temperature)]
+                                                        [?hot-facts <- (acc/all) :from [Hot (join-filter-equals ?t temperature)]]]
+                                                       (insert! (->Temperature [?t []] "MCI")))
         
         q (dsl/parse-query [] [[Temperature (= ?t temperature)]])]
     
@@ -4201,12 +4211,14 @@
                (query q)))
         "An explicit value of nil in a field used to create a binding group should allow the binding to be created.")
 
-    (is (= [{:?t [nil []]}]
-           (-> (mk-session [binding-from-parent q] :cache false)
-               (insert (->Cold nil))
-               fire-rules
-               (query q)))
-        "An explicit value of nil from a parent should allow the binding to be created.")))
+    (doseq [[parent-rule constraint-type] [[binding-from-parent "simple hash join"]
+                                           [binding-from-parent-non-equals "filter join"]]] 
+      (is (= [{:?t [nil []]}]
+             (-> (mk-session [parent-rule q] :cache false)
+                 (insert (->Cold nil))
+                 fire-rules
+                 (query q)))
+          (str "An explicit value of nil from a parent should allow the binding to be created for a " constraint-type)))))
            
 (def false-initial-value-accum (acc/accum
                                 {:initial-value false
@@ -4591,3 +4603,144 @@
     ;; The variable used out of order should be marked as unbound.
     (assert-ex-data {:variables #{'?t}}
                     (mk-session [invalid] :cache false))))
+
+(deftest test-accum-non-matching-element-no-ordering-impact
+  ;; There was a problem where right-retract could cause the ordering of elements in the memory
+  ;; to be altered even when the retracted element matched no tokens, and the AccumulateWithJoinFilterNode
+  ;; was optimized to not perform any operations when a non-matching element was retracted.
+  ;; When right-activate used the new memory to perform truth maintenance operations it therefore had an inaccurate
+  ;; ordering of the previous state, so it would try to retract [A B] when what was actually present was [B A].
+  ;; This would result in extra downstream tokens, since we'd have, for example, both [B A] and [B A C] when
+  ;; it tried to retract [A B], nothing was done, and then propagated [A B C].  The objective of this test
+  ;; is to detect such reorderings that have an impact on rules session outcomes.
+  (let [r1 (dsl/parse-rule [[Cold (= ?t temperature)]
+                            [?ws <- (acc/all) :from [ColdAndWindy
+                                                     (and (join-filter-equals ?t temperature)
+                                                          (even? windspeed))]]]
+                           (insert! (->TemperatureHistory (map :windspeed ?ws))))
+
+        r2 (dsl/parse-rule [[Cold (= ?t temperature)]
+                            [?ws <- (acc/all) :from [ColdAndWindy (= ?t temperature)
+                                                     (even? windspeed)]]]
+                           (insert! (->TemperatureHistory (map :windspeed ?ws))))
+        
+        q (dsl/parse-query [] [[TemperatureHistory (= ?ws temperatures)]])]
+
+    (doseq [[empty-session join-type] [[(mk-session [r1 q] :cache false) "filter join"]
+                                       [(mk-session [r2 q] :cache false) "simple hash join"]]
+
+            :let [non-matching-first (-> empty-session
+                                          (insert (->ColdAndWindy 10 23))
+                                          (insert (->ColdAndWindy 10 20))
+                                          (insert (->ColdAndWindy 10 22))
+                                          (insert (->Cold 10))
+                                          fire-rules)
+
+                  non-matching-middle (-> empty-session
+                                          (insert (->ColdAndWindy 10 20))
+                                          (insert (->ColdAndWindy 10 23))
+                                          (insert (->ColdAndWindy 10 22))
+                                          (insert (->Cold 10))
+                                          fire-rules)
+
+                  non-matching-last (-> empty-session
+                                        (insert (->ColdAndWindy 10 20))
+                                        (insert (->ColdAndWindy 10 22))
+                                        (insert (->ColdAndWindy 10 23))
+                                        (insert (->Cold 10))
+                                        fire-rules)
+
+                  [first-removed middle-removed last-removed] (for [init-session [non-matching-first
+                                                                                  non-matching-middle
+                                                                                  non-matching-last]]
+                                                                (-> init-session
+                                                                    (retract (->ColdAndWindy 10 23))
+                                                                    ;; Perform an additional operation to reveal any discrepancy between the element ordering
+                                                                    ;; in the candidates and the resulting ordering in downstream tokens.
+                                                                    (insert (->ColdAndWindy 10 24))
+                                                                    fire-rules))
+
+                  without-rhs-ordering (fn [query-results]
+                                         (map (fn [result]
+                                                (update result :?ws set))
+                                              query-results))]]
+
+      (is (= [{:?ws #{20 22}}]
+             ;; Put elements in a set to be independent of the ordering of acc/all in the assertions.
+             ;; All we care about is that the cardinality of the query results is correct, which may
+             ;; not be the case if the ordering is inconsistent between operations.  User code, however, needs
+             ;; to be OK with getting any ordering in the RHS, so we just test that contract here.
+             (without-rhs-ordering (query non-matching-first q))
+             (without-rhs-ordering (query non-matching-middle q))
+             (without-rhs-ordering (query non-matching-last q)))
+          (str "Sanity test of our rule that does not exercise right-retract, the main purpose of this test, for a " join-type))
+
+      (doseq [[final-session message] [[first-removed "first right activation"]
+                                       [middle-removed "middle right activation"]
+                                       [last-removed "last right activation"]]]
+        (is (= [{:?ws #{20 22 24}}]
+               (without-rhs-ordering (query final-session q)))
+            (str "Retracting non-matching " message "for a " join-type))))))
+
+(def min-accum-convert-return-fn-nil-to-zero (acc/min :temperature))
+
+(deftest test-accum-filter-or-retract-all-elements-with-convert-return-truthy-nil-initial-value
+  (let [max-non-cold (dsl/parse-rule [[?min-cold <- (acc/min :temperature) :from [Cold]]
+                                      [?min-temp <- (acc/min :temperature) :from [Temperature (< temperature ?min-cold)]]]
+                                     (insert! (->LousyWeather)))
+
+        lousy-weather-query (dsl/parse-query [] [[LousyWeather]])
+
+        empty-session (mk-session [max-non-cold lousy-weather-query]
+                                  :cache false)]
+
+    (is (empty? (-> empty-session
+                    (insert (->Temperature 20 "MCI"))
+                    (insert (->Cold 10))
+                    fire-rules
+                    (query lousy-weather-query)))
+        "Insert non-matching element first then the token.")
+
+    (is (empty? (-> empty-session
+                    (insert (->Cold 10))
+                    (insert (->Temperature 20 "MCI"))
+                    fire-rules
+                    (query lousy-weather-query)))
+        "Insert token first then non-matching element.")
+
+    (is (empty? (-> empty-session
+                    (insert (->Cold 10) (->Temperature 20 "MCI"))
+                    fire-rules
+                    (retract (->Temperature 20 "MCI"))
+                    fire-rules
+                    (query lousy-weather-query)))
+        "Insert facts matching both conditions first and then remove a Temperature fact, thus causing the accumulator on Temperature to
+         right-retract back to its initial value.  Since the initial value is nil the activation of the rule should be removed.")))
+
+(deftest test-initial-value-used-when-non-nil-and-new-binding-group-created
+  ;; Validate that the initial value is used when a new binding group is created and no result is propagated without
+  ;; elements present.  The count accumulator has a non-nil initial value of the number 0.  Any attempt to add to
+  ;; nil would result in an exception, so this test validates that 0 was used as the initial value rather than nil.
+  (let [hash-join-rule (dsl/parse-rule [[WindSpeed (= ?loc location)]
+                                        [?temp-count <- (acc/count) :from [Temperature (= ?loc location) (= ?temp temperature)]]]
+                                       (insert! (->TemperatureHistory [?loc ?temp ?temp-count])))
+        join-filter-rule (dsl/parse-rule [[WindSpeed (= ?loc location)]
+                                          [?temp-count <- (acc/count) :from [Temperature (join-filter-equals ?loc location) (= ?temp temperature)]]]
+                                         (insert! (->TemperatureHistory [?loc ?temp ?temp-count])))
+        q (dsl/parse-query [] [[TemperatureHistory (= ?ts temperatures)]])]
+
+    (doseq [[empty-session join-type] [[(mk-session [hash-join-rule q] :cache false)
+                                        "simple hash join"]
+                                       [(mk-session [join-filter-rule q] :cache false)
+                                        "join filter"]]]
+
+      (is (= (-> empty-session
+                 (insert (->WindSpeed 10 "MCI"))
+                 fire-rules
+                 (insert (->Temperature 20 "MCI"))
+                 fire-rules
+                 (query q))
+             [{:?ts ["MCI" 20 1]}])
+          (str "Inserting a WindSpeed and then later a matching Temperature for join type " join-type)))))
+              
+
