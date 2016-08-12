@@ -114,29 +114,31 @@
 
 #?(:clj
    (defn- list-remove!
-     "Removes the item, to-remove, from the given list, lst.  If it is found and
-      removed, returns true.  Otherwise returns false.  Only removes the first 
-      element in the list that is equal to to-remove.  If others are equal, they
-      will not be removed.  This is similar to java.util.List.remove(Object) 
-      lst is updated in place for performance.  This implies that the list must 
-      support the mutable list interface, namely via the
+     "Removes the item, to-remove, from the given list, lst.  If it is found and removed,
+      returns true.  Otherwise returns false.  Only removes the first element in the list
+      that is equal to to-remove.  Equality is done based on the given eq-pred function.
+      If it isn't given, the default is = .  If others are equal, they will not be removed.
+      This is similar to java.util.List.remove(Object).  lst is updated in place for performance.
+      This implies that the list must support the mutable list interface, namely via the
       java.util.List.listIterator()."
-     [^java.util.List lst to-remove]
-     (if-not (coll-empty? lst)
-       (let [li (.listIterator lst)]
-         (loop [x (.next li)]
-           (cond
-             (= to-remove x)
-             (do
-               (.remove li)
-               true)
+     ([^java.util.List lst to-remove]
+      (list-remove! lst to-remove =))
+     ([^java.util.List lst to-remove eq-pred]
+      (if-not (coll-empty? lst)
+        (let [li (.listIterator lst)]
+          (loop [x (.next li)]
+            (cond
+              (eq-pred to-remove x)
+              (do
+                (.remove li)
+                true)
 
-             (.hasNext li)
-             (recur (.next li))
+              (.hasNext li)
+              (recur (.next li))
 
-             :else
-             false)))
-       false)))
+              :else
+              false)))
+        false))))
 
 #?(:clj
    (defn- add-all!
@@ -164,31 +166,44 @@
      "Remove the first instance of each item in the given remove-seq that
       appears in the collection coll.  coll is updated in place for
       performance.  This implies that the coll must support the mutable
-      collection interface method Collection.remove(Object).  Returns the
-      items that were found and removed from coll.  For immutable collection
-      removal, use the non-destructive remove-first-of-each defined below."
-     [remove-seq ^java.util.List coll]
-     ;; Optimization for special case of one item to remove,
-     ;; which occurs frequently.
-     (if (= 1 (count remove-seq))
-       (let [to-remove (first remove-seq)]
-         (if (list-remove! coll to-remove)
-           [to-remove]
-           []))
-       
-       ;; Otherwise, perform a linear search for items to remove.
-       (loop [to-remove (first remove-seq)
-              remove-seq (next remove-seq)
-              removed (transient [])]
-         (if to-remove
-           (recur (first remove-seq)
-                  (next remove-seq)
-                  (if (list-remove! coll to-remove)
-                    (conj! removed to-remove)
-                    removed))
-           ;; If this is expensive, using a mutable collection maybe good to
-           ;; consider here in a future optimization.
-           (persistent! removed))))))
+      collection interface method Collection.remove(Object).  Returns a tuple
+      of the form [remove-seq-items-removed remove-seq-items-not-removed].
+      An optional compare-fn can be given to specify how to compare remove-seq 
+      items against items in coll.  The default compare-fn is = .
+      For immutable collection removal, use the non-destructive remove-first-of-each
+      defined below."
+     ([remove-seq ^java.util.List coll]
+      (remove-first-of-each! remove-seq coll =))
+
+     ([remove-seq ^java.util.List coll compare-fn]
+      ;; Optimization for special case of one item to remove,
+      ;; which occurs frequently.
+      (if (= 1 (count remove-seq))
+        (let [to-remove (first remove-seq)]
+          (if (list-remove! coll to-remove compare-fn)
+            [remove-seq []]
+            [[] remove-seq]))
+        
+        ;; Otherwise, perform a linear search for items to remove.
+        (loop [to-remove (first remove-seq)
+               remove-seq (next remove-seq)
+               removed (transient [])
+               not-removed (transient [])]
+          (if to-remove
+            (let [found? (list-remove! coll to-remove compare-fn)
+                  removed (if found?
+                            (conj! removed to-remove)
+                            removed)
+                  not-removed (if found?
+                                not-removed
+                                (conj! not-removed to-remove))]
+              (recur (first remove-seq)
+                     (next remove-seq)
+                     removed
+                     not-removed))
+            ;; If this is expensive, using a mutable collection maybe good to
+            ;; consider here in a future optimization.
+            [(persistent! removed) (persistent! not-removed)]))))))
 
 (defn remove-first-of-each
   "Remove the first instance of each item in the given remove-seq that
@@ -241,7 +256,86 @@
               [(persistent! items-removed) (persistent! result)]))))
 
 #?(:clj
-   (deftype RuleOrderedActivation [node-id token activation rule-load-order]
+   (defn fast-token-compare [compare-fn token other-token]
+     ;; Fastest path is if the two tokens are truly identical.
+     (or (identical? token other-token)
+         ;; Assumption is that both arguments given are tokens already.
+         (and (let [bindings (:bindings token)
+                    other-bindings (:bindings other-token)]
+                ;; Calling `count` on these Clojure maps shows up as a bottleneck
+                ;; even with clojure.lang.IPersistentMap being clojure.lang.Counted unfortunately.
+                (and (= (.size ^java.util.Map bindings)
+                        (.size ^java.util.Map other-bindings))
+                     ;; `every?` is too slow for a performance critical place like this.  It
+                     ;; calls `seq` too many times on the underlying maps.  Instead `seq` one
+                     ;; time and keep using that same seq.
+                     ;; Also avoiding Clojure destructuring since even that is not as fast
+                     ;; pre-1.9.0.
+                     (if-let [^clojure.lang.ISeq entries (.seq ^clojure.lang.Seqable bindings)]
+                       ;; Type hint to Indexed vs MapEntry just because MapEntry seems to be a
+                       ;; less stable impl detail to rely on.
+                       (loop [^clojure.lang.Indexed entry (.first entries)
+                              entries (.next entries)]
+                         (let [k (some-> entry (.nth 0))
+                               v (some-> entry (.nth 1))]
+                           (if (and k
+                                    ;; other-bindings will always be persistent map so invoke
+                                    ;; it directly.  It is faster than `get`.
+                                    (compare-fn v (other-bindings k)))
+                             (recur (some-> entries .first)
+                                    (some-> entries .next))
+                             ;; If there is no k left, then every entry matched.  If there is a k,
+                             ;; that means the comparison failed, so the maps aren't equal.
+                             (not k))))
+                       ;; Empty bindings on both sides.
+                       true))) 
+
+              ;; Check the :matches on each token.  :matches need to be in the same order on both
+              ;; tokens to be considered the same.
+              (let [^clojure.lang.Indexed matches (:matches token)
+                    ^clojure.lang.Indexed other-matches (:matches other-token)
+                    count-matches (.size ^java.util.List matches)]
+                (and (= count-matches
+                        (.size ^java.util.List other-matches))
+                     (loop [i 0]
+                       (cond
+                         (= i count-matches)
+                         true
+
+                         ;; Compare node-id's first.  Fallback to comparing facts.  This will
+                         ;; most very likely be the most expensive part to execute.
+                         (let [^clojure.lang.Indexed m (.nth matches i)
+                               ^clojure.lang.Indexed om (.nth other-matches i)]
+                           ;; A token :matches tuple is of the form [fact node-id].
+                           (and (= (.nth m 1) (.nth om 1))
+                                (compare-fn (.nth m 0) (.nth om 0))))
+                         (recur (inc i))
+
+                         :else
+                         false))))))))
+
+#?(:clj
+   (defprotocol IdentityComparable
+     (using-token-identity! [this bool])))
+
+#?(:clj
+   (deftype RuleOrderedActivation [node-id
+                                   token
+                                   activation
+                                   rule-load-order
+                                   ^:unsynchronized-mutable use-token-identity?]
+     IdentityComparable
+     ;; NOTE!  This should never be called on a RuleOrderedActivation instance that has been stored
+     ;; somewhere in local memory because it could cause interference across threads that have
+     ;; multiple versions of local memories that are sharing some of their state.  This is only intended
+     ;; to be called by ephemeral, only-local references to RuleOrderedActivation instances used to
+     ;; search for activations to remove from memory when performing `remove-activations!` operations.
+     ;; The reason this mutable state exists at all is to "flip" a single instance of a RuleOrderedActivation
+     ;; from identity to value equality based comparable when doing the "two-pass" removal search operation
+     ;; of `remove-activations!`.  This avoids having to create different instances for each pass.
+     (using-token-identity! [this bool]
+       (set! use-token-identity? bool)
+       this)
      Object
      ;; Two RuleOrderedActivation instances should be equal if and only if their
      ;; activation is equal.  Note that if the node of two activations is the same,
@@ -255,14 +349,17 @@
        ;; check for reference equality would therefore be pointless here because it would never be true.
        (boolean
         (when (instance? RuleOrderedActivation other)
-          (and
-           ;; If the node-id of two nodes is equal then we can assume that the nodes are equal.
-           (= node-id
-              (.node-id ^RuleOrderedActivation other))
-           ;; The token is on the activation, but it should be slightly faster to skip the lookup,
-           ;; so we make it a top-level field on the RuleOrderedActivation.
-           (= token
-              (.token ^RuleOrderedActivation other))))))))
+          (let [^RuleOrderedActivation other other]
+            (and
+             ;; If the node-id of two nodes is equal then we can assume that the nodes are equal.
+             (= node-id
+                (.node-id other))
+
+             ;; We check with identity based semantics on the other when the use-token-identity? field
+             ;; indicates to do so.
+             (if (or use-token-identity? (.-use-token-identity? other))
+               (fast-token-compare identical? token (.-token other))
+               (fast-token-compare = token (.-token other))))))))))
 
 #?(:clj
    (defn- ->rule-ordered-activation
@@ -270,16 +367,19 @@
       on the rule load order.  In Clojure, as opposed to ClojureScript, each activation should
       be wrapped in this way exactly once (that is, the value of the :activation key should
       be an activation from the engine.)"
-     [activation]
-     (let [node (:node activation)]
-       (RuleOrderedActivation. (:id node)
-                               (:token activation)
-                               activation
-                               (or (-> node
-                                       :production
-                                       meta
-                                       :clara.rules.compiler/rule-load-order)
-                                   0)))))
+     ([activation]
+      (->rule-ordered-activation activation false))
+     ([activation use-token-identity?]
+      (let [node (:node activation)]
+        (RuleOrderedActivation. (:id node)
+                                (:token activation)
+                                activation
+                                (or (-> node
+                                        :production
+                                        meta
+                                        :clara.rules.compiler/rule-load-order)
+                                    0)
+                                use-token-identity?)))))
 
 #?(:clj
    (defn- queue-activations!
@@ -438,7 +538,7 @@
              ;; collection associated in this memory location instead.
              (coll? previous-elements)
              (let [remaining-elements (->linked-list previous-elements)
-                   removed-elements (remove-first-of-each! elements remaining-elements)]
+                   removed-elements (first (remove-first-of-each! elements remaining-elements))]
                (set! alpha-memory
                      (assoc! alpha-memory
                              (:id node)
@@ -449,7 +549,7 @@
 
              ;; Already mutable, so we do not need to re-associate to alpha-memory.
              previous-elements
-             (remove-first-of-each! elements previous-elements))))
+             (first (remove-first-of-each! elements previous-elements)))))
        :cljs
        (let [binding-element-map (get alpha-memory (:id node) {})
              previous-elements (get binding-element-map join-bindings [])
@@ -502,23 +602,46 @@
        (when-not (coll-empty? tokens)
          (let [binding-token-map (get beta-memory (:id node) {})
                previous-tokens (get binding-token-map join-bindings)]
-           (cond
+           (if
              (coll-empty? previous-tokens)
              []
 
-             (coll? previous-tokens)
-             (let [remaining-tokens (->linked-list previous-tokens)
-                   removed-tokens (remove-first-of-each! tokens remaining-tokens)]
-               (set! beta-memory
-                     (assoc! beta-memory
-                             (:id node)
-                             (assoc binding-token-map
-                                    join-bindings
-                                    remaining-tokens)))
-               removed-tokens)
+             (let [;; Attempt to remove tokens using the faster indentity-based equality first since
+                   ;; most of the time this is all we need and it can be much faster.  Any token that
+                   ;; wasn't removed via identity, has to be "retried" with normal value-based
+                   ;; equality though since those semantics are supported within the engine.  This
+                   ;; slower path should be rare for any heavy retraction flows - such as those that come
+                   ;; via truth maintenance.
+                   two-pass-remove! (fn [remaining-tokens tokens]
+                                      (let [[removed-tokens not-removed-tokens]
+                                            (remove-first-of-each! tokens
+                                                                   remaining-tokens
+                                                                   (fn [t1 t2]
+                                                                     (fast-token-compare identical? t1 t2)))]
 
-             previous-tokens
-             (remove-first-of-each! tokens previous-tokens))))
+                                        (if-let [other-removed (and (seq not-removed-tokens)
+                                                                    (-> not-removed-tokens
+                                                                        (remove-first-of-each! remaining-tokens
+                                                                                               (fn [t1 t2]
+                                                                                                 (fast-token-compare = t1 t2)))
+                                                                        first
+                                                                        seq))]
+                                          (into removed-tokens other-removed)
+                                          removed-tokens)))]
+               (cond
+                 (coll? previous-tokens)
+                 (let [remaining-tokens (->linked-list previous-tokens)
+                       removed-tokens (two-pass-remove! remaining-tokens tokens)]
+                   (set! beta-memory
+                         (assoc! beta-memory
+                                 (:id node)
+                                 (assoc binding-token-map
+                                        join-bindings
+                                        remaining-tokens)))
+                   removed-tokens)
+
+                 previous-tokens
+                 (two-pass-remove! previous-tokens tokens))))))
        :cljs
        (let [binding-token-map (get beta-memory (:id node) {})
              previous-tokens (get binding-token-map join-bindings [])
@@ -683,10 +806,25 @@
                ^java.util.Queue activations (.get activation-map activation-group)]
 
            (when-not (coll-empty? activations)
-             (do (doseq [r to-remove]
-                   (.remove activations (->rule-ordered-activation r)))
-                 (when (coll-empty? activations)
-                   (.remove activation-map activation-group))))))
+             ;; Remove as many activations by identity as possible first.
+             (let [not-removed (loop [to-remove-item (first to-remove)
+                                      to-remove (next to-remove)
+                                      not-removed (transient [])]
+                                 (if to-remove-item
+                                   (let [act (->rule-ordered-activation to-remove-item true)]
+                                     (if (.remove activations act)
+                                       (recur (first to-remove) (next to-remove) not-removed)
+                                       (recur (first to-remove) (next to-remove) (conj! not-removed act))))
+                                   (persistent! not-removed)))]
+
+               ;; There may still be activations not removed since the removal may be based on value-based
+               ;; equality semantics.  Retractions in the engine do not require that identical object references
+               ;; are given to remove object values that are equal.
+               (doseq [act not-removed]
+                 (.remove activations (using-token-identity! act false)))
+
+               (when (coll-empty? activations)
+                 (.remove activation-map activation-group))))))
        :cljs
        (let [activation-group (activation-group-fn production)]
          (set! activation-map

@@ -14,7 +14,9 @@
 (defrecord Accumulator [input-condition initial-value reduce-fn combine-fn convert-return-fn])
 
 ;; A Rete-style token, which contains two items:
-;; * matches, a sequence of [fact, node-id] tuples for the facts and corresponding nodes they matched.
+;; * matches, a vector of [fact, node-id] tuples for the facts and corresponding nodes they matched.
+;; NOTE:  It is important that this remains an indexed vector for memory optimizations as well as
+;;        for correct conj behavior for new elements i.e. added to the end.
 ;; * bindings, a map of keyword-to-values for bound variables.
 (defrecord Token [matches bindings])
 
