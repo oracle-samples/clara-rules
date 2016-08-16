@@ -713,16 +713,15 @@
       (mem/add-tokens! memory node join-bindings tokens)
       
       (cond
-        ;; If there are previously accumulated results to propagate, use them.  If
-        ;; this is the first time there are matching tokens, then the reduce will
-        ;; have to happen for the first time.  However, this reduce operation is
-        ;; independent of the specific tokens since the elements join to the tokens
-        ;; via pre-computed hash join bindings for this node.  So only reduce once,
-        ;; for all tokens.
+        ;; If there are previously accumulated results to propagate, use them.  If this is the
+        ;; first time there are matching tokens, then the reduce will have to happen for the
+        ;; first time.  However, this reduce operation is independent of the specific tokens
+        ;; since the elements join to the tokens via pre-computed hash join bindings for this
+        ;; node.  So only reduce once per binding grouped facts, for all tokens. This includes
+        ;; all bindings, not just the join bindings.
         has-matches?
-        (doseq [:let [;; There is at least one previous result due to has-matches?.
-                      [_ [previous previous-reduced]] (first previous-results)
-                      first-reduce? (= ::not-reduced previous-reduced)
+        (doseq [[fact-bindings [previous previous-reduced]] previous-results
+                :let [first-reduce? (= ::not-reduced previous-reduced)
                       previous-reduced (if first-reduce?
                                          ;; Need to accumulate since this is the first time we have
                                          ;; tokens matching so we have not accumulated before.
@@ -731,8 +730,7 @@
                       accum-reduced (when first-reduce?
                                       [previous previous-reduced])
                       converted (when (some? previous-reduced)
-                                  (convert-return-fn previous-reduced))]
-                [fact-bindings [previous previous-reduced]] previous-results]
+                                  (convert-return-fn previous-reduced))]]
           
           ;; Newly accumulated results need to be added to memory.
           (when first-reduce?
@@ -770,18 +768,13 @@
         nil)))
 
   (left-retract [node join-bindings tokens memory transport listener]
-    (doseq [:let [previous-results (mem/get-accum-reduced-all memory node join-bindings)
-                  ;; If there are any previous results we know we have an actual previous reduced
-                  ;; value because we have tokens to remove.  This means there were matches before
-                  ;; and a value is always accumulated and propagated when there are matches.
-                  ;; The converted value only needs to be calculated once for all token + element
-                  ;; pairs retracted.
-                  [_ [_ previous-reduced]] (first previous-results)
-                  previous-converted (when (some? previous-reduced)
-                                       ((:convert-return-fn accumulator) previous-reduced))
-                  removed-tokens (mem/remove-tokens! memory node join-bindings tokens)
+    (doseq [:let [removed-tokens (mem/remove-tokens! memory node join-bindings tokens)
                   remaining-tokens (mem/get-tokens memory node join-bindings)
 
+                  ;; Note:  Memory *must* be read here before the memory is potentially cleared in the
+                  ;; following lines.
+                  previous-results (mem/get-accum-reduced-all memory node join-bindings)
+                  
                   ;; If there are no new bindings created by the accumulator condition then
                   ;; a left-activation can create a new binding group in the accumulator memory.
                   ;; If this token is later removed without corresponding elements having been added,
@@ -800,15 +793,20 @@
                                   ;; presence or absence of tokens.
                                   (-> current first empty?))))
                       (mem/remove-accum-reduced! memory node join-bindings join-bindings))]
-            
-            token removed-tokens
-            ;; A nil previous result should not have been propagated before.
-            :when (some? previous-converted)
+            ;; There is nothing to do if no tokens were removed.
+            :when (seq removed-tokens)
             ;; Note that this will cause a Cartesian join between tokens and elements groups where the token
             ;; and element group share the same join bindings, but the element groups may have additional bindings
             ;; that come from their alpha nodes. Keep in mind that these element groups need elements to be created
             ;; and cannot come from initial values if they have bindings that are not shared with tokens.
-            [fact-bindings [previous previous-reduced]] previous-results]
+            [fact-bindings [previous previous-reduced]] previous-results
+            :let [;; If there were tokens before that are now removed, the value would have been accumulated already.
+                  ;; This means there is no need to check for ::not-reduced here.
+                  previous-converted (when (some? previous-reduced)
+                                       ((:convert-return-fn accumulator) previous-reduced))]
+            ;; A nil previous result should not have been propagated before.
+            :when (some? previous-converted)
+            token removed-tokens]
       (retract-accumulated node accum-condition accumulator result-binding token previous-converted fact-bindings
                            transport memory listener)))
 
