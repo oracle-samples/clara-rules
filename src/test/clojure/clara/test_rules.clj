@@ -907,6 +907,52 @@
            (set batch-inserts)
            (set single-inserts)))))
 
+(deftest test-accum-needing-token-partitions-correctly-on-fact-binding
+  (let [qhash (dsl/parse-query []
+                               [[WindSpeed (= ?ws windspeed)]
+                                [?ts <- (acc/all) :from [Temperature (= ?loc location)]]])
+        qfilter (dsl/parse-query []
+                                 [[WindSpeed (= ?ws windspeed)]
+                                  [?ts <- (acc/all) :from [Temperature (= ?loc location)
+                                                           (not (join-filter-equals temperature ?ws))]]])
+        ws10mci (->WindSpeed 10 "MCI")
+        t1mci (->Temperature 1 "MCI")
+        t2lax (->Temperature 2 "LAX")]
+
+    (doseq [[q join-type] [[qhash "hash join"]
+                           [qfilter "filter join"]]
+            :let [s (mk-session [q] :cache false)
+                  right-activates-before-left (-> s
+                                                  (insert t1mci
+                                                          t2lax)
+                                                  (insert ws10mci)
+                                                  fire-rules)
+                  left-activates-before-right (-> s
+                                                  (insert ws10mci)
+                                                  (insert t1mci
+                                                          t2lax))
+                  batched-inserts (-> s
+                                      (insert ws10mci
+                                              t1mci
+                                              t2lax)
+                                      fire-rules)
+                  qresults (fn [s]
+                             (frequencies (query s q)))]]
+      
+      (testing (str "Testing for inserts for " join-type)
+        (is (= (-> [{:?ws 10 :?ts [t1mci] :?loc "MCI"}
+                    {:?ws 10 :?ts [t2lax] :?loc "LAX"}]
+                   frequencies)
+               (-> right-activates-before-left qresults)
+               (-> left-activates-before-right qresults)
+               (-> batched-inserts qresults))))
+
+      (testing (str "Testing for retracts for " join-type)
+        (is (every? empty?
+                    [(-> right-activates-before-left (retract ws10mci) fire-rules qresults)
+                     (-> left-activates-before-right (retract ws10mci) fire-rules qresults)
+                     (-> batched-inserts (retract ws10mci) fire-rules qresults)]))))))
+
 (deftest test-retract-initial-value
   (clara.rules.compiler/clear-session-cache!)
 
@@ -4179,6 +4225,14 @@
                  (query q))
              [{:?ts ["MCI" [20]]}])
           (str "Simple case of joining with a non-empty accumulator with a binding from a parent" \newline
+               "for a " join-type))
+
+      (is (= (-> empty-session
+                 (insert (->WindSpeed 10 "MCI") (->Temperature 30 "MCI") (->Temperature 20 "LAX"))
+                 fire-rules
+                 (query q))
+             [{:?ts ["MCI" [30]]}])
+          (str "One value can join with parent node, but the other value has no matching parent " \newline
                "for a " join-type))
 
       (is (= (-> empty-session
