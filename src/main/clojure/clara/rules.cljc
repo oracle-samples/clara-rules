@@ -282,24 +282,28 @@
      "Creates a new session using the given rule sources. The resulting session
       is immutable, and can be used with insert, retract, fire-rules, and query functions.
 
-      If no sources are provided, it will attempt to load rules from the caller's namespace.
+      If no sources are provided, it will attempt to load rules from the caller's namespace,
+      which is determined by reading Clojure's *ns* var.
+
       This will use rules defined with defrule, queries defined with defquery, and sequences
       of rule and/or query structures in vars that are annotated with the metadata ^:production-seq.
 
-      The caller may also specify keyword-style options at the end of the parameters. Currently four
-      options are supported:
+      The caller may also specify keyword-style options at the end of the parameters. Currently five
+      options are supported, although most users will either not need these or just the first two:
 
       * :fact-type-fn, which must have a value of a function used to determine the logical type of a given
         cache. Defaults to Clojure's type function.
       * :cache, indicating whether the session creation can be cached, effectively memoizing mk-session.
         Defaults to true. Callers may wish to set this to false when needing to dynamically reload rules.
+      * :ancestors-fn, which returns a sequence of ancestors for a given type. Defaults to Clojure's ancestors function. A
+        fact of a given type will match any rule that uses one of that type's ancestors.
       * :activation-group-fn, a function applied to production structures and returns the group they should be activated with.
         It defaults to checking the :salience property, or 0 if none exists.
       * :activation-group-sort-fn, a comparator function used to sort the values returned by the above :activation-group-fn.
         Defaults to >, so rules with a higher salience are executed first.
 
       This is not supported in ClojureScript, since it requires eval to dynamically build a session. ClojureScript
-      users must use pre-defined rulesessions using defsession."
+      users must use pre-defined rule sessions using defsession."
      [& args]
      (if (and (seq args) (not (keyword? (first args))))
        `(com/mk-session ~(vec args)) ; At least one namespace given, so use it.
