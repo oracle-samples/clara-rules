@@ -1,5 +1,17 @@
 This is a history of changes to clara-rules.
 
+### 0.12.0
+
+* Eliminate unnecessary retractions in accumulators. See [issue 182](https://github.com/rbrush/clara-rules/issues/182).
+* Rule activations fire int he order they are given to the compiler. See [issue 192](https://github.com/rbrush/clara-rules/issues/192).
+* Fix bug where rule constrained may be ignored. See [issue 194](https://github.com/rbrush/clara-rules/issues/194).
+* Make rule compilation deterministic by eliminating internal iteration over unordered data structures. See [issue 199](https://github.com/rbrush/clara-rules/issues/199).
+* Improve testing of rule firing permutations. See [issue 205](https://github.com/rbrush/clara-rules/issues/205).
+* Optimize common retraction pattern by checking fact identity first. See [issue 213](https://github.com/rbrush/clara-rules/issues/213).
+* Correct several accumulator edge cases. See issues [189](https://github.com/rbrush/clara-rules/issues/189), [190](https://github.com/rbrush/clara-rules/issues/190), and [102](https://github.com/rbrush/clara-rules/issues/102).
+* Working memory optimizations. See [issue 184](https://github.com/rbrush/clara-rules/issues/184).
+* Clojure doc clarifications. 
+
 ### 0.11.1
 
 * Generated code for the left-hand side should only access fields that are used. See [issue 180](https://github.com/rbrush/clara-rules/pull/180).
