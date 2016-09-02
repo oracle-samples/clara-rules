@@ -329,25 +329,30 @@
 (defrecord AlphaNode [env children activation]
   IAlphaActivate
   (alpha-activate [node facts memory transport listener]
-    (send-elements
-     transport
-     memory
-     listener
-     children
-     (for [fact facts
-           :let [bindings (activation fact env)] :when bindings] ; FIXME: add env.
-       (->Element fact bindings))))
+    (let [fact-binding-pairs (for [fact facts
+                                   :let [bindings (activation fact env)] :when bindings] ; FIXME: add env.
+                               [fact bindings])]
+      (l/alpha-activate! listener node (map first fact-binding-pairs))
+      (send-elements
+        transport
+        memory
+        listener
+        children
+        (for [[fact bindings] fact-binding-pairs]
+          (->Element fact bindings)))))
 
   (alpha-retract [node facts memory transport listener]
-
-    (retract-elements
-     transport
-     memory
-     listener
-     children
-     (for [fact facts
-           :let [bindings (activation fact env)] :when bindings] ; FIXME: add env.
-       (->Element fact bindings)))))
+    (let [fact-binding-pairs (for [fact facts
+                                   :let [bindings (activation fact env)] :when bindings] ; FIXME: add env.
+                               [fact bindings])]
+      (l/alpha-retract! listener node (map first fact-binding-pairs))
+      (retract-elements
+        transport
+        memory
+        listener
+        children
+        (for [[fact bindings] fact-binding-pairs]
+          (->Element fact bindings))))))
 
 (defrecord RootJoinNode [id condition children binding-keys]
   ILeftActivate

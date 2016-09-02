@@ -28,12 +28,18 @@
 
   (insert-facts! [listener facts]
     (append-trace listener {:type :add-facts :facts facts}))
+  
+  (alpha-activate! [listener node facts]
+    (append-trace listener {:type :alpha-activate :facts facts}))
 
   (insert-facts-logical! [listener node token facts]
     (append-trace listener {:type :add-facts-logical :token token :facts facts}))
 
   (retract-facts! [listener facts]
     (append-trace listener {:type :retract-facts :facts facts}))
+  
+  (alpha-retract! [listener node facts]
+    (append-trace listener {:type :alpha-retract :facts facts}))
 
   (retract-facts-logical! [listener node token facts]
     (append-trace listener {:type :retract-facts-logical :token token :facts facts}))
