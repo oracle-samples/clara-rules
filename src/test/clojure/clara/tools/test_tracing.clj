@@ -36,7 +36,7 @@
                     (fire-rules))]
 
     ;; Ensure expected events occur in order.
-    (is (= [:add-facts :right-activate :left-activate :add-activations]
+    (is (= [:add-facts :alpha-activate :right-activate :left-activate :add-activations]
            (map :type (t/get-trace session))))))
 
 (deftest test-rhs-retraction-trace
@@ -50,9 +50,9 @@
                     (insert (->Temperature 10 "MCI"))
                     (fire-rules))]
     (is (= (map :type (t/get-trace session))
-           [:add-facts :right-activate :left-activate
-            :add-facts :right-activate :left-activate
-            :add-activations :retract-facts :right-retract :left-retract])
+           [:add-facts :alpha-activate :right-activate :left-activate
+            :add-facts :alpha-activate :right-activate :left-activate
+            :add-activations :retract-facts :alpha-retract :right-retract :left-retract])
         "Validate that a retract! call in the RHS side of a rule appears in the trace
          before the :right-retract")))
         
@@ -66,9 +66,9 @@
                     (insert (->Temperature 10 "MCI"))
                     (insert (->Temperature 80 "MCI")))]
 
-    (is (= [:add-facts :accum-reduced :left-activate
-            :add-facts :accum-reduced :left-retract
-            :left-activate :add-facts :accum-reduced]
+    (is (= [:add-facts :alpha-activate :accum-reduced :left-activate
+            :add-facts :alpha-activate :accum-reduced :left-retract
+            :left-activate :add-facts :alpha-activate :accum-reduced]
 
            (map :type (t/get-trace session)))))
 
@@ -81,7 +81,7 @@
                       (insert (->Temperature 15 "MCI"))
                       fire-rules)]
 
-      (is (= [:add-facts :accum-reduced :left-retract :left-activate]
+      (is (= [:add-facts :alpha-activate :accum-reduced :left-retract :left-activate]
 
              (map :type (t/get-trace session)))))))
 
@@ -95,7 +95,7 @@
                     (fire-rules))]
 
     ;; Ensure expected events occur in order.
-    (is (= [:add-facts :right-activate :left-activate :add-activations :add-facts-logical]
+    (is (= [:add-facts :alpha-activate :right-activate :left-activate :add-activations :add-facts-logical]
            (map :type (t/get-trace session))))))
 
 (deftest test-insert-and-retract-trace
@@ -113,8 +113,8 @@
        session-trace (t/get-trace session)]
 
     ;; Ensure expected events occur in order.
-   (is (= [:add-facts :right-activate :left-activate :add-activations :add-facts-logical
-           :retract-facts :right-retract :left-retract :remove-activations :retract-facts-logical]
+   (is (= [:add-facts :alpha-activate :right-activate :left-activate :add-activations :add-facts-logical
+           :retract-facts :alpha-retract :right-retract :left-retract :remove-activations :retract-facts-logical]
           (map :type session-trace)))
 
    ;; Ensure only the expected fact was indicated as retracted.
