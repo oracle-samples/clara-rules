@@ -5,7 +5,8 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.7.0"]
                  [prismatic/schema "1.0.1"]]
-  :profiles {:dev {:dependencies [[org.clojure/math.combinatorics "0.1.3"]]}
+  :profiles {:dev {:dependencies [[org.clojure/math.combinatorics "0.1.3"]
+                                  [org.clojure/data.fressian "0.2.1"]]}
              :provided {:dependencies [[org.clojure/clojurescript "1.7.170"]]}}
   :plugins [[lein-codox "0.9.0" :exclusions [org.clojure/clojure]]
             [lein-javadoc "0.2.0" :exclusions [org.clojure/clojure]]
