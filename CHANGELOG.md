@@ -1,5 +1,11 @@
 This is a history of changes to clara-rules.
 
+### 0.13.0-RC1
+This is an initial release to validate revamped durability logic. Details and a path forward will be in the full 0.13.0 release.
+
+* Add a listener event for Alpha node activations. See (https://github.com/rbrush/clara-rules/pull/220).
+* Revamped approach to durable, serializable sessions. See (https://github.com/rbrush/clara-rules/pull/219).
+
 ### 0.12.0
 
 * Eliminate unnecessary retractions in accumulators. See [issue 182](https://github.com/rbrush/clara-rules/issues/182).
