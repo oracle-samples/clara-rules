@@ -969,10 +969,16 @@
                                         (do-accumulate accumulator retracted))
                                       ::not-reduced)
 
+                  ;; It is possible that either the retracted or previous reduced are ::not-reduced
+                  ;; at this point if there are no matching tokens.  has-matches? indicates this.  If
+                  ;; this is the case, there are no converted values to calculate.  However, memory still
+                  ;; will be updated since the facts left after this retraction still need to be stored
+                  ;; for later possible activations.
                   retracted-converted (when (and (some? retracted-reduced)
                                                  (not= ::not-reduced retracted-reduced))
                                         (convert-return-fn retracted-reduced))
-                  previous-converted (when (some? previous-reduced)
+                  previous-converted (when (and (some? previous-reduced)
+                                                (not= ::not-reduced previous-reduced))
                                        (convert-return-fn previous-reduced))]]
       
       (if all-retracted?
