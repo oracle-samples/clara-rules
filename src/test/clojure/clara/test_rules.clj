@@ -4164,6 +4164,28 @@
         "The minimum temperature accum should only propagate once through an AccumulateWithJoinFilterNode.")
     (reset! r2-atom [])))
 
+(deftest test-accumulate-right-activate-then-right-retract-no-left-activate
+  (let [checked-all (assoc (acc/all)
+                           ;; Add an explicit :convert-return-fn to be sure that this
+                           ;; is only called with a valid reduced value.
+                           :convert-return-fn
+                           (fn [x]
+                             (if (coll? x)
+                               x
+                               (is false
+                                   (str "An invalid value was given to the :convert-return-fn: " x)))))
+        q (dsl/parse-query [] [[Cold]
+                               [?hs <- checked-all :from [Hot]]])
+
+        hot (->Hot 50)]
+
+    (is (empty? (-> (mk-session [q] :cache false)
+                    (insert hot)
+                    (retract hot)
+                    fire-rules
+                    (query q)
+                    set)))))
+
 (deftest test-accumulate-left-retract-initial-value-new-bindings-token-add-and-remove
   (let [r1 (dsl/parse-rule [[?w <- WindSpeed (= ?loc location)]
                             [?t <- (assoc (acc/all) :convert-return-fn (constantly []))
