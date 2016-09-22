@@ -408,6 +408,7 @@
   (left-activate [node join-bindings tokens memory transport listener]
     ;; Add token to the node's working memory for future right activations.
     (mem/add-tokens! memory node join-bindings tokens)
+    (l/left-activate! listener node tokens)
     (send-tokens
      transport
      memory
@@ -420,6 +421,7 @@
        (->Token (conj (:matches token) [fact id]) (conj fact-binding (:bindings token))))))
 
   (left-retract [node join-bindings tokens memory transport listener]
+    (l/left-retract! listener node tokens)
     (retract-tokens
      transport
      memory
@@ -438,6 +440,7 @@
   IRightActivate
   (right-activate [node join-bindings elements memory transport listener]
     (mem/add-elements! memory node join-bindings elements)
+    (l/right-activate! listener node elements)
     (send-tokens
      transport
      memory
@@ -448,6 +451,7 @@
        (->Token (conj (:matches token) [fact id]) (conj (:bindings token) bindings)))))
 
   (right-retract [node join-bindings elements memory transport listener]
+    (l/right-retract! listener node elements)
     (retract-tokens
      transport
      memory
@@ -463,6 +467,7 @@
   (left-activate [node join-bindings tokens memory transport listener]
     ;; Add token to the node's working memory for future right activations.
     (mem/add-tokens! memory node join-bindings tokens)
+    (l/left-activate! listener node tokens)
     (send-tokens
      transport
      memory
@@ -478,6 +483,7 @@
                 (conj fact-binding (:bindings token) beta-bindings)))))
 
   (left-retract [node join-bindings tokens memory transport listener]
+    (l/left-retract! listener node tokens)
     (retract-tokens
      transport
      memory
@@ -499,6 +505,7 @@
   IRightActivate
   (right-activate [node join-bindings elements memory transport listener]
     (mem/add-elements! memory node join-bindings elements)
+    (l/right-activate! listener node elements)
     (send-tokens
      transport
      memory
@@ -512,6 +519,7 @@
                 (conj (:bindings token) bindings beta-bindings)))))
 
   (right-retract [node join-bindings elements memory transport listener]
+    (l/right-retract! listener node elements)
     (retract-tokens
      transport
      memory
@@ -531,11 +539,13 @@
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport listener]
     ;; Add token to the node's working memory for future right activations.
+    (l/left-activate! listener node tokens)
     (mem/add-tokens! memory node join-bindings tokens)
     (when (empty? (mem/get-elements memory node join-bindings))
       (send-tokens transport memory listener children tokens)))
 
   (left-retract [node join-bindings tokens memory transport listener]
+    (l/left-retract! listener node tokens)
     (mem/remove-tokens! memory node join-bindings tokens)
     (when (empty? (mem/get-elements memory node join-bindings))
       (retract-tokens transport memory listener children tokens)))
@@ -546,11 +556,13 @@
 
   IRightActivate
   (right-activate [node join-bindings elements memory transport listener]
+    (l/right-activate! listener node elements)
     (mem/add-elements! memory node join-bindings elements)
     ;; Retract tokens that matched the activation, since they are no longer negatd.
     (retract-tokens transport memory listener children (mem/get-tokens memory node join-bindings)))
 
   (right-retract [node join-bindings elements memory transport listener]
+    (l/right-retract! listener node elements)
     (mem/remove-elements! memory node join-bindings elements)
     (when (empty? (mem/get-elements memory node join-bindings))
       (send-tokens transport memory listener children (mem/get-tokens memory node join-bindings)))))
@@ -571,6 +583,7 @@
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport listener]
     ;; Add token to the node's working memory for future right activations.
+    (l/left-activate! listener node tokens)
     (mem/add-tokens! memory node join-bindings tokens)
 
     (send-tokens transport
@@ -585,6 +598,7 @@
                    token)))
 
   (left-retract [node join-bindings tokens memory transport listener]
+    (l/left-retract! listener node tokens)
     (mem/remove-tokens! memory node join-bindings tokens)
     (retract-tokens transport
                     memory
@@ -606,6 +620,7 @@
 
   IRightActivate
   (right-activate [node join-bindings elements memory transport listener]
+    (l/right-activate! listener node elements)
     (mem/add-elements! memory node join-bindings elements)
     ;; Retract tokens that matched the activation, since they are no longer negated.
     (retract-tokens transport
@@ -621,6 +636,8 @@
                       token)))
 
   (right-retract [node join-bindings elements memory transport listener]
+
+    (l/right-retract! listener node elements)
     (mem/remove-elements! memory node join-bindings elements)
 
     (send-tokens transport
@@ -645,6 +662,7 @@
 (defrecord TestNode [id test children]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport listener]
+    (l/left-activate! listener node tokens)
     (send-tokens
      transport
      memory
@@ -653,6 +671,7 @@
      (filter test tokens)))
 
   (left-retract [node join-bindings tokens memory transport listener]
+    (l/left-retract! listener node tokens)
     (retract-tokens transport memory listener children tokens))
 
   (get-join-keys [node] [])
@@ -707,6 +726,7 @@
 (defrecord AccumulateNode [id accum-condition accumulator result-binding children binding-keys new-bindings]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport listener]
+    (l/left-activate! listener node tokens)
     (let [previous-results (mem/get-accum-reduced-all memory node join-bindings)
           convert-return-fn (:convert-return-fn accumulator)
           has-matches? (seq previous-results)
@@ -774,6 +794,7 @@
         nil)))
 
   (left-retract [node join-bindings tokens memory transport listener]
+    (l/left-retract! listener node tokens)
     (doseq [:let [removed-tokens (mem/remove-tokens! memory node join-bindings tokens)
                   remaining-tokens (mem/get-tokens memory node join-bindings)
 
@@ -923,6 +944,7 @@
   IRightActivate
   (right-activate [node join-bindings elements memory transport listener]
 
+    (l/right-activate! listener node elements)
     ;; Simple right-activate implementation simple defers to
     ;; accumulator-specific logic.
     (right-activate-reduced
@@ -934,6 +956,8 @@
      listener))
 
   (right-retract [node join-bindings elements memory transport listener]
+
+    (l/right-retract! listener node elements)
 
     (doseq [:let [convert-return-fn (:convert-return-fn accumulator)
                   ;; As in right-activate-reduced, a token can match with multiple groupings of elements
@@ -1053,6 +1077,8 @@
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport listener]
 
+    (l/left-activate! listener node tokens)
+
     ;; Facts that are candidates for matching the token are used in this accumulator node,
     ;; which must be filtered before running the accumulation.
     (let [convert-return-fn (:convert-return-fn accumulator)
@@ -1108,6 +1134,8 @@
         :default nil)))
 
   (left-retract [node join-bindings tokens memory transport listener]
+
+    (l/left-retract! listener node tokens)
 
     (let [;; Even if the accumulator didn't propagate anything before we still need to remove the tokens
           ;; in case they would have otherwise been used in the future.
@@ -1257,6 +1285,8 @@
   IRightActivate
   (right-activate [node join-bindings elements memory transport listener]
 
+    (l/right-activate! listener node elements)
+
     ;; Simple right-activate implementation simple defers to
     ;; accumulator-specific logic.
     (right-activate-reduced
@@ -1268,6 +1298,8 @@
      listener))
 
   (right-retract [node join-bindings elements memory transport listener]
+
+    (l/right-retract! listener node elements)
 
     (doseq [:let [convert-return-fn (:convert-return-fn accumulator)
                   matched-tokens (mem/get-tokens memory node join-bindings)]
@@ -1580,6 +1612,7 @@
           (if (= 0 forward-result)
             (> (nth salience1 1)
                (nth salience2 1))
+
             forward-result)
           (let [backward-result (user-activation-group-sort-fn (nth salience2 0)
                                                                (nth salience1 0))

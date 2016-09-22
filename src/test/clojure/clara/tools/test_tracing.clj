@@ -66,9 +66,10 @@
                     (insert (->Temperature 10 "MCI"))
                     (insert (->Temperature 80 "MCI")))]
 
-    (is (= [:add-facts :alpha-activate :accum-reduced :left-activate
-            :add-facts :alpha-activate :accum-reduced :left-retract
-            :left-activate :add-facts :alpha-activate :accum-reduced]
+    (is (= [:add-facts :alpha-activate :right-activate :accum-reduced
+            :left-activate :add-facts :alpha-activate :right-activate
+            :accum-reduced :left-retract :left-activate :add-facts
+            :alpha-activate :right-activate :accum-reduced]
 
            (map :type (t/get-trace session)))))
 
@@ -81,7 +82,7 @@
                       (insert (->Temperature 15 "MCI"))
                       fire-rules)]
 
-      (is (= [:add-facts :alpha-activate :accum-reduced :left-retract :left-activate]
+      (is (= [:add-facts :alpha-activate :right-activate :accum-reduced :left-retract :left-activate]
 
              (map :type (t/get-trace session)))))))
 
