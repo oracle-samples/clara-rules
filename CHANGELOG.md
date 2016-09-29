@@ -1,5 +1,11 @@
 This is a history of changes to clara-rules.
 
+### 0.13.0-RC2
+Bug fixes and additional tracing over 0.13.0-RC2
+
+* Additional calls to the listener for better traceability of sessions. See [PR 222](https://github.com/rbrush/clara-rules/pull/222).
+* Fix invalid state when retracting certain accumulator flows. See [PR 223](https://github.com/rbrush/clara-rules/pull/223).
+
 ### 0.13.0-RC1
 This is an initial release to validate revamped durability logic. Details and a path forward will be in the full 0.13.0 release.
 
