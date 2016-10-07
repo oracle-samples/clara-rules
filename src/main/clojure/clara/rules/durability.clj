@@ -405,53 +405,30 @@
   (@#'com/create-get-alphas-fn type ancestors rulebase))
 
 (defn assemble-restored-session
-  "Builds a Clara session from the given rulebase and memory components.
-   Note!  This function should not typically be used.  It is left public to assist in ISessionSerializer 
+  "Builds a Clara session from the given rulebase.
+   Note!  This function should not typically be used.  It is left public to assist in ISessionSerializer
           durability implementations.  Use clara.rules/mk-session typically to make rule sessions.
-   
+
    Options can be provided via opts.
    These include:
 
-   * :activation-group-sort-fn 
+   * :activation-group-sort-fn
    * :activation-group-fn
-   * :get-alphas-fn 
+   * :get-alphas-fn (defaults to (create-default-get-alphas-fn rulebase))
+   * :listeners (defaults to [])
+   * :transport (defaults to clara.rules.engine.LocalTransport)
 
    If the options are not provided, they will default to the Clara session defaults.
-   These are all described in detail in clara.rules/mk-session docs.
-
-   Note!  Currently this only supports the clara.rules.memory.PersistentLocalMemory implementation
-          of memory."
-  [rulebase memory opts]
-  (let [opts (-> opts
-                 (assoc :rulebase rulebase)
-                 ;; Right now activation fns do not serialize.
-                 (update :activation-group-sort-fn
-                         #(eng/options->activation-group-sort-fn {:activation-group-sort-fn %}))
-                 (update :activation-group-fn
-                         #(eng/options->activation-group-fn {:activation-group-fn %}))
-                 ;; TODO: Memory doesn't seem to ever need this or use it.  Can we just remove it from memory?
-                 (update :get-alphas-fn
-                         #(or % (create-default-get-alphas-fn rulebase))))
-
-        {:keys [listeners transport get-alphas-fn]} opts
-        
-        memory-opts (select-keys opts
-                                 #{:rulebase
-                                   :activation-group-sort-fn
-                                   :activation-group-fn
-                                   :get-alphas-fn})
-
+   These are all described in detail in clara.rules/mk-session docs."
+  [rulebase opts]
+  (let [{:keys [listeners transport get-alphas-fn]} opts
+        get-alphas-fn (or get-alphas-fn (create-default-get-alphas-fn rulebase))
         transport (or transport (clara.rules.engine.LocalTransport.))
         listeners (or listeners [])
-
-        memory (-> memory
-                   (merge memory-opts)
-                   ;; Naming difference for some reason.
-                   (set/rename-keys {:get-alphas-fn :alphas-fn})
-                   mem/map->PersistentLocalMemory)]
-    
+        activation-group-sort-fn (eng/options->activation-group-sort-fn opts)
+        activation-group-fn (eng/options->activation-group-fn opts)]
     (eng/assemble {:rulebase rulebase
-                   :memory memory
+                   :memory (eng/local-memory rulebase transport activation-group-sort-fn activation-group-fn get-alphas-fn)
                    :transport transport
                    :listeners listeners
                    :get-alphas-fn get-alphas-fn})))
