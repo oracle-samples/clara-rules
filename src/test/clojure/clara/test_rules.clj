@@ -1368,6 +1368,37 @@
                (insert (->Temperature 50 "MCI"))
                (query all-temps-are-max))))))
 
+(deftest test-external-activation-of-negation-condition-triggering-retraction
+  (let [not-hot (dsl/parse-rule [[:not [Hot]]]
+                                (insert! (->LousyWeather)))
+
+        transitive-consequence (dsl/parse-rule [[LousyWeather]]
+                                               (insert! (->First)))
+
+        lousy-weather-query (dsl/parse-query [] [[LousyWeather]])
+
+        first-query (dsl/parse-query [] [[First]])
+
+        empty-session-fired (fire-rules
+                             (mk-session [not-hot lousy-weather-query
+                                          transitive-consequence first-query]
+                                         :cache false))
+
+        session-with-hot (-> empty-session-fired
+                             (insert (->Hot 100))
+                             fire-rules)]
+
+    (is (= (query empty-session-fired lousy-weather-query)
+           (query empty-session-fired first-query)
+           [{}])
+        "Sanity test that the rules fire without the negation condition.")
+
+    (is (and (empty? (query session-with-hot lousy-weather-query))
+             (empty? (query session-with-hot first-query)))
+        (str "Validate that when the negation condition is directly activated "
+             "from an external operation that logical insertions from the rule are retracted, "
+             "both direct insertions from the rule and ones from downstream rules."))))
+
 (deftest test-simple-retraction
   (let [cold-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]])
 
@@ -4818,5 +4849,47 @@
                  (query q))
              [{:?ts ["MCI" 20 1]}])
           (str "Inserting a WindSpeed and then later a matching Temperature for join type " join-type)))))
-              
 
+(deftest test-retract-of-fact-matching-accumulator-causes-downstream-retraction
+  (let [create-cold (dsl/parse-rule [[?cs <- (acc/all) :from [ColdAndWindy]]]
+                                    (doseq [c ?cs]
+                                      (insert! (->Cold (:temperature c)))))
+
+        temp-from-cold (dsl/parse-rule [[Cold (= ?t temperature)]]
+                                       (insert! (->Temperature ?t "MCI")))
+
+        cold-query (dsl/parse-query [] [[Cold (= ?t temperature)]])
+
+        temp-query (dsl/parse-query [] [[Temperature (= ?t temperature)]])
+
+        two-cold-windy-session (-> (mk-session [create-cold temp-from-cold
+                                                cold-query temp-query]
+                                               :cache false)
+                                   (insert (->ColdAndWindy 10 10)
+                                           (->ColdAndWindy 20 20))
+                                   fire-rules)
+
+        one-cold-windy-retracted (-> two-cold-windy-session
+                                     (retract (->ColdAndWindy 10 10))
+                                     fire-rules)
+
+        one-cold-windy-added (-> two-cold-windy-session
+                                 (insert (->ColdAndWindy 15 15))
+                                 fire-rules)]
+
+    (is (= (frequencies (query two-cold-windy-session cold-query))
+           (frequencies (query two-cold-windy-session temp-query))
+           (frequencies [{:?t 10} {:?t 20}]))
+        "Sanity test without retractions or insertions involved")
+
+    (is (= (frequencies (query one-cold-windy-retracted cold-query))
+           (frequencies (query one-cold-windy-retracted temp-query))
+           (frequencies [{:?t 20}]))
+        (str "When a fact that matched an accumulator condition is externally retracted "
+             "both direct insertions and downstream ones should be changed to reflect this."))
+
+    (is (= (frequencies (query one-cold-windy-added cold-query))
+           (frequencies (query one-cold-windy-added temp-query))
+           (frequencies [{:?t 10} {:?t 15} {:?t 20}]))
+        (str "When a fact that matched an accumulator condition is externally added "
+             "both direct insertions and downstream ones should be changed to reflect this."))))
