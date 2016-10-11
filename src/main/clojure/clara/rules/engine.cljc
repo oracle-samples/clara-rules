@@ -150,8 +150,34 @@
 ;; Active session during rule execution.
 (def ^:dynamic *current-session* nil)
 
+;; Note that this can hold facts directly retracted and facts logically retracted
+;; as a result of an external retraction or insertion.
+;; The value is expected to be an atom holding such facts.
+(def ^:dynamic *pending-external-retractions* nil)
+
 ;; The token that triggered a rule to fire.
 (def ^:dynamic *rule-context* nil)
+
+(defn ^:private external-retract-loop
+  "Retract all facts, then group and retract all facts that must be logically retracted because of these
+   retractions, and so forth, until logical consistency is reached.  When an external retraction causes multiple
+  facts of the same type to be retracted in the same iteration of the loop this improves efficiency since they can be grouped.
+  For example, if we have a rule that matches on FactA and inserts FactB, and then a later rule that accumulates on FactB, 
+  if we have multiple FactA external retractions it is more efficient to logically retract all the FactB instances at once to minimize the  number of times we must re-accumulate on FactB.  
+  This is similar to the function of the pending-updates in the fire-rules* loop."
+  [get-alphas-fn memory transport listener]
+  (loop []
+    (let [retractions (deref *pending-external-retractions*)
+          ;; We have already obtained a direct reference to the facts to be
+          ;; retracted in this iteration of the loop outside the cache.  Now reset
+          ;; the cache.  The retractions we execute may cause new retractions to be queued
+          ;; up, in which case the loop will execute again.
+          _ (reset! *pending-external-retractions* [])]
+      (doseq [[alpha-roots fact-group] (get-alphas-fn retractions)
+              root alpha-roots]
+        (alpha-retract root fact-group memory transport listener))
+      (when (-> *pending-external-retractions* deref not-empty)
+        (recur)))))
 
 (defn- flush-updates
   "Flush all pending updates in the current session. Returns true if there were
@@ -282,26 +308,37 @@
       (when-let [insertions (seq (apply concat (vals token-insertion-map)))]
         ;; If there is current session with rules firing, add these items to the queue
         ;; to be retracted so they occur in the same order as facts being inserted.
-        (if *current-session*
+        (cond
+
+          ;; Both logical retractions resulting from rule network activity and manual RHS retractions
+          ;; expect *current-session* to be bound since both happen in the context of a fire-rules call.
+          *current-session*
           ;; Retract facts that have become untrue, unless they became untrue
           ;; because of an activation of the current rule that is :no-loop
           (when (or (not (get-in production [:props :no-loop]))
                     (not (= production (get-in *rule-context* [:node :production]))))
             (do
               ;; Notify the listener of logical retractions.
+              ;; Note that this notification happens immediately, while the
+              ;; alpha-retract notification on matching alpha nodes will happen when the
+              ;; retraction is actually removed from the buffer and executed in the rules network.
               (doseq [[token token-insertions] token-insertion-map]
                 (l/retract-facts-logical! listener node token token-insertions))
               (retract-facts! insertions)))
 
-          ;; The retraction is occuring outside of a rule-firing phase,
-          ;; so simply retract them as an external caller would.
-          (let [get-alphas-fn (mem/get-alphas-fn memory)]
-            ;; Notify the listener of logical retractions.
+          ;; Any session implementation is required to bind this during external retractions and insertions.
+          *pending-external-retractions*
+          (do
             (doseq [[token token-insertions] token-insertion-map]
               (l/retract-facts-logical! listener node token token-insertions))
-            (doseq [[alpha-roots fact-group] (get-alphas-fn insertions)
-                    root alpha-roots]
-              (alpha-retract root fact-group memory transport listener)))))))
+            (swap! *pending-external-retractions* into insertions))
+
+          :else
+          (throw (ex-info (str "Attempting to retract from a ProductionNode when neither *current-session* nor "
+                               "*pending-external-retractions* is bound is illegal.")
+                          {:node node
+                           :join-bindings join-bindings
+                           :tokens tokens}))))))
 
   (get-join-keys [node] [])
 
@@ -1486,7 +1523,6 @@
         (when (flush-updates *current-session*)
           (recur (mem/next-activation-group transient-memory) next-group))))))
 
-
 (deftype LocalSession [rulebase memory transport listener get-alphas-fn]
   ISession
   (insert [session facts]
@@ -1495,9 +1531,15 @@
 
       (l/insert-facts! transient-listener facts)
 
-      (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
-              root alpha-roots]
-        (alpha-activate root fact-group transient-memory transport transient-listener))
+      (binding [*pending-external-retractions* (atom [])]
+        ;; Bind the external retractions cache so that any logical retractions as a result
+        ;; of these insertions can be cached and executed as a batch instead of eagerly realizing
+        ;; them.  An external insertion of a fact that matches
+        ;; a negation or accumulator condition can cause logical retractions.
+        (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
+                root alpha-roots]
+          (alpha-activate root fact-group transient-memory transport transient-listener))
+        (external-retract-loop get-alphas-fn transient-memory transport transient-listener))
 
       (LocalSession. rulebase
                      (mem/to-persistent! transient-memory)
@@ -1512,9 +1554,8 @@
 
       (l/retract-facts! transient-listener facts)
 
-      (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
-              root alpha-roots]
-        (alpha-retract root fact-group transient-memory transport transient-listener))
+      (binding [*pending-external-retractions* (atom facts)]
+        (external-retract-loop get-alphas-fn transient-memory transport transient-listener))
 
       (LocalSession. rulebase
                      (mem/to-persistent! transient-memory)
