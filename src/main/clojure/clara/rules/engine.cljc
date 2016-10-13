@@ -233,11 +233,12 @@
     ;; Update the count so the rule engine will know when we have normalized.
     (swap! insertions + (count facts))
 
+    (when listener
+      (l/retract-facts! listener facts))
+
     (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
             root alpha-roots]
-
-      (when listener
-        (l/retract-facts! listener fact-group))
+      
       (alpha-retract root fact-group transient-memory transport listener))))
 
 (defn ^:private flush-insertions!
