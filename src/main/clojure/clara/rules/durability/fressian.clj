@@ -255,32 +255,49 @@
     :writer (reify WriteHandler
               (write [_ w o]
                 (let [cname (d/sorted-comparator-name o)]
-                  (.writeTag w "clj/treeset" 2)
+                  (.writeTag w "clj/treeset" 3)
                   (if cname
                     (.writeObject w cname true)
+                    (.writeNull w))
+                  ;; Preserve metadata.
+                  (if-let [m (meta o)]
+                    (.writeObject w m)
                     (.writeNull w))
                   (.writeList w o))))
     :readers {"clj/treeset"
               (reify ReadHandler
                 (read [_ rdr tag component-count]
-                  (let [c (some-> rdr .readObject resolve deref)]
-                    (d/seq->sorted-set (.readObject rdr) c))))}}
-
+                  (let [c (some-> rdr .readObject resolve deref)
+                        m (.readObject rdr)
+                        s (-> (.readObject rdr)
+                              (d/seq->sorted-set c))]
+                    (if m
+                      (with-meta s m)
+                      s))))}}
+   
    "clj/treemap"
    {:class clojure.lang.PersistentTreeMap
     :writer (reify WriteHandler
               (write [_ w o]
                 (let [cname (d/sorted-comparator-name o)]
-                  (.writeTag w "clj/treemap" 2)
+                  (.writeTag w "clj/treemap" 3)
                   (if cname
                     (.writeObject w cname true)
+                    (.writeNull w))
+                  ;; Preserve metadata.
+                  (if-let [m (meta o)]
+                    (.writeObject w m)
                     (.writeNull w))
                   (write-map w o))))
     :readers {"clj/treemap"
               (reify ReadHandler
                 (read [_ rdr tag component-count]
-                  (let [c (some-> rdr .readObject resolve deref)]
-                    (d/seq->sorted-map (.readObject rdr) c))))}}
+                  (let [c (some-> rdr .readObject resolve deref)
+                        m (.readObject rdr)
+                        s (d/seq->sorted-map (.readObject rdr) c)]
+                    (if m
+                      (with-meta s m)
+                      s))))}}
 
    "clj/mapentry"
    {:class clojure.lang.MapEntry
