@@ -78,15 +78,8 @@
                         "expected fact: " expected-fact \newline
                         "fact: " fact \newline)))))))
 
-(defn durability-test
-  "Test runner to run different implementations of d/ISessionSerializer."
-  [serde-type]
-  (let [s (mk-session 'clara.durability-rules)
-
-        ;; Testing identity relationships on the IWorkingMemorySerializer facts received to serialize.
-        ;; So this is a little weird, but we want to know the exact object identity of even these
-        ;; "primitive" values.
-        mci "MCI"
+(defn session-test [s]
+  (let [mci "MCI"
         lax "LAX"
         san "SAN"
         chi "CHI"
@@ -119,7 +112,66 @@
         cold-res (query fired dr/cold-temp)
         hot-res (query fired dr/hot-temp)
         temp-his-res (query fired dr/temp-his)
-        temps-under-thresh-res (query fired dr/temps-under-thresh)
+        temps-under-thresh-res (query fired dr/temps-under-thresh)]
+    {:all-objs [mci
+                lax
+                san
+                chi
+                irk
+                ten
+                twenty
+                fifty
+                forty
+                thirty
+                thresh50
+                temp50
+                temp40
+                temp30
+                temp20
+                ws50
+                ws40
+                ws10]
+     :fired-session fired
+     :query-results {:unpaired-res unpaired-res
+                     :cold-res cold-res
+                     :hot-res hot-res
+                     :temp-his-res temp-his-res
+                     :temps-under-thresh-res temps-under-thresh-res}}))
+
+(defn durability-test
+  "Test runner to run different implementations of d/ISessionSerializer."
+  [serde-type]
+  (let [s (mk-session 'clara.durability-rules)
+        results (session-test s)
+        ;; Testing identity relationships on the IWorkingMemorySerializer facts received to serialize.
+        ;; So this is a little weird, but we want to know the exact object identity of even these
+        ;; "primitive" values.
+        [mci
+         lax
+         san
+         chi
+         irk
+         ten
+         twenty
+         fifty
+         forty
+         thirty
+         thresh50
+         temp50
+         temp40
+         temp30
+         temp20
+         ws50
+         ws40
+         ws10] (:all-objs results)
+        
+        fired (:fired-session results)
+
+        {:keys [unpaired-res
+                cold-res
+                hot-res
+                temp-his-res 
+                temps-under-thresh-res]} (:query-results results)
 
         create-serializer (fn [stream]
                             ;; Currently only one.
@@ -254,4 +306,72 @@
             (check-fact expected-fact fact)))))))
  
 (deftest test-durability-fressian-serde
-  (durability-test :fressian))
+  (testing "SerDe of the rulebase along with working memory"
+    (durability-test :fressian))
+
+  (testing "Repeated SerDe of rulebase"
+    (let [rb-serde (fn [s]
+                     (with-open [baos (java.io.ByteArrayOutputStream.)]
+                       (d/serialize-rulebase s (df/create-session-serializer baos))
+                       (let [rb-data (.toByteArray baos)]
+                         (with-open [bais (java.io.ByteArrayInputStream. rb-data)]
+                           (d/deserialize-rulebase (df/create-session-serializer bais))))))
+
+          s (mk-session 'clara.durability-rules)
+          rb (-> s eng/components :rulebase)
+          deserialized1 (rb-serde s)
+          ;; Need a session to do the 2nd round of SerDe.
+          restored1 (d/assemble-restored-session deserialized1 {})
+          deserialized2 (rb-serde restored1)
+          restored2 (d/assemble-restored-session deserialized2 {})
+
+          init-qresults (:query-results (session-test s))
+          restored-qresults1 (:query-results (session-test restored1))
+          restored-qresults2 (:query-results (session-test restored2))]
+      
+      (is (= init-qresults
+             restored-qresults1
+             restored-qresults2)))))
+
+(deftest test-assemble-restored-session-opts
+  (let [orig (mk-session 'clara.durability-rules)
+
+        test-assemble (fn [rulebase memory]
+                        (let [activation-group-fn-called? (volatile! false)
+                              activation-group-sort-fn-called? (volatile! false)
+                              fact-type-fn-called? (volatile! false)
+                              ancestors-fn-called? (volatile! false)
+
+                              opts {:activation-group-fn (fn [x]
+                                                           (vreset! activation-group-fn-called? true)
+                                                           (or (some-> x :props :salience)
+                                                               0))
+                                    :activation-group-sort-fn (fn [x y]
+                                                                (vreset! activation-group-sort-fn-called? true)
+                                                                (> x y))
+                                    :fact-type-fn (fn [x]
+                                                    (vreset! fact-type-fn-called? true)
+                                                    (type x))
+                                    :ancestors-fn (fn [x]
+                                                    (vreset! ancestors-fn-called? true)
+                                                    (ancestors x))}
+                              
+                              restored (if memory
+                                         (d/assemble-restored-session rulebase memory opts)
+                                         (d/assemble-restored-session rulebase opts))]
+
+                          (is (= (:query-results (session-test orig))
+                                 (:query-results (session-test restored))))
+
+                          (is (true? @activation-group-sort-fn-called?))
+                          (is (true? @activation-group-fn-called?))
+                          (is (true? @fact-type-fn-called?))
+                          (is (true? @ancestors-fn-called?))))
+
+        {:keys [rulebase memory]} (eng/components orig)]
+
+    (testing "restoring without given memory"
+      (test-assemble rulebase nil))
+
+    (testing "restoring with memory"
+      (test-assemble rulebase memory))))

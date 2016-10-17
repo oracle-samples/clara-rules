@@ -401,60 +401,84 @@
                 :activation-group-fn
                 :alphas-fn))))
 
-(defn create-default-get-alphas-fn [rulebase]
-  (@#'com/create-get-alphas-fn type ancestors rulebase))
+(def ^:private create-get-alphas-fn @#'com/create-get-alphas-fn)
+
+(defn- opts->get-alphas-fn [rulebase opts]
+  (let [fact-type-fn (:fact-type-fn opts type)
+        ancestors-fn (:ancestors-fn opts ancestors)]
+    (create-get-alphas-fn fact-type-fn
+                          ancestors-fn
+                          rulebase)))
 
 (defn assemble-restored-session
-  "Builds a Clara session from the given rulebase and memory components.
+  "Builds a Clara session from the given rulebase and memory components.  When no memory is given a new 
+   one is created with all of the defaults of eng/local-memory.
    Note!  This function should not typically be used.  It is left public to assist in ISessionSerializer 
           durability implementations.  Use clara.rules/mk-session typically to make rule sessions.
    
    Options can be provided via opts.
    These include:
 
+   * :fact-type-fn
+   * :ancestors-fn
    * :activation-group-sort-fn 
    * :activation-group-fn
-   * :get-alphas-fn 
 
    If the options are not provided, they will default to the Clara session defaults.
    These are all described in detail in clara.rules/mk-session docs.
 
    Note!  Currently this only supports the clara.rules.memory.PersistentLocalMemory implementation
           of memory."
-  [rulebase memory opts]
-  (let [opts (-> opts
-                 (assoc :rulebase rulebase)
-                 ;; Right now activation fns do not serialize.
-                 (update :activation-group-sort-fn
-                         #(eng/options->activation-group-sort-fn {:activation-group-sort-fn %}))
-                 (update :activation-group-fn
-                         #(eng/options->activation-group-fn {:activation-group-fn %}))
-                 ;; TODO: Memory doesn't seem to ever need this or use it.  Can we just remove it from memory?
-                 (update :get-alphas-fn
-                         #(or % (create-default-get-alphas-fn rulebase))))
+  ([rulebase opts]
+   (let [opts (assoc opts
+                     :rulebase
+                     rulebase
+                     :get-alphas-fn
+                     (opts->get-alphas-fn rulebase opts))
+         {:keys [listeners transport get-alphas-fn]} opts]
+     
+     (eng/assemble {:rulebase rulebase
+                    :memory (eng/local-memory rulebase
+                                              (clara.rules.engine.LocalTransport.)
+                                              (eng/options->activation-group-sort-fn opts)
+                                              (eng/options->activation-group-fn opts)
+                                              ;; TODO: Memory doesn't seem to ever need this or use
+                                              ;; it.  Can we just remove it from memory?
+                                              get-alphas-fn)
+                    :transport (or transport (clara.rules.engine.LocalTransport.))
+                    :listeners (or listeners [])
+                    :get-alphas-fn get-alphas-fn})))
 
-        {:keys [listeners transport get-alphas-fn]} opts
-        
-        memory-opts (select-keys opts
-                                 #{:rulebase
-                                   :activation-group-sort-fn
-                                   :activation-group-fn
-                                   :get-alphas-fn})
+  ([rulebase memory opts]
+   (let [opts (-> opts
+                  (assoc :rulebase
+                         rulebase
+                         ;; Right now get alphas fn does not serialize.
+                         :get-alphas-fn
+                         (opts->get-alphas-fn rulebase opts))
+                  ;; Right now activation fns do not serialize.
+                  (update :activation-group-sort-fn
+                          #(eng/options->activation-group-sort-fn {:activation-group-sort-fn %}))
+                  (update :activation-group-fn
+                          #(eng/options->activation-group-fn {:activation-group-fn %})))
 
-        transport (or transport (clara.rules.engine.LocalTransport.))
-        listeners (or listeners [])
-
-        memory (-> memory
-                   (merge memory-opts)
-                   ;; Naming difference for some reason.
-                   (set/rename-keys {:get-alphas-fn :alphas-fn})
-                   mem/map->PersistentLocalMemory)]
-    
-    (eng/assemble {:rulebase rulebase
-                   :memory memory
-                   :transport transport
-                   :listeners listeners
-                   :get-alphas-fn get-alphas-fn})))
+         {:keys [listeners transport get-alphas-fn]} opts
+         
+         memory-opts (select-keys opts
+                                  #{:rulebase
+                                    :activation-group-sort-fn
+                                    :activation-group-fn
+                                    :get-alphas-fn})]
+     
+     (eng/assemble {:rulebase rulebase
+                    :memory (-> memory
+                                (merge memory-opts)
+                                ;; Naming difference for some reason.
+                                (set/rename-keys {:get-alphas-fn :alphas-fn})
+                                mem/map->PersistentLocalMemory)
+                    :transport (or transport (clara.rules.engine.LocalTransport.))
+                    :listeners (or listeners [])
+                    :get-alphas-fn get-alphas-fn}))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; Serialization protocols.
