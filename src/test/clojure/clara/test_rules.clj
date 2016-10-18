@@ -1484,6 +1484,50 @@
 
            (query session-retracted find-cold)))))
 
+(deftest test-negation-of-changing-result-from-accumulator-in-fire-rules
+  (let [min-temp-rule (dsl/parse-rule [[?c <- (acc/min :temperature :returns-fact true) :from [ColdAndWindy]]]
+                                      (insert! (->Cold (:temperature ?c)))
+                                      {:salience 5})
+
+        ;; Force successive matching and retraction of the negation condition within the fire-rules loop.
+        no-join-negation (dsl/parse-rule [[:not [Cold]]]
+                                         (insert! (->Hot 100))
+                                         {:salience 6})
+
+        complex-join-negation (dsl/parse-rule [[Temperature (= ?t temperature)]
+                                               [:not [Cold (< temperature ?t)]]]
+                                              (insert! (->Hot 100))
+                                              {:salience 6})
+
+        ;; Give the two rules producing a ColdAndWindy fact different salience so that we will switch
+        ;; salience groups between them.  When we switch, the higher-salience rules accumulating on ColdAndWindy
+        ;; and the negation that uses the Cold produced from the minimum ColdAndWindy will fire first before moving
+        ;; on to second-cold from first-cold.
+        first-cold (dsl/parse-rule [[First]]
+                                   (insert! (->ColdAndWindy 20 20))
+                                   {:salience -1})
+        
+        second-cold (dsl/parse-rule [[Second]]
+                                    (insert! (->ColdAndWindy 10 10))
+                                    {:salience -2})
+        
+        hot-query (dsl/parse-query [] [[Hot]])
+
+        invariant-productions [min-temp-rule first-cold second-cold hot-query]]
+
+    (doseq [[empty-session join-type] [[(mk-session (conj invariant-productions no-join-negation)
+                                                    :cache false)
+                                        "no join"]
+                                       [(mk-session (conj invariant-productions complex-join-negation)
+                                                    :cache false)
+                                        "complex join"]]]
+
+      (is (empty? (-> empty-session
+                      (insert (->First) (->Second))
+                      fire-rules
+                      (query hot-query)))
+          (str "No Hot should exist in the session for join type: " join-type)))))
+
 (deftest test-simple-disjunction
   (let [or-query (dsl/parse-query [] [[:or [Temperature (< temperature 20) (= ?t temperature)]
                                            [WindSpeed (> windspeed 30) (= ?w windspeed)]]])
@@ -4893,3 +4937,34 @@
            (frequencies [{:?t 10} {:?t 15} {:?t 20}]))
         (str "When a fact that matched an accumulator condition is externally added "
              "both direct insertions and downstream ones should be changed to reflect this."))))
+
+(deftest test-extra-right-activations-with-disjunction-of-negations
+  (let [no-join (dsl/parse-rule [[:or
+                                  [:not [Cold]]
+                                  [:not [Hot]]]]
+                                (insert! (->LousyWeather)))
+
+        complex-join (dsl/parse-rule [[Temperature (= ?temp temperature)]
+                                      [:or
+                                       [:not [Cold (> temperature ?temp)]]
+                                       [:not [Hot (> temperature ?temp)]]]]
+                                     (insert! (->LousyWeather)))
+
+        q  (dsl/parse-query [] [[LousyWeather]])]
+
+    (doseq [[empty-session join-type] [
+                                       [(mk-session [no-join q] :cache false) "simple hash join"]
+                                       ;; Uncomment once issue 231 is fixed for NegationWithJoinFilterNode
+                                        ; [(mk-session [complex-join q] :cache false) "complex join"]
+                                       ]]
+
+      (is (= (-> empty-session
+                 (insert (->Hot 100) (->Temperature -100 "ORD"))
+                 fire-rules
+                 (insert (->Hot 120))
+                 fire-rules
+                 (query q))
+             [{}])
+          (str "As long as one negation condition in the :or matches, regardless of how many facts match the other "
+               "negation the rule should fire for join type " join-type)))))
+
