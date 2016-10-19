@@ -1,5 +1,13 @@
 This is a history of changes to clara-rules.
 
+### 0.13.0-RC3
+Bug fixes over 0.13.0-RC2
+
+* Improve performance by processing external retractions as a batch. See [issue 225](https://github.com/rbrush/clara-rules/issues/225).
+* Handle sorted collections in durability logic. See [PR 228](https://github.com/rbrush/clara-rules/pull/228).
+* Remove redundant retract calls to the change listener. See [PR 227](https://github.com/rbrush/clara-rules/pull/227/files).
+
+
 ### 0.13.0-RC2
 Bug fixes and additional tracing over 0.13.0-RC2
 
