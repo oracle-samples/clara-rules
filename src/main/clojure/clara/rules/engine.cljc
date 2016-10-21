@@ -594,10 +594,16 @@
 
   IRightActivate
   (right-activate [node join-bindings elements memory transport listener]
-    (l/right-activate! listener node elements)
-    (mem/add-elements! memory node join-bindings elements)
-    ;; Retract tokens that matched the activation, since they are no longer negatd.
-    (retract-tokens transport memory listener children (mem/get-tokens memory node join-bindings)))
+    ;; Immediately evaluate whether there are previous elements since mem/get-elements
+    ;; returns a mutable list with a LocalMemory on the JVM currently.
+    (let [previously-empty? (empty? (mem/get-elements memory node join-bindings))]
+      (l/right-activate! listener node elements)
+      (mem/add-elements! memory node join-bindings elements)
+      ;; Retract tokens that matched the activation if no element matched the negation previously.
+      ;; If an element matched the negation already then no elements were propagated and there is
+      ;; nothing to retract.
+      (when previously-empty?
+        (retract-tokens transport memory listener children (mem/get-tokens memory node join-bindings)))))
 
   (right-retract [node join-bindings elements memory transport listener]
     (l/right-retract! listener node elements)
@@ -659,19 +665,33 @@
   IRightActivate
   (right-activate [node join-bindings elements memory transport listener]
     (l/right-activate! listener node elements)
-    (mem/add-elements! memory node join-bindings elements)
-    ;; Retract tokens that matched the activation, since they are no longer negated.
-    (retract-tokens transport
-                    memory
-                    listener
-                    children
-                    (for [token (mem/get-tokens memory node join-bindings)
+    (let [previous-elements (mem/get-elements memory node join-bindings)]
+      ;; Retract tokens that matched the activation, since they are no longer negated.
+      (retract-tokens transport
+                      memory
+                      listener
+                      children
+                      (for [token (mem/get-tokens memory node join-bindings)
 
-                          :when (matches-some-facts? token
-                                                     elements
-                                                     join-filter-fn
-                                                     condition)]
-                      token)))
+                            ;; Retract downstream if the token now has matching elements and didn't before.
+                            ;; We check the new elements first in the expectation that the new elements will be
+                            ;; smaller than the previous elements most of the time
+                            ;; and that the time to check the elements will be proportional
+                            ;; to the number of elements.
+                            :when (and (matches-some-facts? token
+                                                            elements
+                                                            join-filter-fn
+                                                            condition)
+                                       (not (matches-some-facts? token
+                                                                 previous-elements
+                                                                 join-filter-fn
+                                                                 condition)))]
+                        token))
+      ;; Adding the elements will mutate the previous-elements since, on the JVM, the LocalMemory
+      ;; currently returns a mutable List from get-elements after changes in issue 184.  We need to use the
+      ;; new and old elements in the logic above as separate collections.  Therefore we need to delay updating the
+      ;; memory with the new elements until after we are done with previous-elements.
+      (mem/add-elements! memory node join-bindings elements)))
 
   (right-retract [node join-bindings elements memory transport listener]
 
