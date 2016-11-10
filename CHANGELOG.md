@@ -1,5 +1,10 @@
 This is a history of changes to clara-rules.
 
+### 0.13.0-RC4
+
+* The project is now moved to the com.cerner group and [Cerner's GitHub organization](https://github.com/cerner/).
+* Avoid unneeded retractions through negation nodes. See [issue 231](https://github.com/cerner/clara-rules/issues/231).
+
 ### 0.13.0-RC3
 Bug fixes over 0.13.0-RC2
 
