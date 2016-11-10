@@ -2278,7 +2278,7 @@
     (is (= [{:?t 9}] (query session temp-query)))))
 
 ;; Test to ensure :no-loop applies to retractions as well as activations of rules.
-;; For https://github.com/rbrush/clara-rules/issues/99
+;; For https://github.com/cerner/clara-rules/issues/99
 (deftest test-no-loop-retraction
   (let [counter (atom 0)
         looper (dsl/parse-rule [[:not [:marker]]]
@@ -2323,7 +2323,7 @@
     (is (= [{:?t 9}] (query session temp-query)))))
 
 
-;; Test behavior discussed in https://github.com/rbrush/clara-rules/issues/35
+;; Test behavior discussed in https://github.com/cerner/clara-rules/issues/35
 (deftest test-identical-facts
   (let [ident-query (dsl/parse-query [] [[?t1 <- Temperature (= ?loc location)]
                                          [?t2 <- Temperature (= ?loc location)]
@@ -2934,7 +2934,7 @@
                     (fire-rules)
                     (query same-wind-and-temp))))))
 
-;; Test for: https://github.com/rbrush/clara-rules/issues/97
+;; Test for: https://github.com/cerner/clara-rules/issues/97
 (deftest test-nested-binding-with-disjunction
   (let [any-cold? (dsl/parse-rule [[Temperature (= ?t temperature)]
                                    [:or
@@ -3045,7 +3045,7 @@
   ^{:doc "Ensures that when 'sibling' nodes are sharing a common child
           production node, that activations are effectively retracted in some
           TMS control flows.
-          See https://github.com/rbrush/clara-rules/pull/145 for more context."}
+          See https://github.com/cerner/clara-rules/pull/145 for more context."}
   test-disjunctions-sharing-production-node
   (let [r (dsl/parse-rule [[:or
                             [First]
@@ -3079,7 +3079,7 @@
     (is (= qres1 qres2))))
 
 (deftest ^{:doc "Ensuring that ProductionNodes compilation is separate per node in network.
-                 See https://github.com/rbrush/clara-rules/pull/145 for more context."}
+                 See https://github.com/cerner/clara-rules/pull/145 for more context."}
   test-multiple-equiv-rhs-different-metadata
   (let [r1 (dsl/parse-rule [[?t <- Temperature]]
                            (insert! ^{:type :a} {:t ?t}))
@@ -3198,7 +3198,7 @@
     (assert-ex-data {:variables #{'?unbound}}
                     (mk-session [negation-equality-unbound]))))
 
-;; Test for: https://github.com/rbrush/clara-rules/issues/96
+;; Test for: https://github.com/cerner/clara-rules/issues/96
 (deftest test-destructured-binding
   (let [rule-output (atom nil)
         rule {:name "clara.test-destructured-binding/test-destructured-binding"
@@ -3529,7 +3529,7 @@
            [{:?t nil}])
         "Validate that :exists can match under a boolean :and condition.")))
 
-;; Test for https://github.com/rbrush/clara-rules/issues/142
+;; Test for https://github.com/cerner/clara-rules/issues/142
 (deftest test-beta-binding
   "Tests bind operation that must happen on the beta side of the network"
   (let [beta-bind-query (dsl/parse-query []

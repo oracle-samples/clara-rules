@@ -4,7 +4,7 @@
    session is able to have additional insert, retract, query, and fire rule calls performed 
    immediately after.
 
-   See https://github.com/rbrush/clara-rules/issues/198 for more discussion on this.
+   See https://github.com/cerner/clara-rules/issues/198 for more discussion on this.
 
    Note! This is still an EXPERIMENTAL namespace. This may change non-passively without warning.
    Any session or rulebase serialized in one version of Clara is not guaranteed to deserialize 
@@ -47,7 +47,7 @@
 (defn add-rhs-fn [node]
   ;; The RHS expression may need to be compiled within the namespace scope of specifically declared
   ;; :ns-name.  The LHS expressions do not (currently) need or support this path.
-  ;; See https://github.com/rbrush/clara-rules/issues/178 for more details.
+  ;; See https://github.com/cerner/clara-rules/issues/178 for more details.
   (with-bindings (if-let [ns (some-> node
                                      :production
                                      :ns-name

@@ -1,11 +1,12 @@
-# Clara
-[![Build Status](https://travis-ci.org/rbrush/clara-rules.svg?branch=master)](https://travis-ci.org/rbrush/clara-rules)
+[![Build Status](https://travis-ci.org/cerner/clara-rules.svg?branch=master)](https://travis-ci.org/cerner/clara-rules)
 
-Clara is a forward-chaining rules engine written in Clojure with Java interoperability. It aims to simplify code with a developer-centric approach to expert systems. More at [clara-rules.org](http://www.clara-rules.org).
+# _About_
 
-## Example
+Clara is a forward-chaining rules engine written in Clojure with Java interoperability. It aims to simplify code with a developer-centric approach to expert systems. See [clara-rules.org](http://www.clara-rules.org) for more.
 
-Here's a simple example. The [clara-examples project](https://github.com/rbrush/clara-examples) shows more sophisticated rules and queries.
+# _Usage_
+
+Here's a simple example. Complete documentation is at [clara-rules.org](http://www.clara-rules.org/docs/firststeps/).
 
 ```clj
 (ns clara.support-example
@@ -40,18 +41,32 @@ Here's a simple example. The [clara-examples project](https://github.com/rbrush/
 ;; Notify Alice that Acme has a new support request!
 ```
 
-## Releases
+# _Building_
+
+Clara is built, tested, and deployed using [Leiningen](http://leiningen.org).  
+
+# _Availability_
+
 Clara releases are on [Clojars](https://clojars.org/). Simply add the following to your project:
 
-[![Clojars Project](http://clojars.org/org.toomuchcode/clara-rules/latest-version.svg)](http://clojars.org/org.toomuchcode/clara-rules)
+[![Clojars Project](http://clojars.org/com.cerner/clara-rules/latest-version.svg)](http://clojars.org/com.cerner/clara-rules)
 
-## Resources
+# _Communication_
 
-* Documentation is at [clara-rules.org](http://www.clara-rules.org).
-* Questions or suggestions for Clara can be posted on the [Clara Rules Google Group](https://groups.google.com/forum/?hl=en#!forum/clara-rules).
+Questions can be posted to the [Clara Rules Google Group](https://groups.google.com/forum/?hl=en#!forum/clara-rules) or the [Slack channel](https://clojurians.slack.com/messages/clara/).  
 
-## License
+# Contributing
 
-Copyright © 2016 Ryan Brush
+See [CONTRIBUTING.md](CONTRIBUTING.md)
 
-Distributed under the Eclipse Public License, the same as Clojure.
+# LICENSE
+
+Copyright 2016 Cerner Innovation, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+
+&nbsp;&nbsp;&nbsp;&nbsp;http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+
+

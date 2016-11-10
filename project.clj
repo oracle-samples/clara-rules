@@ -1,8 +1,8 @@
-(defproject org.toomuchcode/clara-rules "0.13.0-SNAPSHOT"
+(defproject com.cerner/clara-rules "0.13.0-SNAPSHOT"
   :description "Clara Rules Engine"
-  :url "https://github.com/rbrush/clara-rules"
-  :license {:name "Eclipse Public License"
-            :url "http://www.eclipse.org/legal/epl-v10.html"}
+  :url "https://github.com/cerner/clara-rules"
+  :license {:name "Apache License Version 2.0"
+            :url "https://www.apache.org/licenses/LICENSE-2.0"}
   :dependencies [[org.clojure/clojure "1.7.0"]
                  [prismatic/schema "1.0.1"]]
   :profiles {:dev {:dependencies [[org.clojure/math.combinatorics "0.1.3"]
@@ -61,10 +61,10 @@
                    :generative (fn [x] (some->> x :ns ns-name str (re-matches #"^clara\.generative.*")))}
   
   :scm {:name "git"
-        :url "https://github.com/rbrush/clara-rules"}
+        :url "https://github.com/cerner/clara-rules"}
   :pom-addition [:developers [:developer
                               [:id "rbrush"]
                               [:name "Ryan Brush"]
-                              [:url "http://www.toomuchcode.org"]]]
+                              [:url "http://www.clara-rules.org"]]]
   :deploy-repositories [["snapshots" {:url "https://oss.sonatype.org/content/repositories/snapshots/"
                                       :creds :gpg}]])

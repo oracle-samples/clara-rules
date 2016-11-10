@@ -161,7 +161,7 @@
            '~production
            ;; NOTE:  This is a workaround around allowing the compiler to eval this
            ;; form in an unknown ns.  It will suffer from var shadowing problems described
-           ;; @ https://github.com/rbrush/clara-rules/issues/178.
+           ;; @ https://github.com/cerner/clara-rules/issues/178.
            ;; A better solution may be to enhance dsl/resolve-vars to deal with shadowing
            ;; correctly in cljs.  This may be easier to do there since the compiler's
            ;; analyzer may be more exposed than on the clj side.
