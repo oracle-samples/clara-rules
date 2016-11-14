@@ -392,93 +392,73 @@
     (-> memory
         index-memory
         (update :memory
-                dissoc
+                ;; Assoc nil values rather than using dissoc in order to preserve the type of the memory.
+                assoc
                 ;; The rulebase does need to be stored per memory.  It will be restored during deserialization.
-                :rulebase
+                :rulebase nil
                 ;; Currently these do not support serialization and must be provided during deserialization via a
                 ;; base-session or they default to the standard defaults.
-                :activation-group-sort-fn
-                :activation-group-fn
-                :alphas-fn))))
+                :activation-group-sort-fn nil
+                :activation-group-fn nil
+                :alphas-fn nil))))
 
 (def ^:private create-get-alphas-fn @#'com/create-get-alphas-fn)
 
-(defn- opts->get-alphas-fn [rulebase opts]
+(defn opts->get-alphas-fn [rulebase opts]
   (let [fact-type-fn (:fact-type-fn opts type)
         ancestors-fn (:ancestors-fn opts ancestors)]
     (create-get-alphas-fn fact-type-fn
                           ancestors-fn
-                          rulebase)))
+                          (:alpha-roots rulebase))))
 
 (defn assemble-restored-session
   "Builds a Clara session from the given rulebase and memory components.  When no memory is given a new 
    one is created with all of the defaults of eng/local-memory.
    Note!  This function should not typically be used.  It is left public to assist in ISessionSerializer 
           durability implementations.  Use clara.rules/mk-session typically to make rule sessions.
-   
-   Options can be provided via opts.
-   These include:
 
-   * :fact-type-fn
-   * :ancestors-fn
-   * :activation-group-sort-fn 
-   * :activation-group-fn
-
-   If the options are not provided, they will default to the Clara session defaults.
-   These are all described in detail in clara.rules/mk-session docs.
+   If the options are not provided, they will default to the Clara session defaults.  The available options
+   on the session (as opposed to the rulebase) are the transport and listeners.
 
    Note!  Currently this only supports the clara.rules.memory.PersistentLocalMemory implementation
           of memory."
   ([rulebase opts]
-   (let [opts (assoc opts
-                     :rulebase
-                     rulebase
-                     :get-alphas-fn
-                     (opts->get-alphas-fn rulebase opts))
-         {:keys [listeners transport get-alphas-fn]} opts]
+   (let [{:keys [listeners transport]} opts]
      
      (eng/assemble {:rulebase rulebase
                     :memory (eng/local-memory rulebase
                                               (clara.rules.engine.LocalTransport.)
-                                              (eng/options->activation-group-sort-fn opts)
-                                              (eng/options->activation-group-fn opts)
+                                              (:activation-group-sort-fn rulebase)
+                                              (:activation-group-fn rulebase)
                                               ;; TODO: Memory doesn't seem to ever need this or use
                                               ;; it.  Can we just remove it from memory?
-                                              get-alphas-fn)
+                                              (:get-alphas-fn rulebase))
                     :transport (or transport (clara.rules.engine.LocalTransport.))
                     :listeners (or listeners [])
-                    :get-alphas-fn get-alphas-fn})))
+                    :get-alphas-fn (:get-alphas-fn rulebase)})))
 
   ([rulebase memory opts]
-   (let [opts (-> opts
-                  (assoc :rulebase
-                         rulebase
-                         ;; Right now get alphas fn does not serialize.
-                         :get-alphas-fn
-                         (opts->get-alphas-fn rulebase opts))
-                  ;; Right now activation fns do not serialize.
-                  (update :activation-group-sort-fn
-                          #(eng/options->activation-group-sort-fn {:activation-group-sort-fn %}))
-                  (update :activation-group-fn
-                          #(eng/options->activation-group-fn {:activation-group-fn %})))
-
-         {:keys [listeners transport get-alphas-fn]} opts
-         
-         memory-opts (select-keys opts
-                                  #{:rulebase
-                                    :activation-group-sort-fn
-                                    :activation-group-fn
-                                    :get-alphas-fn})]
+   (let [{:keys [listeners transport]} opts]
      
      (eng/assemble {:rulebase rulebase
-                    :memory (-> memory
-                                (merge memory-opts)
-                                ;; Naming difference for some reason.
-                                (set/rename-keys {:get-alphas-fn :alphas-fn})
-                                mem/map->PersistentLocalMemory)
+                    :memory (assoc memory
+                                   :rulebase rulebase
+                                   :activation-group-sort-fn (:activation-group-sort-fn rulebase)
+                                   :activation-group-fn (:activation-group-fn rulebase)
+                                   :alphas-fn (:get-alphas-fn rulebase))
                     :transport (or transport (clara.rules.engine.LocalTransport.))
                     :listeners (or listeners [])
-                    :get-alphas-fn get-alphas-fn}))))
+                    :get-alphas-fn (:get-alphas-fn rulebase)}))))
+
+(defn rulebase->rulebase-with-opts
+  "Intended for use in rulebase deserialization implementations where these functions were stripped
+   off the rulebase implementation; this function takes these options and wraps them in the same manner
+   as clara.rules/mk-session.  This function should typically only be used when implementing ISessionSerializer."
+  [without-opts-rulebase opts]
+  (assoc without-opts-rulebase
+         :activation-group-sort-fn (eng/options->activation-group-sort-fn opts)
+         :activation-group-fn (eng/options->activation-group-fn opts)
+         :get-alphas-fn (opts->get-alphas-fn without-opts-rulebase opts)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; Serialization protocols.
@@ -504,6 +484,14 @@
    * :base-rulebase - A rulebase to attach to the session being deserialized.  The assumption here is that
      the session was serialized without the rulebase, i.e. :with-rulebase? = false, so it needs a rulebase
      to be 'attached' back onto it to be usable.
+
+   Options for the rulebase semantics that are documented at clara.rules/mk-session include:
+
+   * :fact-type-fn
+   * :ancestors-fn
+   * :activation-group-sort-fn
+   * :activation-group-fn
+
 
    Other options can be supported by specific implementors of ISessionSerializer."
 

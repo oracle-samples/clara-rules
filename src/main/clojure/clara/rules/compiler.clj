@@ -64,7 +64,13 @@
                         ;; Map of queries to the nodes hosting them.
                         query-nodes :- {sc/Any QueryNode}
                         ;; Map of id to one of the beta nodes (join, accumulate, etc).
-                        id-to-node :- {sc/Num BetaNode}])
+                        id-to-node :- {sc/Num BetaNode}
+                        ;; Function for sorting activation groups of rules for firing.
+                        activation-group-sort-fn
+                        ;; Function that takes a rule and returns its activation group.
+                        activation-group-fn
+                        ;; Function that takes facts and determines what alpha nodes they match.
+                        get-alphas-fn])
 
 (def ^:private reflector
   "For some reason (bug?) the default reflector doesn't use the
@@ -1481,12 +1487,63 @@
         env (assoc :env env))
       {:alpha-expr alpha-expr})))
 
+(defn- create-get-alphas-fn
+  "Returns a function that given a sequence of facts,
+  returns a map associating alpha nodes with the facts they accept."
+  [fact-type-fn ancestors-fn alpha-roots]
+
+  ;; We preserve a map of fact types to alpha nodes for efficiency,
+  ;; effectively memoizing this operation.
+  (let [alpha-map (atom {})
+
+        ;; If a customized fact-type-fn is provided,
+        ;; we must use a specialized grouping function
+        ;; that handles internal control types that may not
+        ;; follow the provided type function.
+        fact-grouping-fn (if (= fact-type-fn type)
+                           type
+                           (fn [fact]
+                             (if (isa? (type fact) :clara.rules.engine/system-type)
+                               ;; Internal system types always use Clojure's type mechanism.
+                               (type fact)
+                               ;; All other types defer to the provided function.
+                               (fact-type-fn fact))))]
+
+    (fn [facts]
+      (for [[fact-type facts] (platform/group-by-seq fact-grouping-fn facts)]
+
+        (if-let [alpha-nodes (get @alpha-map fact-type)]
+
+          ;; If the matching alpha nodes are cached, simply return them.
+          [alpha-nodes facts]
+
+          ;; The alpha nodes weren't cached for the type, so get them now.
+          (let [ancestors (conj (ancestors-fn fact-type) fact-type)
+
+                ;; Get all alpha nodes for all ancestors.  Keep them sorted to maintain
+                ;; deterministic ordering of fact propagation across the network.
+                ;; Alpha nodes do not have a :node-id of their own right now, so sort
+                ;; by the :node-id of their :children.
+                new-nodes (sort-by #(mapv :node-id (:children %))
+                                   (into []
+                                         (comp (map #(get alpha-roots %))
+                                               cat
+                                               (distinct))
+                                         ancestors))]
+
+            (swap! alpha-map assoc fact-type new-nodes)
+            [new-nodes facts]))))))
+
 (sc/defn build-network
   "Constructs the network from compiled beta tree and condition functions."
   [id-to-node :- {sc/Int sc/Any}
    beta-roots
    alpha-fns
-   productions]
+   productions
+   fact-type-fn
+   ancestors-fn
+   activation-group-sort-fn
+   activation-group-fn]
 
   (let [beta-nodes (vals id-to-node)
 
@@ -1517,7 +1574,9 @@
                    (fn [alpha-map [type alpha-node]]
                      (update-in alpha-map [type] conj alpha-node))
                    {}
-                   alpha-nodes)]
+                   alpha-nodes)
+
+        get-alphas-fn (create-get-alphas-fn fact-type-fn ancestors-fn alpha-map)]
 
     (strict-map->Rulebase
      {:alpha-roots alpha-map
@@ -1525,57 +1584,10 @@
       :productions productions
       :production-nodes production-nodes
       :query-nodes query-map
-      :id-to-node id-to-node})))
-
-(defn- create-get-alphas-fn
-  "Returns a function that given a sequence of facts,
-  returns a map associating alpha nodes with the facts they accept."
-  [fact-type-fn ancestors-fn merged-rules]
-
-  ;; We preserve a map of fact types to alpha nodes for efficiency,
-  ;; effectively memoizing this operation.
-  (let [alpha-map (atom {})
-
-        ;; If a customized fact-type-fn is provided,
-        ;; we must use a specialized grouping function
-        ;; that handles internal control types that may not
-        ;; follow the provided type function.
-        fact-grouping-fn (if (= fact-type-fn type)
-                           type
-                           (fn [fact]
-                             (if (isa? (type fact) :clara.rules.engine/system-type)
-                               ;; Internal system types always use Clojure's type mechanism.
-                               (type fact)
-                               ;; All other types defer to the provided function.
-                               (fact-type-fn fact))))
-
-        alpha-roots (get merged-rules :alpha-roots)]
-
-    (fn [facts]
-      (for [[fact-type facts] (platform/group-by-seq fact-grouping-fn facts)]
-
-        (if-let [alpha-nodes (get @alpha-map fact-type)]
-
-          ;; If the matching alpha nodes are cached, simply return them.
-          [alpha-nodes facts]
-
-          ;; The alpha nodes weren't cached for the type, so get them now.
-          (let [ancestors (conj (ancestors-fn fact-type) fact-type)
-
-                ;; Get all alpha nodes for all ancestors.  Keep them sorted to maintain
-                ;; deterministic ordering of fact propagation across the network.
-                ;; Alpha nodes do not have a :node-id of their own right now, so sort
-                ;; by the :node-id of their :children.
-                new-nodes (sort-by #(mapv :node-id (:children %))
-                                   (into []
-                                         (comp (map #(get alpha-roots %))
-                                               cat
-                                               (distinct))
-                                         ancestors))]
-
-            (swap! alpha-map assoc fact-type new-nodes)
-            [new-nodes facts]))))))
-
+      :id-to-node id-to-node
+      :activation-group-sort-fn activation-group-sort-fn
+      :activation-group-fn activation-group-fn
+      :get-alphas-fn get-alphas-fn})))
 
 ;; Cache of sessions for fast reloading.
 (def ^:private session-cache (atom {}))
@@ -1614,8 +1626,6 @@
         beta-root-ids (-> beta-graph :forward-edges (get 0)) ; 0 is the id of the virtual root node.
         beta-roots (vals (select-keys beta-tree beta-root-ids))
         alpha-nodes (compile-alpha-nodes (to-alpha-graph beta-graph))
-        rulebase (build-network beta-tree beta-roots alpha-nodes productions)
-        transport (LocalTransport.)
 
         ;; The fact-type uses Clojure's type function unless overridden.
         fact-type-fn (or (get options :fact-type-fn)
@@ -1631,12 +1641,13 @@
         ;; The returned salience will be a tuple of the form [rule-salience internal-salience],
         ;; where internal-salience is considered after the rule-salience and is assigned automatically by the compiler.
         activation-group-fn (eng/options->activation-group-fn options)
+        
+        rulebase (build-network beta-tree beta-roots alpha-nodes productions
+                                fact-type-fn ancestors-fn activation-group-sort-fn activation-group-fn)
 
-        ;; Create a function that groups a sequence of facts by the collection
-        ;; of alpha nodes they target.
-        ;; We cache an alpha-map for facts of a given type to avoid computing
-        ;; them for every fact entered.
-        get-alphas-fn (create-get-alphas-fn fact-type-fn ancestors-fn rulebase)]
+        get-alphas-fn (:get-alphas-fn rulebase)
+
+        transport (LocalTransport.)]
 
     (eng/assemble {:rulebase rulebase
                    :memory (eng/local-memory rulebase transport activation-group-sort-fn activation-group-fn get-alphas-fn)
