@@ -304,25 +304,28 @@
                   :let [expected-fact (nth expected-facts i)
                         fact (nth facts i)]]
             (check-fact expected-fact fact)))))))
+
+(defn rb-serde
+  [s deserialize-opts]
+  (with-open [baos (java.io.ByteArrayOutputStream.)]
+    (d/serialize-rulebase s (df/create-session-serializer baos))
+    (let [rb-data (.toByteArray baos)]
+      (with-open [bais (java.io.ByteArrayInputStream. rb-data)]
+        (if deserialize-opts
+          (d/deserialize-rulebase (df/create-session-serializer bais) deserialize-opts)
+          (d/deserialize-rulebase (df/create-session-serializer bais)))))))
  
 (deftest test-durability-fressian-serde
   (testing "SerDe of the rulebase along with working memory"
     (durability-test :fressian))
 
   (testing "Repeated SerDe of rulebase"
-    (let [rb-serde (fn [s]
-                     (with-open [baos (java.io.ByteArrayOutputStream.)]
-                       (d/serialize-rulebase s (df/create-session-serializer baos))
-                       (let [rb-data (.toByteArray baos)]
-                         (with-open [bais (java.io.ByteArrayInputStream. rb-data)]
-                           (d/deserialize-rulebase (df/create-session-serializer bais))))))
-
-          s (mk-session 'clara.durability-rules)
+    (let [s (mk-session 'clara.durability-rules)
           rb (-> s eng/components :rulebase)
-          deserialized1 (rb-serde s)
+          deserialized1 (rb-serde s nil)
           ;; Need a session to do the 2nd round of SerDe.
           restored1 (d/assemble-restored-session deserialized1 {})
-          deserialized2 (rb-serde restored1)
+          deserialized2 (rb-serde restored1 nil)
           restored2 (d/assemble-restored-session deserialized2 {})
 
           init-qresults (:query-results (session-test s))
@@ -336,12 +339,13 @@
 (deftest test-assemble-restored-session-opts
   (let [orig (mk-session 'clara.durability-rules)
 
-        test-assemble (fn [rulebase memory]
-                        (let [activation-group-fn-called? (volatile! false)
+        test-assemble (fn [orig assemble-with-memory?]
+                        (let [memory (-> orig eng/components :memory)
+                              activation-group-fn-called? (volatile! false)
                               activation-group-sort-fn-called? (volatile! false)
                               fact-type-fn-called? (volatile! false)
                               ancestors-fn-called? (volatile! false)
-
+                              
                               opts {:activation-group-fn (fn [x]
                                                            (vreset! activation-group-fn-called? true)
                                                            (or (some-> x :props :salience)
@@ -355,8 +359,10 @@
                                     :ancestors-fn (fn [x]
                                                     (vreset! ancestors-fn-called? true)
                                                     (ancestors x))}
+
+                              rulebase (rb-serde orig opts)
                               
-                              restored (if memory
+                              restored (if assemble-with-memory?
                                          (d/assemble-restored-session rulebase memory opts)
                                          (d/assemble-restored-session rulebase opts))]
 
@@ -366,12 +372,10 @@
                           (is (true? @activation-group-sort-fn-called?))
                           (is (true? @activation-group-fn-called?))
                           (is (true? @fact-type-fn-called?))
-                          (is (true? @ancestors-fn-called?))))
-
-        {:keys [rulebase memory]} (eng/components orig)]
+                          (is (true? @ancestors-fn-called?))))]
 
     (testing "restoring without given memory"
-      (test-assemble rulebase nil))
+      (test-assemble orig false))
 
     (testing "restoring with memory"
-      (test-assemble rulebase memory))))
+      (test-assemble orig true))))

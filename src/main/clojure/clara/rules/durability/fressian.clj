@@ -510,6 +510,10 @@
   d/ISessionSerializer
   (serialize [_ session opts]
     (let [{:keys [rulebase memory]} (eng/components session)
+          rulebase (assoc rulebase
+                          :activation-group-sort-fn nil
+                          :activation-group-fn nil
+                          :get-alphas-fn nil)
           record-holder (IdentityHashMap.)
           do-serialize
           (fn [sources]
@@ -535,17 +539,23 @@
           indexed-facts))))
 
   (deserialize [_ mem-facts opts]
+
     (with-open [^FressianReader rdr (fres/create-reader in-stream :handlers read-handler-lookup)]
       (let [{:keys [rulebase-only? base-rulebase]} opts
 
             record-holder (ArrayList.)
             ;; The rulebase should either be given from the base-session or found in
             ;; the restored session-state.
-            rulebase (or (and (not rulebase-only?) base-rulebase)
-                         (binding [d/*node-id->node-cache* (volatile! {})
-                                   d/*clj-record-holder* record-holder
-                                   d/*compile-expr-fn* (memoize (fn [id expr] (com/try-eval expr)))]
-                           (fres/read-object rdr)))]
+            maybe-base-rulebase (when (and (not rulebase-only?) base-rulebase)
+                                  base-rulebase)
+
+            rulebase (if maybe-base-rulebase
+                       maybe-base-rulebase
+                       (let [without-opts-rulebase (binding [d/*node-id->node-cache* (volatile! {})
+                                                             d/*clj-record-holder* record-holder
+                                                             d/*compile-expr-fn* (memoize (fn [id expr] (com/try-eval expr)))]
+                                                     (fres/read-object rdr))]
+                         (d/rulebase->rulebase-with-opts without-opts-rulebase opts)))]
 
         (if rulebase-only?
           rulebase
