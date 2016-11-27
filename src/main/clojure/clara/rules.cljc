@@ -292,7 +292,7 @@
       options are supported, although most users will either not need these or just the first two:
 
       * :fact-type-fn, which must have a value of a function used to determine the logical type of a given
-        cache. Defaults to Clojure's type function.
+        fact. Defaults to Clojure's type function.
       * :cache, indicating whether the session creation can be cached, effectively memoizing mk-session.
         Defaults to true. Callers may wish to set this to false when needing to dynamically reload rules.
       * :ancestors-fn, which returns a sequence of ancestors for a given type. Defaults to Clojure's ancestors function. A
