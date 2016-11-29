@@ -1183,75 +1183,84 @@
                                  [?t <- Temperature (= ?l location)]
                                  [:not [Cold (= temperature (:temperature ?t))]]]]])
 
-        s (mk-session [cold-not-match-temp] :cache false)
-        s-with-prior (mk-session [negation-with-prior-bindings] :cache false)
-        s-with-nested (mk-session [nested-negation-with-prior-bindings] :cache false)]
+        object-query (dsl/parse-query [] [[?o <- Object]])
 
-    (is (= [{}]
-           (-> s
-               (fire-rules)
-               (query cold-not-match-temp))))
+        s (mk-session [cold-not-match-temp object-query] :cache false)
+        s-with-prior (mk-session [negation-with-prior-bindings object-query] :cache false)
+        s-with-nested (mk-session [nested-negation-with-prior-bindings object-query] :cache false)
+
+        ;; Validate that no system types can match a user-provided production.  We use Object to make
+        ;; the most general user-provided production possible.  See issue 149 for discussion of the issue
+        ;; that caused internal facts, specifically NegationResult, to be used in these test cases.
+        no-system-types? (fn [session]
+                           (not-any? (fn [fact] (isa? (type fact) ::eng/system-type))
+                                     (as-> session x
+                                       (query x object-query)
+                                       (map :?o x))))]
 
     ;; Should not match when negation is met.
-    (is (empty? (-> s
-                    (insert (->Temperature 10 "MCI")
-                            (->Cold 10))
-                    (fire-rules)
-                    (query cold-not-match-temp))))
+    (let [end-session (-> s
+                          (insert (->Temperature 10 "MCI")
+                                  (->Cold 10))
+                          (fire-rules))]
+      (is (empty? (query end-session cold-not-match-temp)))
+      (is (no-system-types? end-session)))
 
     ;; Should have result if only a single item matched.
-    (is (= [{}]
-           (-> s
-               (insert (->Temperature 10 "MCI"))
-               (fire-rules)
-               (query cold-not-match-temp))))
+    (let [end-session (-> s
+                          (insert (->Temperature 10 "MCI"))
+                          (fire-rules))]
+      (is (= [{}]
+             (query end-session cold-not-match-temp)))
+      (is (no-system-types? end-session)))
 
     ;; Test previous binding is visible.
-    (is (empty? (-> s-with-prior
-                    (fire-rules)
-                    (query negation-with-prior-bindings))))
+    (let [end-session (fire-rules s-with-prior)]
+      (is (empty? (-> s-with-prior
+                      (fire-rules)
+                      (query negation-with-prior-bindings))))
+      (is (no-system-types? end-session)))
 
     ;; Should have result since negation does not match.
-    (is (= [{:?l "MCI"}]
-           (-> s-with-prior
-               (insert (->WindSpeed 10 "MCI")
-                       (->Temperature 10 "ORD")
-                       (->Cold 10))
-               (fire-rules)
-               (query negation-with-prior-bindings))))
+    (let [end-session (-> s-with-prior
+                          (insert (->WindSpeed 10 "MCI")
+                                  (->Temperature 10 "ORD")
+                                  (->Cold 10))
+                          (fire-rules))]
+      (is (= [{:?l "MCI"}]
+             (query end-session negation-with-prior-bindings)))
+      (is (no-system-types? end-session)))
 
     ;; No result because negation matches.
-    (is (empty? (-> s-with-prior
-                    (insert (->WindSpeed 10 "MCI")
-                            (->Temperature 10 "MCI")
-                            (->Cold 10))
-                    (fire-rules)
-                    (query negation-with-prior-bindings))))
-
-    ;; There should be only one root to the beta tree because the top condition is reused.
-;;    (is (= 1 (count (com/to-beta-tree [negation-with-prior-bindings]))))
-;;    (is (= 1 (count (com/to-beta-tree [nested-negation-with-prior-bindings]))))
+    (let [end-session (-> s-with-prior
+                          (insert (->WindSpeed 10 "MCI")
+                                  (->Temperature 10 "MCI")
+                                  (->Cold 10))
+                          (fire-rules))]
+      (is (empty? (query end-session negation-with-prior-bindings)))
+      (is (no-system-types? end-session)))
 
     ;; Has nothing because the cold does not match the nested negation,
     ;; so the :and is true and is negated at the top level.
-    (is (empty?
-         (-> s-with-nested
-             (insert (->WindSpeed 10 "MCI")
-                     (->Temperature 10 "MCI")
-                     (->Cold 20))
-             (fire-rules)
-             (query nested-negation-with-prior-bindings))))
+    (let [end-session (-> s-with-nested
+                          (insert (->WindSpeed 10 "MCI")
+                                  (->Temperature 10 "MCI")
+                                  (->Cold 20))
+                          (fire-rules))]
+      (is (empty?
+           (query end-session nested-negation-with-prior-bindings)))
+      (is (no-system-types? end-session)))
 
     ;; Match the nested negation, which is then negated again at the higher level,
     ;; so this rule matches.
-    (is (= [{:?l "MCI"}]
-           (-> s-with-nested
-               (insert (->WindSpeed 10 "MCI")
-                       (->Temperature 10 "MCI")
-                       (->Cold 10))
-               (fire-rules)
-               (query nested-negation-with-prior-bindings))))))
-
+    (let [end-session (-> s-with-nested
+                          (insert (->WindSpeed 10 "MCI")
+                                  (->Temperature 10 "MCI")
+                                  (->Cold 10))
+                          (fire-rules))]
+      (is (= [{:?l "MCI"}]
+             (query end-session nested-negation-with-prior-bindings)))
+      (is (no-system-types? end-session)))))
 
 (deftest test-complex-negation-custom-type
   (let [cold-not-match-temp
