@@ -295,8 +295,9 @@
         fact. Defaults to Clojure's type function.
       * :cache, indicating whether the session creation can be cached, effectively memoizing mk-session.
         Defaults to true. Callers may wish to set this to false when needing to dynamically reload rules.
-      * :ancestors-fn, which returns a sequence of ancestors for a given type. Defaults to Clojure's ancestors function. A
-        fact of a given type will match any rule that uses one of that type's ancestors.
+      * :ancestors-fn, which returns a collection of ancestors for a given type. Defaults to Clojure's ancestors function. A
+        fact of a given type will match any rule that uses one of that type's ancestors.  Note that if the collection is ordered
+        this ordering will be maintained by Clara; ordering the ancestors consistently will increase the consistency of overall performance.
       * :activation-group-fn, a function applied to production structures and returns the group they should be activated with.
         It defaults to checking the :salience property, or 0 if none exists.
       * :activation-group-sort-fn, a comparator function used to sort the values returned by the above :activation-group-fn.

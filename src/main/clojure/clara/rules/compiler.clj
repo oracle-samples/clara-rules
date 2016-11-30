@@ -1487,52 +1487,99 @@
         env (assoc :env env))
       {:alpha-expr alpha-expr})))
 
+;; Wrap the fact-type so that Clojure equality and hashcode semantics are used
+;; even though this is placed in a Java map.
+(deftype AlphaRootsWrapper [roots roots-hash]
+  Object
+  (equals [this other]
+    ;; Since we memoize the function that retrieves these on the fact type, and since the alpha roots for
+    ;; any given type primary type T (excluding descendants and ancestors) are a disjoint
+    ;; set with respect to the alpha roots for any other primary type T2, we know that we will
+    ;; only have one AlphaRootsWrapper object for any given set of alpha roots per get-alphas-fn instance.
+    ;; Therefore we can just use reference equality in the interest of maximizing performance.
+    (identical? this other))
+  ;; Since know we will need to find the hashcode of this object in all cases just eagerly calculate it upfront
+  ;; and avoid extra calls to hash later.  The hashcode of the Clojure vector of roots would be cached but there
+  ;; is no need to even make the call to that cache.
+  (hashCode [this] roots-hash))
+
 (defn- create-get-alphas-fn
   "Returns a function that given a sequence of facts,
   returns a map associating alpha nodes with the facts they accept."
   [fact-type-fn ancestors-fn alpha-roots]
 
-  ;; We preserve a map of fact types to alpha nodes for efficiency,
-  ;; effectively memoizing this operation.
-  (let [alpha-map (atom {})
-
-        ;; If a customized fact-type-fn is provided,
+  (let [ ;; If a customized fact-type-fn is provided,
         ;; we must use a specialized grouping function
         ;; that handles internal control types that may not
         ;; follow the provided type function.
-        fact-grouping-fn (if (= fact-type-fn type)
-                           type
-                           (fn [fact]
-                             (if (isa? (type fact) :clara.rules.engine/system-type)
-                               ;; Internal system types always use Clojure's type mechanism.
-                               (type fact)
-                               ;; All other types defer to the provided function.
-                               (fact-type-fn fact))))]
+        wrapped-fact-type-fn (if (= fact-type-fn type)
+                               type
+                               (fn [fact]
+                                 (if (isa? (type fact) :clara.rules.engine/system-type)
+                                   ;; Internal system types always use Clojure's type mechanism.
+                                   (type fact)
+                                   ;; All other types defer to the provided function.
+                                   (fact-type-fn fact))))
+
+        ;; Wrap the ancestors-fn so that we don't send internal facts such as NegationResult
+        ;; to user-provided productions.  Note that this work is memoized inside fact-type->roots.
+        wrapped-ancestors-fn (fn [fact-type]
+                               (if (isa? fact-type :clara.rules.engine/system-type)
+                                 ;; Exclude system types from having ancestors for now
+                                 ;; since none of our use-cases require them.  If this changes
+                                 ;; we may need to define a custom hierarchy for them.
+                                 #{}
+                                 (ancestors-fn fact-type)))
+
+        fact-type->roots (memoize
+                          (fn [fact-type]
+                            ;; There is no inherent ordering here but we put the AlphaRootsWrapper instances
+                            ;; in a vector rather than a set to avoid nondeterministic ordering (and thus nondeterministic
+                            ;; performance).
+                            (into []
+                                  ;; If a given type in the ancestors has no matching alpha roots,
+                                  ;; don't return it as an ancestor.  Fact-type->roots is memoized on the fact type,
+                                  ;; but work is performed per group returned on each call the to get-alphas-fn.  Therefore
+                                  ;; removing groups with no alpha nodes here will improve performance on subsequent calls
+                                  ;; to the get-alphas-fn with the same fact type.
+                                  (keep #(when-let [roots (not-empty (get alpha-roots %))]
+                                           (AlphaRootsWrapper. roots (hash roots))))
+                                  ;; If a user-provided ancestors-fn returns a sorted collection, for example for
+                                  ;; ensuring determinism, we respect that ordering here by conj'ing on to the existing
+                                  ;; collection.
+                                  (conj (wrapped-ancestors-fn fact-type) fact-type))))
+        
+        update-roots->facts! (fn [^java.util.Map roots->facts roots-group fact]
+                               (if-let [v (.get roots->facts roots-group)]
+                                 (.add ^java.util.List v fact)
+                                 (.put roots->facts roots-group (doto (java.util.LinkedList.)
+                                                                  (.add fact)))))]
 
     (fn [facts]
-      (for [[fact-type facts] (platform/group-by-seq fact-grouping-fn facts)]
+      (let [roots->facts (java.util.LinkedHashMap.)]
 
-        (if-let [alpha-nodes (get @alpha-map fact-type)]
+        (doseq [fact facts
+                roots-group (fact-type->roots (wrapped-fact-type-fn fact))]
+          (update-roots->facts! roots->facts roots-group fact))
+        
+        (let [return-list (java.util.LinkedList.)
+              entries (.entrySet roots->facts)
+              entries-it (.iterator entries)]
+          ;; We iterate over the LinkedHashMap manually to avoid potential issues described at http://dev.clojure.org/jira/browse/CLJ-1738
+          ;; where a Java iterator can return the same entry object repeatedly and mutate it after each next() call.  We use mutable lists
+          ;; for performance but wrap them in unmodifiableList to make it clear that the caller is not expected to mutate these lists.
+          ;; Since after this function returns the only reference to the fact lists will be through the unmodifiedList we can depend elsewhere
+          ;; on these lists not changing.  Since the only expected workflow with these lists is to loop through them, not add or remove elements,
+          ;; we don't gain much from using a transient (which can be efficiently converted to a persistent data structure) rather than a mutable type. 
+          (loop []
+            (when (.hasNext entries-it)
+              (let [^java.util.Map$Entry e (.next entries-it)]
+                (.add return-list [(-> e ^AlphaRootsWrapper (.getKey) .roots)
+                                   (java.util.Collections/unmodifiableList (.getValue e))])
+                (recur))))
+          
+          (java.util.Collections/unmodifiableList return-list))))))
 
-          ;; If the matching alpha nodes are cached, simply return them.
-          [alpha-nodes facts]
-
-          ;; The alpha nodes weren't cached for the type, so get them now.
-          (let [ancestors (conj (ancestors-fn fact-type) fact-type)
-
-                ;; Get all alpha nodes for all ancestors.  Keep them sorted to maintain
-                ;; deterministic ordering of fact propagation across the network.
-                ;; Alpha nodes do not have a :node-id of their own right now, so sort
-                ;; by the :node-id of their :children.
-                new-nodes (sort-by #(mapv :node-id (:children %))
-                                   (into []
-                                         (comp (map #(get alpha-roots %))
-                                               cat
-                                               (distinct))
-                                         ancestors))]
-
-            (swap! alpha-map assoc fact-type new-nodes)
-            [new-nodes facts]))))))
 
 (sc/defn build-network
   "Constructs the network from compiled beta tree and condition functions."
