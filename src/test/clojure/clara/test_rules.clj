@@ -17,6 +17,8 @@
             [schema.test])
   (import [clara.rules.testfacts Temperature WindSpeed Cold Hot TemperatureHistory
            ColdAndWindy LousyWeather First Second Third Fourth FlexibleFields]
+          [clara.rules.engine
+           ISystemFact]
           [java.util TimeZone]
           [clara.tools.tracing
            PersistentTracingListener]))
@@ -1193,7 +1195,7 @@
         ;; the most general user-provided production possible.  See issue 149 for discussion of the issue
         ;; that caused internal facts, specifically NegationResult, to be used in these test cases.
         no-system-types? (fn [session]
-                           (not-any? (fn [fact] (isa? (type fact) ::eng/system-type))
+                           (not-any? (fn [fact] (instance? ISystemFact fact))
                                      (as-> session x
                                        (query x object-query)
                                        (map :?o x))))]

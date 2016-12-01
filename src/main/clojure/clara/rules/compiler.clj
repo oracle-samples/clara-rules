@@ -28,7 +28,8 @@
             AccumulateWithJoinFilterNode
             LocalTransport
             LocalSession
-            Accumulator]
+            Accumulator
+            ISystemFact]
            [java.beans
             PropertyDescriptor]))
 
@@ -1508,14 +1509,14 @@
   returns a map associating alpha nodes with the facts they accept."
   [fact-type-fn ancestors-fn alpha-roots]
 
-  (let [ ;; If a customized fact-type-fn is provided,
+  (let [;; If a customized fact-type-fn is provided,
         ;; we must use a specialized grouping function
         ;; that handles internal control types that may not
         ;; follow the provided type function.
         wrapped-fact-type-fn (if (= fact-type-fn type)
                                type
                                (fn [fact]
-                                 (if (isa? (type fact) :clara.rules.engine/system-type)
+                                 (if (instance? ISystemFact fact)
                                    ;; Internal system types always use Clojure's type mechanism.
                                    (type fact)
                                    ;; All other types defer to the provided function.
@@ -1524,7 +1525,7 @@
         ;; Wrap the ancestors-fn so that we don't send internal facts such as NegationResult
         ;; to user-provided productions.  Note that this work is memoized inside fact-type->roots.
         wrapped-ancestors-fn (fn [fact-type]
-                               (if (isa? fact-type :clara.rules.engine/system-type)
+                               (if (isa? fact-type ISystemFact)
                                  ;; Exclude system types from having ancestors for now
                                  ;; since none of our use-cases require them.  If this changes
                                  ;; we may need to define a custom hierarchy for them.

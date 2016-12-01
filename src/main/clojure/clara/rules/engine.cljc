@@ -30,11 +30,30 @@
 (def empty-token (->Token [] {}))
 
 ;; Record indicating the negation existing in the working memory.
-(defrecord NegationResult [gen-rule-name])
+;;
+;; Determining if an object is an instance of a class is a primitive
+;; JVM operation and is much more efficient than determining
+;; if that object descends from a particular object through
+;; Clojure's hierarchy as determined by the isa? function.
+;; See Issue 239 for more details.
+#?(:clj
+    (do
+      ;; A marker interface to identify internal facts.
+      (definterface ISystemFact)
+      (defrecord NegationResult [gen-rule-name]
+        ISystemFact))
 
-;; Make the negation result a "system type", so its type is not overridden
-;; with a customized fact type function.
-(derive NegationResult :clara.rules.engine/system-type)
+    :cljs
+    (do
+      (defrecord NegationResult [gen-rule-name])
+      ;; Make NegationResult a "system type" so that NegationResult
+      ;; facts are special-cased when matching productions. This serves
+      ;; the same purpose as implementing the ISystemFact Java interface
+      ;; on the Clojure version of NegationResult.
+      ;; ClojureScript does not have definterface; if we experience performance
+      ;; problems in ClojureScript similar to those on the JVM that are
+      ;; described in issue 239 we can investigate a similar strategy in JavaScript.
+      (derive NegationResult ::system-type)))
 
 ;; Schema for the structure returned by the components
 ;; function on the session protocol.
