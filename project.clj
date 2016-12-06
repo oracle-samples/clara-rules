@@ -1,4 +1,4 @@
-(defproject com.cerner/clara-rules "0.13.0-SNAPSHOT"
+(defproject com.cerner/clara-rules "0.13.0-RC5"
   :description "Clara Rules Engine"
   :url "https://github.com/cerner/clara-rules"
   :license {:name "Apache License Version 2.0"

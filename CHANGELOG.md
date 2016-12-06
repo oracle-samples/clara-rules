@@ -1,5 +1,10 @@
 This is a history of changes to clara-rules.
 
+### 0.13.0-RC5
+*  The get-alphas-fn is now shared between deserialized sessions with the same rulebase to increase the performance benefit from caching.   Note that this a non-passive change to the experimental durability API. See [issue 234](https://github.com/cerner/clara-rules/issues/234).
+* Improve performance on the JVM when productions have a type that has multiple descendant types that are found in the session. See [issue 236](https://github.com/cerner/clara-rules/issues/236).
+* Improve performance on the JVM by replacing internal use of Clojure's hierarchies with class-based dispatch. See [issue 239](https://github.com/cerner/clara-rules/issues/239).
+
 ### 0.13.0-RC4
 
 * The project is now moved to the com.cerner group and [Cerner's GitHub organization](https://github.com/cerner/).
@@ -35,7 +40,7 @@ This is an initial release to validate revamped durability logic. Details and a 
 * Optimize common retraction pattern by checking fact identity first. See [issue 213](https://github.com/cerner/clara-rules/issues/213).
 * Correct several accumulator edge cases. See issues [189](https://github.com/cerner/clara-rules/issues/189), [190](https://github.com/cerner/clara-rules/issues/190), and [102](https://github.com/cerner/clara-rules/issues/102).
 * Working memory optimizations. See [issue 184](https://github.com/cerner/clara-rules/issues/184).
-* Clojure doc clarifications. 
+* Clojure doc clarifications.
 
 ### 0.11.1
 
