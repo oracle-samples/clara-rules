@@ -39,23 +39,34 @@
             ReadHandler]
            [java.util
             ArrayList
-            IdentityHashMap]
+            IdentityHashMap
+            Map
+            WeakHashMap]
            [java.io
             InputStream
             OutputStream]))
 
+;; Use this map to cache the symbol for the map->RecordNameHere
+;; factory function created for every Clojure record to improve
+;; serialization performance.
+;; See https://github.com/cerner/clara-rules/issues/245 for more extensive discussion.
+(def ^:private ^Map class->factory-fn-sym (WeakHashMap.))
+
 (defn record-map-constructor-name
   "Return the 'map->' prefix, factory constructor function for a Clojure record."
   [rec]
-  (let [class-name (-> rec class .getName)
-        idx (.lastIndexOf class-name (int \.))
-        ns-nom (.substring class-name 0 idx)
-        nom (.substring class-name (inc idx))]
-    ;; There could be some sort of cache for these based on class.  It may speed
-    ;; up serialization, but doesn't seem worth it yet.
-    (symbol (str (cm/demunge ns-nom)
-                 "/map->"
-                 (cm/demunge nom)))))
+  (let [klass (class rec)]
+    (if-let [cached-sym (.get class->factory-fn-sym klass)]
+      cached-sym
+      (let [class-name (.getName ^Class klass)
+            idx (.lastIndexOf class-name (int \.))
+            ns-nom (.substring class-name 0 idx)
+            nom (.substring class-name (inc idx))
+            factory-fn-sym (symbol (str (cm/demunge ns-nom)
+                                        "/map->"
+                                        (cm/demunge nom)))]
+        (.put class->factory-fn-sym klass factory-fn-sym)
+        factory-fn-sym))))
 
 (defn write-map
   "Writes a map as Fressian with the tag 'map' and all keys cached."
