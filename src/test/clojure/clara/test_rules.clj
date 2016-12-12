@@ -4976,3 +4976,20 @@
           (str "As long as one negation condition in the :or matches, regardless of how many facts match the other "
                "negation the rule should fire for join type " join-type)))))
 
+(deftest test-unresolvable-symbols-in-metadata-on-conditions
+  ;; Test removal of unwanted metadata; see PR 243 for details
+  (let [rule-output (atom nil)
+        ns-nom (ns-name *ns*)
+        rule {:ns-name ns-nom
+              :name (str ns-nom "/unresolvable-metadata-rule")
+              :lhs [(with-meta {:type Temperature
+                                :constraints [(list `< 'temperature 20)]}
+                      {:custom-meta 'unresolvable-symbol})]
+              :rhs `(do (reset! ~'rule-output ~'?__token__))
+              :env {:rule-output rule-output}}
+
+        session (-> (mk-session [rule])
+                    (insert (->Temperature 10 "MCI"))
+                    (fire-rules))]
+
+    (is (has-fact? @rule-output (->Temperature 10 "MCI")))))

@@ -1473,9 +1473,12 @@
         :let [{:keys [type constraints fact-binding args]} condition
               cmeta (meta condition)
               alpha-expr (with-meta (compile-condition
-                                     type (first args)  constraints
-                                     fact-binding env)
-                           (meta condition))]]
+                                      type (first args)  constraints
+                                      fact-binding env)
+                           ;; Remove all metadata but file and line number
+                           ;; to protect from evaluating usafe metadata
+                           ;; See PR 243 for more detailed discussion
+                           (select-keys cmeta [:line :file]))]]
 
     (with-meta
       (cond-> {:type (effective-type type)
