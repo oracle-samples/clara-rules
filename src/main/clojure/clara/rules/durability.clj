@@ -184,23 +184,49 @@
 ;;; indexed-session-memory-state for more details.
 (defrecord MemIdx [idx])
 
+;;; Same as MemIdx but specific to internal objects, such as Token or Element.
+(defrecord InternalMemIdx [idx])
+
 (defn find-index
-  "Finds the fact in the fact->index-map.  The fact is assumed to be a key.  Returns the value for
+  "Finds the fact in the fact->idx-map.  The fact is assumed to be a key.  Returns the value for
    that key, which should just be a numeric index used to track where facts are stubbed out with
    MemIdx's in working memory so that they can be 'put back' later."
-  [^java.util.Map fact->index-map fact]
-  (.get fact->index-map fact))
+  [^Map fact->idx-map fact]
+  (.get fact->idx-map fact))
 
 (defn- find-index-or-add!
   "The same as find-index, but if the fact is not found, it is added to the map (destructively)
    and the index it was mapped to is returned.
    This implies that the map must support the mutable map interface, namely java.util.Map.put()."
-  [^java.util.Map fact->index-map fact]
+  [^Map fact->index-map fact]
   (or (.get fact->index-map fact)
       (let [n (.size fact->index-map)
             idx (->MemIdx n)]
         (.put fact->index-map fact idx)
         idx)))
+
+(defn- add-mem-internal-idx!
+  "Adds an element to fact->idx-map. The fact is assumed to be a key. The value is a tuple containing
+   both the InternalMemIdx and the 'indexed' form of the element. The indexed form is the element that
+   has had all of its internal facts stubbed with MemIdxs. The actual element is used as the key because
+   the act of stubbing the internal fields of the element changes the identity of the element thus making
+   every indexed-element unique. The indexed-element is stored so that it can be serialized rather than
+   the element itself. This function simply adds a new key, unlike find-index-or-add!, as such the caller
+   should first check that the key is not already present before calling this method.
+   Returns the stub used to represent an internal fact, so that it can be 'put back' later."
+  [^Map fact->idx-map
+   element
+   indexed-element]
+  (let [n (.size fact->idx-map)
+        idx (->InternalMemIdx n)]
+    (.put fact->idx-map element [idx indexed-element])
+    idx))
+
+(defn- find-mem-internal-idx
+  "Returns the InternalMemIdx for the given element."
+  [^Map fact->idx-map
+   element]
+  (nth (.get fact->idx-map element) 0))
 
 ;;; Similar what is in clara.rules.memory currently, but just copied for now to avoid dependency issues.
 (defn- update-vals [m update-fn]
@@ -225,25 +251,31 @@
               (transient {})
               bindings-map)))
 
-(defn- index-token [seen token]
-  (-> token
-      (update :matches
-              #(mapv (fn [[fact node-id]]
-                       [(find-index-or-add! seen fact)
-                        node-id])
-                     %))
-      (update :bindings
-              #(index-bindings seen %))))
+(defn- index-token [internal-seen seen token]
+  (if-let [idx (find-mem-internal-idx internal-seen token)]
+    idx
+    (let [indexed (-> token
+                    (update :matches
+                            #(mapv (fn [[fact node-id]]
+                                     [(find-index-or-add! seen fact)
+                                      node-id])
+                                   %))
+                    (update :bindings
+                            #(index-bindings seen %)))]
+      (add-mem-internal-idx! internal-seen token indexed))))
 
-(defn index-alpha-memory [seen amem]
+(defn index-alpha-memory [internal-seen seen amem]
   (let [index-update-bindings-fn #(index-bindings seen %)
+        index-update-fact-fn #(find-index-or-add! seen %)
         index-update-elements (fn [elements]
-                                (mapv (fn [elem]
-                                        (-> elem
-                                            (update :fact
-                                                    #(find-index-or-add! seen %))
-                                            (update :bindings
-                                                    index-update-bindings-fn)))
+                                (mapv #(if-let [idx (find-mem-internal-idx internal-seen %)]
+                                         idx
+                                         (let [indexed (-> %
+                                                         (update :fact
+                                                                 index-update-fact-fn)
+                                                         (update :bindings
+                                                                 index-update-bindings-fn))]
+                                           (add-mem-internal-idx! internal-seen % indexed)))
                                       elements))]
     (update-vals amem
                  #(-> (index-update-bindings-keys index-update-bindings-fn %)
@@ -280,15 +312,16 @@
                     (transient {}))
          persistent!)))
 
-(defn index-beta-memory [seen bmem]
+(defn index-beta-memory [internal-seen seen bmem]
   (let [index-update-tokens (fn [tokens]
-                              (mapv #(index-token seen %) tokens))]
+                              (mapv #(index-token internal-seen seen %)
+                                    tokens))]
     (update-vals bmem
                  (fn [v]
                    (-> (index-update-bindings-keys #(index-bindings seen %) v)
                        (update-vals index-update-tokens))))))
 
-(defn index-production-memory [seen pmem]
+(defn index-production-memory [internal-seen seen pmem]
   (let [index-update-facts (fn [facts]
                              (mapv #(or (find-index seen %)
                                         (find-index-or-add! seen %))
@@ -298,16 +331,16 @@
                    (->> token-map
                         (reduce-kv (fn [m k v]
                                      (assoc! m
-                                             (index-token seen k)
+                                             (index-token internal-seen seen k)
                                              (mapv index-update-facts v)))
                                    (transient {}))
                         persistent!)))))
 
-(defn index-activation-map [seen actmap]
+(defn index-activation-map [internal-seen seen actmap]
   (update-vals actmap
                #(mapv (fn [^RuleOrderedActivation act]
                         (mem/->RuleOrderedActivation (.-node-id act)
-                                                     (index-token seen (.-token act))
+                                                     (index-token internal-seen seen (.-token act))
                                                      (.-activation act)
                                                      (.-rule-load-order act)))
                       %)))
@@ -316,16 +349,28 @@
 ;;;; Commonly useful session serialization helpers.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def ^:dynamic *mem-facts*
+(def ^:dynamic ^List *mem-facts*
   "Useful for ISessionSerializer implementors to have a reference to the facts deserialized via 
    IWorkingMemorySerializer that are needed to restore working memory whose locations were stubbed
    with a MemIdx during serialization."
   nil)
 
+(def ^:dynamic ^List *mem-internal*
+  "Useful for ISessionSerializer implementors to have a reference to the facts deserialized via
+   IWorkingMemorySerializer that are needed to restore working memory whose locations were stubbed
+   with a InternalMemIdx during serialization. These objects are specific to the Clare engine,
+   and as such will be serialized and deserialized along with the memory."
+  nil)
+
 (defn find-mem-idx
   "Finds the fact from *mem-facts* at the given index.  See docs on *mem-facts* for more."
   [idx]
-  (get *mem-facts* idx))
+  (.get *mem-facts* idx))
+
+(defn find-internal-idx
+  "Finds the fact from *mem-internal* at the given index.  See docs on *mem-internal* for more."
+  [idx]
+  (.get *mem-internal* idx))
 
 (defn indexed-session-memory-state
   "Takes the working memory from a session and strips it down to only the memory needed for
@@ -349,7 +394,23 @@
    Note!  Currently this only supports the clara.rules.memory.PersistentLocalMemory implementation
           of memory."
   [memory]
-  (let [vec-indexed-facts (fn [^java.util.Map fact->index-map]
+  (let [idx-fact-arr-pair-fn (fn [^java.util.Map$Entry e]
+                               [(:idx (.getValue e)) (.getKey e)])
+
+        internal-fact-arr-pair-fn (fn [^java.util.Map$Entry e]
+                                    ;; Intenal facts are stored with a key
+                                    ;; of the original object to a tuple of
+                                    ;; the InternalMemIdx and the indexed object.
+                                    ;; When serializing these facts, to avoid serializing
+                                    ;; consumer facts contained within internal facts,
+                                    ;; the indexed object is serialized instead of
+                                    ;; the original object itself. See add-mem-internal-idx!
+                                    ;; for more details
+                                    (let [v (.getValue e)]
+                                      [(:idx (nth v 0)) (nth v 1)]))
+
+        vec-indexed-facts (fn [^Map fact->index-map
+                               map-entry->arr-idx-pair]
                             ;; It is not generally safe to reduce or seq over a mutable Java Map.
                             ;; One example is IdentityHashMap.  The iterator of the IdentityHashMap
                             ;; mutates the map entry values in place and it is never safe to call a
@@ -372,23 +433,26 @@
                                   it (.iterator es)]
                               (when (.hasNext it)
                                 (loop [^java.util.Map$Entry e (.next it)]
-                                  (aset arr (:idx (.getValue e)) ^Object (.getKey e))
+                                  (let [pair (map-entry->arr-idx-pair e)]
+                                    (aset arr (nth pair 0) (nth pair 1)))
                                   (when (.hasNext it)
                                     (recur (.next it)))))
                               (into [] arr)))
 
         index-memory (fn [memory]
-                       (let [seen (java.util.IdentityHashMap.)
+                       (let [internal-seen (java.util.IdentityHashMap.)
+                             seen (java.util.IdentityHashMap.)
 
                              indexed (-> memory
                                          (update :accum-memory #(index-accum-memory seen %))
-                                         (update :alpha-memory #(index-alpha-memory seen %))
-                                         (update :beta-memory #(index-beta-memory seen %))
-                                         (update :production-memory #(index-production-memory seen %))
-                                         (update :activation-map #(index-activation-map seen %)))]
+                                         (update :alpha-memory #(index-alpha-memory internal-seen seen %))
+                                         (update :beta-memory #(index-beta-memory internal-seen seen %))
+                                         (update :production-memory #(index-production-memory internal-seen seen %))
+                                         (update :activation-map #(index-activation-map internal-seen seen %)))]
 
                          {:memory indexed
-                          :indexed-facts (vec-indexed-facts seen)}))]
+                          :indexed-facts (vec-indexed-facts seen idx-fact-arr-pair-fn)
+                          :internal-indexed-facts (vec-indexed-facts internal-seen internal-fact-arr-pair-fn)}))]
     (-> memory
         index-memory
         (update :memory

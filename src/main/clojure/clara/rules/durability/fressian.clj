@@ -12,11 +12,13 @@
             [clojure.java.io :as jio]
             [clojure.main :as cm])
   (:import [clara.rules.durability
-            MemIdx]
+            MemIdx
+            InternalMemIdx]
            [clara.rules.memory
             RuleOrderedActivation]
            [clara.rules.engine
             Token
+            Element
             ProductionNode
             QueryNode
             AlphaNode
@@ -489,7 +491,18 @@
     :readers {"clara/memidx"
               (reify ReadHandler
                 (read [_ rdr tag component-count]
-                  (d/find-mem-idx (.readObject rdr))))}}})
+                  (d/find-mem-idx (.readObject rdr))))}}
+
+   "clara/internalmemidx"
+   {:class InternalMemIdx
+    :writer (reify WriteHandler
+              (write [_ w c]
+                (.writeTag w "clara/internalmemidx" 1)
+                (.writeInt w (:idx c))))
+    :readers {"clara/internalmemidx"
+              (reify ReadHandler
+                (read [_ rdr tag component-count]
+                  (d/find-internal-idx (.readObject rdr))))}}})
 
 (def write-handlers
   "All Fressian write handlers used by FressianSessionSerializer's."
@@ -539,10 +552,10 @@
         (do-serialize [rulebase])
 
         ;; Otherwise memory needs to have facts extracted to return.
-        (let [{:keys [memory indexed-facts]} (d/indexed-session-memory-state memory)
+        (let [{:keys [memory indexed-facts internal-indexed-facts]} (d/indexed-session-memory-state memory)
               sources (if (:with-rulebase? opts)
-                        [rulebase memory]
-                        [memory])]
+                        [rulebase internal-indexed-facts memory]
+                        [internal-indexed-facts memory])]
 
           (do-serialize sources)
           
@@ -573,7 +586,11 @@
           (d/assemble-restored-session rulebase
                                        (binding [d/*clj-record-holder* record-holder
                                                  d/*mem-facts* mem-facts]
-                                         (fres/read-object rdr))
+                                         ;; internal memory contains facts provided by mem-facts
+                                         ;; thus mem-facts must be bound before the call to read
+                                         ;; the internal memory
+                                         (binding [d/*mem-internal* (fres/read-object rdr)]
+                                           (fres/read-object rdr)))
                                        opts))))))
 
 (s/defn create-session-serializer
