@@ -56,3 +56,23 @@
           (persistent!)))
     :cljs
     (def tuned-group-by clojure.core/group-by))
+
+#?(:clj
+    (defmacro thread-local-binding
+      "Wraps given body in a try block, where it sets each given ThreadLocal binding 
+       and removes it in finally block."
+      [bindings & body]
+      (when-not (vector? bindings)
+        (throw (ex-info "Binding needs to be a vector."
+                        {:bindings bindings})))
+      (when-not (even? (count bindings))
+        (throw (ex-info "Needs an even number of forms in binding vector"
+                        {:bindings bindings})))
+      (let [binding-pairs (partition 2 bindings)]
+        `(try
+           ~@(for [[tl v] binding-pairs]
+               `(.set ~tl ~v))
+           ~@body
+           (finally
+             ~@(for [[tl] binding-pairs]
+                 `(.remove ~tl)))))))
