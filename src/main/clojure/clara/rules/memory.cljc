@@ -95,7 +95,11 @@
   ;; Returns the group of the next activation, or nil if none are pending.
   (next-activation-group [memory])
 
-  ;; Remove the given activations from the working memory.
+  ;; Remove the given activations from the working memory.  This is expected
+  ;; to return a tuple of the form [removed-activations unremoved-activations],
+  ;; where unremoved-activations is comprised of activations passed to the memory
+  ;; for removal but which were not removed because they were not present in the memory's
+  ;; store of pending activations.
   (remove-activations! [memory production activations])
 
   ;; Clear all activations from the working memory
@@ -209,7 +213,7 @@
   "Remove the first instance of each item in the given remove-seq that
    appears in the collection.  This also tracks which items were found
    and removed.  Returns a tuple of the form:
-   [items-removed coll-with-items-removed]
+   [items-removed coll-with-items-removed items-not-removed]
    This function does so eagerly since
    the working memories with large numbers of insertions and retractions
    can cause lazy sequences to become deeply nested."
@@ -253,7 +257,7 @@
                           items-removed
                           (conj! result f)])))
 
-              [(persistent! items-removed) (persistent! result)]))))
+              [(persistent! items-removed) (persistent! result) remove-seq]))))
 
 #?(:clj
    (defn fast-token-compare [compare-fn token other-token]
@@ -803,35 +807,55 @@
        ;; The reasoning here is the same as remove-elements!
        (when-not (coll-empty? to-remove)
          (let [activation-group (activation-group-fn production)
-               ^java.util.Queue activations (.get activation-map activation-group)]
+               ^java.util.Queue activations (.get activation-map activation-group)
+               removed-activations (java.util.LinkedList.)
+               unremoved-activations (java.util.LinkedList.)]
 
-           (when-not (coll-empty? activations)
+           (if (coll-empty? activations)
+             ;; If there are no activations present under the group
+             ;; then we can't remove any.
+             [[] to-remove]
              ;; Remove as many activations by identity as possible first.
              (let [not-removed (loop [to-remove-item (first to-remove)
                                       to-remove (next to-remove)
                                       not-removed (transient [])]
                                  (if to-remove-item
-                                   (let [act (->rule-ordered-activation to-remove-item true)]
+                                   (let [^RuleOrderedActivation act (->rule-ordered-activation to-remove-item true)]
                                      (if (.remove activations act)
-                                       (recur (first to-remove) (next to-remove) not-removed)
+                                       (do
+                                         (.add removed-activations (.activation act))
+                                         ;; The activations that are not removed in the identity checking sweep
+                                         ;; are a superset of the activations that are removed after the equality
+                                         ;; sweep finishes so we can just create the list of unremoved activations
+                                         ;; during that sweep.
+                                         (recur (first to-remove) (next to-remove) not-removed))
                                        (recur (first to-remove) (next to-remove) (conj! not-removed act))))
                                    (persistent! not-removed)))]
 
                ;; There may still be activations not removed since the removal may be based on value-based
                ;; equality semantics.  Retractions in the engine do not require that identical object references
                ;; are given to remove object values that are equal.
-               (doseq [act not-removed]
-                 (.remove activations (using-token-identity! act false)))
+               (doseq [^RuleOrderedActivation act not-removed]
+                 (if (.remove activations (using-token-identity! act false))
+                   (.add removed-activations (.activation act))
+                   (.add unremoved-activations (.activation act))))
 
                (when (coll-empty? activations)
-                 (.remove activation-map activation-group))))))
+                 (.remove activation-map activation-group))
+
+               [(java.util.Collections/unmodifiableList removed-activations)
+                (java.util.Collections/unmodifiableList unremoved-activations)]))))
        :cljs
-       (let [activation-group (activation-group-fn production)]
-         (set! activation-map
-               (assoc activation-map
-                      activation-group
-                      (second (remove-first-of-each to-remove
-                                                    (get activation-map activation-group))))))))
+       (let [activation-group (activation-group-fn production)
+             current-activations (get activation-map activation-group)
+             [removed-activations remaining-activations unremoved-activations]
+             (remove-first-of-each
+              to-remove
+              current-activations)]
+         (set! activation-map (assoc activation-map
+                                     activation-group
+                                     remaining-activations))
+         [removed-activations unremoved-activations])))
 
   #?(:clj
       (clear-activations!
