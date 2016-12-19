@@ -4,7 +4,7 @@
   (:require [cljs.test :as t]
             [clara.rules.engine :as eng]
             [clara.rules.accumulators :as acc]
-            [clara.rules :refer [insert fire-rules query insert!]
+            [clara.rules :refer [insert retract fire-rules query insert!]
                          :refer-macros [defrule defsession defquery]]
             [clara.rules.testfacts :refer [->Temperature Temperature
                                            ->WindSpeed WindSpeed
@@ -191,3 +191,21 @@
              (:bindings (ex-data e))))
       (is (= "clara.test-rules/throw-on-bad-temp"
              (:name (ex-data e)))))))
+
+(deftest test-remove-pending-rule-activation
+  (let [no-activations-session (-> my-session
+                                   (insert (->Temperature -10 "ORD")
+                                           (->WindSpeed 50 "ORD"))
+                                   (retract (->WindSpeed 50 "ORD"))
+                                   fire-rules)
+
+        one-activation-session (-> my-session
+                                   (insert (->Temperature -10 "ORD")
+                                           (->WindSpeed 50 "ORD")
+                                           (->WindSpeed 50 "ORD"))
+                                   (retract (->WindSpeed 50 "ORD"))
+                                   fire-rules)]
+
+    (is (= (query no-activations-session find-cold-and-windy) []))
+    (is (= (query one-activation-session find-cold-and-windy)
+           [{:?fact (->ColdAndWindy -10 50)}]))))                   

@@ -4993,3 +4993,35 @@
                     (fire-rules))]
 
     (is (has-fact? @rule-output (->Temperature 10 "MCI")))))
+
+(deftest test-remove-pending-activation-with-equal-previous-insertion
+  ;; See issue 250 for details of the bug fix this tests.
+  (let [lousy-weather-rule (dsl/parse-rule [[?cw <- ColdAndWindy]]
+                                           (insert! (->LousyWeather)))
+
+        lousy-weather-query (dsl/parse-query [] [[LousyWeather]])
+
+        empty-session (mk-session [lousy-weather-rule lousy-weather-query] :cache false)
+
+        ;; Test paths in remove-activations! that only match on facts that are equal by
+        ;; value but not by reference.
+        end-session-equal-facts (-> empty-session
+                                    (insert (->ColdAndWindy 10 10))
+                                    fire-rules
+                                    (insert (->ColdAndWindy 10 10))
+                                    (retract (->ColdAndWindy 10 10))
+                                    fire-rules)
+
+        ;; Test paths in remove-activations! in LocalMemory that only match on facts that are
+        ;; equal by reference.
+        end-session-identical-facts (let [fact (->ColdAndWindy 10 10)]
+                                      (-> empty-session
+                                          (insert fact)
+                                          fire-rules
+                                          (insert fact)
+                                          (retract fact)
+                                          fire-rules))]
+
+    (is (= (query end-session-equal-facts lousy-weather-query)
+           (query end-session-identical-facts lousy-weather-query)
+           [{}]))))
