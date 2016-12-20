@@ -53,7 +53,8 @@
 ;; factory function created for every Clojure record to improve
 ;; serialization performance.
 ;; See https://github.com/cerner/clara-rules/issues/245 for more extensive discussion.
-(def ^:private ^Map class->factory-fn-sym (WeakHashMap.))
+(def ^:private ^Map class->factory-fn-sym (java.util.Collections/synchronizedMap
+                                           (WeakHashMap.)))
 
 (defn record-map-constructor-name
   "Return the 'map->' prefix, factory constructor function for a Clojure record."
