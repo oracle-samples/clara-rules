@@ -1,5 +1,14 @@
 This is a history of changes to clara-rules.
 
+### 0.13.0-RC6
+This release is mostly for performance improvements to durability over 0.13.0-RC5.
+
+* Lookup of the record factory functions during serialization is now cached. See [issue 245](https://github.com/cerner/clara-rules/issues/245) and [issue 253](https://github.com/cerner/clara-rules/issues/253).
+* Removes undesired interaction of metadata on rules and queries that are built outside defrule and defquery with Clara's compiler that caused session compilation to fail. No sessions that previously compiled should be impacted by this change. See [pull request 243](https://github.com/cerner/clara-rules/pull/243).
+* Elements and tokens that are identical by reference before serialization are now identical by reference after deserialization.  See [issue 247](https://github.com/cerner/clara-rules/issues/247).
+* Replaces dynamic vars with JVM ThreadLocals in durability to improve performance.  See [pull request 251](https://github.com/cerner/clara-rules/pull/251).
+* Fixes an edge case where a retraction could be duplicated. See [issue 250](https://github.com/cerner/clara-rules/issues/250).
+
 ### 0.13.0-RC5
 *  The get-alphas-fn is now shared between deserialized sessions with the same rulebase to increase the performance benefit from caching.   Note that this a non-passive change to the experimental durability API. See [issue 234](https://github.com/cerner/clara-rules/issues/234).
 * Improve performance on the JVM when productions have a type that has multiple descendant types that are found in the session. See [issue 236](https://github.com/cerner/clara-rules/issues/236).
