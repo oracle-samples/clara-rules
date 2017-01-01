@@ -235,7 +235,11 @@
   "Compiles a sequence of constraints into a structure that can be evaluated.
 
    Callers may also pass a collection of equality-only-variables, which instructs
-   this function to only do an equality check on them rather than create a unification binding."
+   this function to only do an equality check on them rather than create a unification binding.
+
+   The returned expression evaluates to a two item vector, [bindings error], which contains
+   the evaluated bindings in the first argument and a map with information on any exception
+   that might have been thrown by evaluating a constraint as the second vector entry."
   ([exp-seq]
    (compile-constraints exp-seq #{}))
   ([exp-seq equality-only-variables]
@@ -289,7 +293,18 @@
 
          ;; No variables to unify, so simply check the expression and
          ;; move on to the rest.
-         `(if ~exp ~compiled-rest nil))))))
+         (let [exception-type (if (compiling-cljs?) :default Exception)]
+           `(let [test# (try ~exp
+                                 (catch ~exception-type ~'e
+                                   (throw (ex-info "Constraint exception"
+                                                   {:exception ~'e
+                                                    :constraint-exp '~exp
+                                                    :bindings @~'?__bindings__
+                                                    :env ~'?__env__
+                                                    ::constraint-exception true}))))]
+              (if test#
+                ~compiled-rest))))))))
+
 
 
 (defn flatten-expression
@@ -355,7 +370,7 @@
 
         ;; The destructured environment, if any
         destructured-env (if (> (count env) 0)
-                           {:keys (mapv #(symbol (name %)) (keys env))}
+                           {:keys (mapv #(symbol (name %)) (keys env)) :as '?__env__}
                            '?__env__)
 
         ;; Initial bindings used in the return of the compiled condition expresion.
@@ -410,7 +425,7 @@
         binding-keys (variables-as-keywords constraints)
 
         destructured-env (if (> (count env) 0)
-                           {:keys (mapv #(symbol (name %)) (keys env))}
+                           {:keys (mapv #(symbol (name %)) (keys env)) :as '?__env__}
                            '?__env__)
 
         destructured-fact (first args)
@@ -437,7 +452,7 @@
          ~(add-meta '?__fact__ type)
           ~destructured-env]
        (let [~@assignments
-             ~'?__bindings__ (atom {})]
+             ~'?__bindings__ (atom (:bindings ~'?__token__))]
          ~(compile-constraints constraints equality-only-variables)))))
 
 (defn- expr-type [expression]
