@@ -5059,3 +5059,136 @@
     
     (is (not-any? #(= 1 (count %)) @accum-state)
         "Facts with common ancestors should be batched together, expected either the initial accumulator value or a vector containing both lists but never a vector containing one list.")))
+
+(deftest test-single-condition-queries-constraint-exception
+  (let [query-template (dsl/parse-query [] [[Temperature
+                                             (= ?location location)
+                                             (> temperature 0)]])
+        temperature-query1 (assoc query-template :name "temperature-query1")
+        temperature-query2 (assoc query-template :name "temperature-query2")
+        temperature-fact (->Temperature nil "MCI")]
+    (assert-ex-data {:constraint-exp '(> temperature 0)
+                     :bindings {:?location "MCI"}
+                     :fact temperature-fact
+                     :conditions-and-rules
+                     {[clara.rules.testfacts.Temperature '(= ?location location) '(> temperature 0)]
+                      (sorted-set [:query  "temperature-query1"] [:query "temperature-query2"])}}
+                    (-> (mk-session [temperature-query1 temperature-query2] :cache false)
+                        (insert temperature-fact)
+                        (fire-rules)
+                        (query temperature-query1)))))
+
+(deftest test-single-condition-rules-constraint-exception
+  (let [rule-template (dsl/parse-rule [[Temperature
+                                        (= ?location location)
+                                        (> temperature 0)]]
+                                      (println "Ok"))
+        temperature-rule1 (assoc rule-template :name "temperature-rule1")
+        temperature-rule2 (assoc rule-template :name "temperature-rule2")
+        temperature-fact (->Temperature nil "MCI")]
+    (assert-ex-data {:constraint-exp '(> temperature 0)
+                     :bindings {:?location "MCI"}
+                     :fact temperature-fact
+                     :conditions-and-rules
+                     {[clara.rules.testfacts.Temperature '(= ?location location) '(> temperature 0)]
+                      (sorted-set [:production  "temperature-rule1"] [:production "temperature-rule2"])}}
+                    (-> (mk-session [temperature-rule1 temperature-rule2] :cache false)
+                        (insert temperature-fact)
+                        (fire-rules)))))
+
+(deftest test-single-condition-negation-rules-constraint-exception
+  (let [rule-template (dsl/parse-rule [[:not [Temperature (> temperature 0)]]]
+                                      (println "Ok"))
+        temperature-rule (assoc rule-template :name "temperature-rule")
+        temperature-fact (->Temperature nil "MCI")]
+    (assert-ex-data {:constraint-exp '(> temperature 0)
+                     :bindings {}
+                     :fact temperature-fact
+                     :conditions-and-rules
+                     {[:not [clara.rules.testfacts.Temperature '(> temperature 0)]]
+                      (sorted-set [:production  "temperature-rule"])}}
+                    (-> (mk-session [temperature-rule] :cache false)
+                        (insert temperature-fact)
+                        (fire-rules)))))
+
+(deftest test-single-condition-query-and-rule-constraint-exception
+  (let [query-template (dsl/parse-query [] [[Temperature
+                                             (= ?location location)
+                                             (> temperature 0)]])
+        temperature-query (assoc query-template :name "temperature-query")
+        rule-template (dsl/parse-rule [[Temperature
+                                        (= ?location location)
+                                        (> temperature 0)]]
+                                      (println "Ok"))
+        temperature-rule (assoc rule-template :name "temperature-rule")
+        temperature-fact (->Temperature nil "MCI")]
+    (assert-ex-data {:constraint-exp '(> temperature 0)
+                     :bindings {:?location "MCI"}
+                     :fact temperature-fact
+                     :conditions-and-rules
+                     {[clara.rules.testfacts.Temperature '(= ?location location) '(> temperature 0)]
+                      (sorted-set [:query  "temperature-query"] [:production  "temperature-rule"])}}
+                    (-> (mk-session [temperature-query temperature-rule] :cache false)
+                        (insert temperature-fact)
+                        (fire-rules)
+                        (query temperature-query)))))
+
+(deftest test-expression-join-query-constraint-exception-from-bindings
+  (let [query-template (dsl/parse-query [] [[Temperature
+                                             (= ?location location)
+                                             (= ?temperature temperature)]
+                                            [WindSpeed
+                                             (= ?location location)
+                                             (> ?temperature windspeed)]])
+        temperature-query (assoc query-template :name "temperature-query")
+        temperature-fact (->Temperature nil "MCI")
+        windspeed-fact (->WindSpeed 30 "MCI")]
+    (assert-ex-data {:constraint-exp '(> ?temperature windspeed)
+                     :bindings {:?location "MCI", :?temperature nil}
+                     :fact windspeed-fact
+                     :conditions-and-rules
+                     {[clara.rules.testfacts.WindSpeed '(= ?location location) '(> ?temperature windspeed)]
+                      (sorted-set [:query  "temperature-query"])}}
+                    (-> (mk-session [temperature-query] :cache false)
+                        (insert temperature-fact)
+                        (insert windspeed-fact)
+                        (fire-rules)
+                        (query temperature-query)))))
+
+(deftest test-expression-join-query-constraint-exception-from-fact
+  (let [query-template (dsl/parse-query [] [[Temperature
+                                             (= ?location location)
+                                             (= ?temperature temperature)]
+                                            [WindSpeed
+                                             (= ?location location)
+                                             (> ?temperature windspeed)]])
+        temperature-query (assoc query-template :name "temperature-query")
+        temperature-fact (->Temperature 90 "MCI")
+        windspeed-fact (->WindSpeed nil "MCI")]
+    (assert-ex-data {:constraint-exp '(> ?temperature windspeed)
+                     :bindings {:?location "MCI", :?temperature 90}
+                     :fact windspeed-fact
+                     :conditions-and-rules
+                     {[clara.rules.testfacts.WindSpeed '(= ?location location) '(> ?temperature windspeed)]
+                      (sorted-set [:query  "temperature-query"])}}
+                    (-> (mk-session [temperature-query] :cache false)
+                        (insert temperature-fact)
+                        (insert windspeed-fact)
+                        (fire-rules)
+                        (query temperature-query)))))
+
+(deftest test-single-condition-accum-constraint-exception
+  (let [query-template (dsl/parse-query [] [[?wind <- (acc/all) :from [Temperature (> temperature 0)]]])
+        temperature-query (assoc query-template :name "temperature-query")
+        temperature-fact (->Temperature nil "MCI")]
+    (assert-ex-data {:constraint-exp '(> temperature 0)
+                     :bindings {}
+                     :fact temperature-fact
+                     :conditions-and-rules
+                     {['?wind '<- '(clara.rules.accumulators/all) :from [clara.rules.testfacts.Temperature '(> temperature 0)]]
+                      (sorted-set [:query  "temperature-query"])}}
+                    (-> (mk-session [temperature-query] :cache false)
+                        (insert temperature-fact)
+                        (fire-rules)
+                        (query temperature-query)))))
+
