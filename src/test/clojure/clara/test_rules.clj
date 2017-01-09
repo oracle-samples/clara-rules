@@ -21,7 +21,11 @@
            ISystemFact]
           [java.util TimeZone]
           [clara.tools.tracing
-           PersistentTracingListener]))
+           PersistentTracingListener]
+          [java.util
+           List
+           LinkedList
+           ArrayList]))
 
 (use-fixtures :once schema.test/validate-schemas)
 
@@ -5025,3 +5029,33 @@
     (is (= (query end-session-equal-facts lousy-weather-query)
            (query end-session-identical-facts lousy-weather-query)
            [{}]))))
+
+(deftest test-alpha-batching-with-multiple-ancestors
+  ;; Validate that two distinct fact types are batched together when passed to a condition on a
+  ;; common ancestor type. We use an accumulator because it provides a convenient way to directly
+  ;; access the facts passed to the condition without exposing Clara internals.
+  ;; see issue 257 for more details of the bug surrounding this test
+  (let [accum-state (atom [])
+        
+        stateful-accum (acc/accum
+                         {:initial-value []
+                          :reduce-fn conj
+                          :retract-fn (fn [items retracted] (remove #{retracted} items))
+                          :convert-return-fn (fn [items] 
+                                               (do 
+                                                 (swap! accum-state conj items)
+                                                 items))})
+        
+        common-ancestor-rule (dsl/parse-rule [[?lists <- stateful-accum :from [List]]]
+                                             ;; don't care about whats inserted
+                                             (->LousyWeather))
+        
+        array-list (ArrayList.)
+        linked-list (LinkedList.)
+        
+        ses (-> (mk-session [common-ancestor-rule])
+              (insert-all [array-list linked-list])
+              (fire-rules))]
+    
+    (is (not-any? #(= 1 (count %)) @accum-state)
+        "Facts with common ancestors should be batched together, expected either the initial accumulator value or a vector containing both lists but never a vector containing one list.")))
