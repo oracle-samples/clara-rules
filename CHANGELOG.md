@@ -1,5 +1,8 @@
 This is a history of changes to clara-rules.
 
+### 0.13.0-RC7
+* The work to improve batching in order to improve performance at [issue 236](https://github.com/cerner/clara-rules/issues/236) didn't actually improve performance for reasons discussed and fixed at [issue 257](https://github.com/cerner/clara-rules/issues/257). 
+
 ### 0.13.0-RC6
 This release is mostly for performance improvements to durability over 0.13.0-RC5.
 
