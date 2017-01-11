@@ -1493,19 +1493,24 @@
 
 ;; Wrap the fact-type so that Clojure equality and hashcode semantics are used
 ;; even though this is placed in a Java map.
-(deftype AlphaRootsWrapper [roots roots-hash]
+(deftype AlphaRootsWrapper [fact-type ^int fact-type-hash roots]
   Object
   (equals [this other]
-    ;; Since we memoize the function that retrieves these on the fact type, and since the alpha roots for
-    ;; any given type primary type T (excluding descendants and ancestors) are a disjoint
-    ;; set with respect to the alpha roots for any other primary type T2, we know that we will
-    ;; only have one AlphaRootsWrapper object for any given set of alpha roots per get-alphas-fn instance.
-    ;; Therefore we can just use reference equality in the interest of maximizing performance.
-    (identical? this other))
+    (let [other ^AlphaRootsWrapper other]
+      (cond
+        
+        (identical? fact-type (.fact-type other)) 
+        true
+        
+        (not (== fact-type-hash (.fact-type-hash other)))
+        false
+        
+        :else
+        (= fact-type (.fact-type other)))))
+  
   ;; Since know we will need to find the hashcode of this object in all cases just eagerly calculate it upfront
-  ;; and avoid extra calls to hash later.  The hashcode of the Clojure vector of roots would be cached but there
-  ;; is no need to even make the call to that cache.
-  (hashCode [this] roots-hash))
+  ;; and avoid extra calls to hash later.
+  (hashCode [this] fact-type-hash))
 
 (defn- create-get-alphas-fn
   "Returns a function that given a sequence of facts,
@@ -1547,7 +1552,7 @@
                                   ;; removing groups with no alpha nodes here will improve performance on subsequent calls
                                   ;; to the get-alphas-fn with the same fact type.
                                   (keep #(when-let [roots (not-empty (get alpha-roots %))]
-                                           (AlphaRootsWrapper. roots (hash roots))))
+                                           (AlphaRootsWrapper. % (hash %) roots)))
                                   ;; If a user-provided ancestors-fn returns a sorted collection, for example for
                                   ;; ensuring determinism, we respect that ordering here by conj'ing on to the existing
                                   ;; collection.
