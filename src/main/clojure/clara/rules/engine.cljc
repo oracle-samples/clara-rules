@@ -163,6 +163,36 @@
   (alpha-activate [node facts memory transport listener])
   (alpha-retract [node facts memory transport listener]))
 
+
+;; Protocol for getting the type (e.g. :production and :query) and name of a
+;; terminal node.
+(defprotocol ITerminalNode
+  (terminal-node-type [this]))
+
+;; Protocol for getting a node's condition expression.
+(defprotocol IConditionNode
+  (get-condition-description [this]))
+
+(defn get-terminal-node-types
+  [node]
+  (->> node
+       (tree-seq (comp seq :children) :children)
+       (keep #(when (satisfies? ITerminalNode %)
+                (terminal-node-type %)))
+       (into (sorted-set))))
+
+(defn get-conditions-and-rule-names
+  "Returns a map from conditions to sets of rules."
+  ([node]
+   (if-let [condition (when (satisfies? IConditionNode node)
+                           (get-condition-description node))]
+     {condition (get-terminal-node-types node)}
+     (->> node
+         :children
+         (map get-conditions-and-rule-names)
+         (reduce (partial merge-with conj) {})))))
+
+
 ;; Record indicating pending insertion or removal of a sequence of facts.
 (defrecord PendingUpdate [type facts])
 
@@ -373,7 +403,10 @@
 
   (get-join-keys [node] [])
 
-  (description [node] "ProductionNode"))
+  (description [node] "ProductionNode")
+
+  ITerminalNode
+  (terminal-node-type [this] [:production (:name production)]))
 
 ;; The QueryNode is a terminal node that stores the
 ;; state that can be queried by a rule user.
@@ -389,7 +422,96 @@
 
   (get-join-keys [node] param-keys)
 
-  (description [node] (str "QueryNode -- " query)))
+  (description [node] (str "QueryNode -- " query))
+
+  ITerminalNode
+  (terminal-node-type [this] [:query (:name query)]))
+
+
+(defn node-rule-names
+  [child-type node]
+  (->> node
+       (tree-seq (comp seq :children) :children)
+       (keep child-type)
+       (map :name)
+       (distinct)
+       (sort)))
+
+(defn- list-of-names
+  "Returns formatted string with correctly pluralized header and
+  list of names. Returns nil if no such node is found."
+  [singular plural prefix names]
+  (let [msg-for-unnamed (str "  An unnamed " singular ", provide names to your "
+                             plural " if you want them to be identified here.")
+        names-string (->> names
+                          (sort)
+                          (map #(if (nil? %) msg-for-unnamed %))
+                          (map #(str prefix "  " %))
+                          (string/join "\n"))]
+    (if (pos? (count names))
+      (str prefix plural ":\n" names-string "\n"))))
+
+
+(defn- single-condition-message
+  [condition-number [condition-definition terminals]]
+  (let [productions (->> terminals
+                         (filter (comp #{:production} first))
+                         (map second))
+        queries (->> terminals
+                     (filter (comp #{:query} first))
+                     (map second))
+        production-section (list-of-names "rule" "rules" "   " productions)
+        query-section (list-of-names "query" "queries" "   " queries)]
+    (string/join
+     [(str (inc condition-number) ". " condition-definition "\n")
+      production-section
+      query-section])))
+
+(defn- throw-constraint-exception
+  "Adds a useful error message when executing a constraint node raises an exception."
+  [error node fact env]
+  (let [exp (:constraint-exp error)
+        bindings (:bindings error)
+        bindings-description (if (empty? bindings)
+                               "with no bindings\n"
+                               (str "with bindings\n  " bindings))
+        message-header (string/join ["Constraint exception.\n"
+                                     "Exception raised during execution of constraint\n"
+                                     (str "  " exp "\n")
+                                     "when processing fact\n"
+                                     (str "  " (pr-str fact) "\n")
+                                     (str bindings-description "\n")
+                                     "Conditions:\n"])
+        conditions-and-rules (get-conditions-and-rule-names node)
+        condition-messages (->> conditions-and-rules
+                                (map-indexed single-condition-message)
+                                (string/join "\n"))
+        cause (:exception error)
+        message (str message-header "\n" condition-messages)
+        info (-> error
+                 (dissoc :exception)
+                 (merge {:conditions-and-rules conditions-and-rules
+                         :fact fact
+                         :node node}))]
+    (throw (ex-info message info cause))))
+
+(defn constraint-exception-data
+  "Returns exception data for constraint exceptions and nil otherwise."
+  [exception]
+  (let [data (ex-data exception)]
+    (if (:clara.rules.compiler/constraint-exception data)
+      (dissoc data :clara.rules.compiler/constraint-exception))))
+
+(defn- alpha-node-matches
+  [facts env activation node]
+  (for [fact facts
+        :let [bindings (try (activation fact env)
+                            (catch #?(:clj Exception :cljs :default) e
+                              (if-let [error (constraint-exception-data e)]
+                                (throw-constraint-exception error node fact env)
+                                (throw e))))]
+        :when bindings] ; FIXME: add env.
+    [fact bindings]))
 
 ;; Record representing alpha nodes in the Rete network,
 ;; each of which evaluates a single condition and
@@ -397,9 +519,8 @@
 (defrecord AlphaNode [env children activation]
   IAlphaActivate
   (alpha-activate [node facts memory transport listener]
-    (let [fact-binding-pairs (for [fact facts
-                                   :let [bindings (activation fact env)] :when bindings] ; FIXME: add env.
-                               [fact bindings])]
+    node
+    (let [fact-binding-pairs (alpha-node-matches facts env activation node)]
       (l/alpha-activate! listener node (map first fact-binding-pairs))
       (send-elements
         transport
@@ -410,9 +531,7 @@
           (->Element fact bindings)))))
 
   (alpha-retract [node facts memory transport listener]
-    (let [fact-binding-pairs (for [fact facts
-                                   :let [bindings (activation fact env)] :when bindings] ; FIXME: add env.
-                               [fact bindings])]
+    (let [fact-binding-pairs (alpha-node-matches facts env activation node)]
       (l/alpha-retract! listener node (map first fact-binding-pairs))
       (retract-elements
         transport
@@ -466,7 +585,12 @@
      listener
      children
      (for [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)]
-       (->Token [[fact (:id node)]] bindings)))))
+       (->Token [[fact (:id node)]] bindings))))
+
+  IConditionNode
+  (get-condition-description [this]
+    (let [{:keys [type constraints]} condition]
+      (into [type] constraints))))
 
 ;; Record for the join node, a type of beta node in the rete network. This node performs joins
 ;; between left and right activations, creating new tokens when joins match and sending them to
@@ -527,8 +651,21 @@
      children
      (for [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)
            token (mem/get-tokens memory node join-bindings)]
-       (->Token (conj (:matches token) [fact id]) (conj (:bindings token) bindings))))))
+       (->Token (conj (:matches token) [fact id]) (conj (:bindings token) bindings)))))
 
+  IConditionNode
+  (get-condition-description [this]
+    (let [{:keys [type constraints]} condition]
+      (into [type] constraints))))
+
+(defn- join-node-matches
+  [node join-filter-fn token fact env]
+  (let [beta-bindings (try (join-filter-fn token fact {})
+                           (catch #?(:clj Exception :cljs :default) e
+                               (if-let [error (constraint-exception-data e)]
+                                 (throw-constraint-exception error node fact env)
+                                 (throw e))))]
+    beta-bindings))
 
 (defrecord ExpressionJoinNode [id condition join-filter-fn children binding-keys]
   ILeftActivate
@@ -545,7 +682,7 @@
            token tokens
            :let [fact (:fact element)
                  fact-binding (:bindings element)
-                 beta-bindings (join-filter-fn token fact {})]
+                 beta-bindings (join-node-matches node join-filter-fn token fact {})]
            :when beta-bindings]
        (->Token (conj (:matches token) [fact id])
                 (conj fact-binding (:bindings token) beta-bindings)))))
@@ -561,7 +698,7 @@
            element (mem/get-elements memory node join-bindings)
            :let [fact (:fact element)
                  fact-bindings (:bindings element)
-                 beta-bindings (join-filter-fn token fact {})]
+                 beta-bindings (join-node-matches node join-filter-fn token fact {})]
            :when beta-bindings]
        (->Token (conj (:matches token) [fact id])
                 (conj fact-bindings (:bindings token) beta-bindings)))))
@@ -581,7 +718,7 @@
      children
      (for [token (mem/get-tokens memory node join-bindings)
            {:keys [fact bindings] :as element} elements
-           :let [beta-bindings (join-filter-fn token fact {})]
+           :let [beta-bindings (join-node-matches node join-filter-fn token fact {})]
            :when beta-bindings]
        (->Token (conj (:matches token) [fact id])
                 (conj (:bindings token) bindings beta-bindings)))))
@@ -595,10 +732,18 @@
      children
      (for [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)
            token (mem/get-tokens memory node join-bindings)
-           :let [beta-bindings (join-filter-fn token fact {})]
+           :let [beta-bindings (join-node-matches node join-filter-fn token fact {})]
            :when beta-bindings]
        (->Token (conj (:matches token) [fact id])
-                (conj (:bindings token) bindings beta-bindings))))))
+                (conj (:bindings token) bindings beta-bindings)))))
+
+  IConditionNode
+  (get-condition-description [this]
+    (let [{:keys [type constraints original-constraints]} condition
+          full-constraints (if (seq original-constraints)
+                             original-constraints
+                             constraints)]
+      (into [type] full-constraints))))
 
 ;; The NegationNode is a beta node in the Rete network that simply
 ;; negates the incoming tokens from its ancestors. It sends tokens
@@ -639,13 +784,18 @@
     (l/right-retract! listener node elements)
     (mem/remove-elements! memory node join-bindings elements)
     (when (empty? (mem/get-elements memory node join-bindings))
-      (send-tokens transport memory listener children (mem/get-tokens memory node join-bindings)))))
+      (send-tokens transport memory listener children (mem/get-tokens memory node join-bindings))))
+
+  IConditionNode
+  (get-condition-description [this]
+    (let [{:keys [type constraints]} condition]
+      [:not (into [type] constraints)])))
 
 (defn- matches-some-facts?
   "Returns true if the given token matches one or more of the given elements."
-  [token elements join-filter-fn condition]
+  [node token elements join-filter-fn condition]
   (some (fn [{:keys [fact]}]
-          (join-filter-fn token fact (:env condition)))
+          (join-node-matches node join-filter-fn token fact (:env condition)))
         elements))
 
 ;; A specialization of the NegationNode that supports additional tests
@@ -665,7 +815,8 @@
                  listener
                  children
                  (for [token tokens
-                       :when (not (matches-some-facts? token
+                       :when (not (matches-some-facts? node
+                                                       token
                                                        (mem/get-elements memory node join-bindings)
                                                        join-filter-fn
                                                        condition))]
@@ -682,7 +833,8 @@
                     ;; Retract only if it previously had no matches in the negation node,
                     ;; and therefore had an activation.
                     (for [token tokens
-                          :when (not (matches-some-facts? token
+                          :when (not (matches-some-facts? node
+                                                          token
                                                           (mem/get-elements memory node join-bindings)
                                                           join-filter-fn
                                                           condition))]
@@ -708,11 +860,13 @@
                             ;; smaller than the previous elements most of the time
                             ;; and that the time to check the elements will be proportional
                             ;; to the number of elements.
-                            :when (and (matches-some-facts? token
+                            :when (and (matches-some-facts? node
+                                                            token
                                                             elements
                                                             join-filter-fn
                                                             condition)
-                                       (not (matches-some-facts? token
+                                       (not (matches-some-facts? node
+                                                                 token
                                                                  previous-elements
                                                                  join-filter-fn
                                                                  condition)))]
@@ -736,15 +890,26 @@
 
                        ;; Propagate tokens when some of the retracted facts joined
                        ;; but none of the remaining facts do.
-                       :when (and (matches-some-facts? token
-                                                     elements
-                                                     join-filter-fn
-                                                     condition)
-                                  (not (matches-some-facts? token
+                       :when (and (matches-some-facts? node
+                                                       token
+                                                       elements
+                                                       join-filter-fn
+                                                       condition)
+                                  (not (matches-some-facts? node
+                                                            token
                                                             (mem/get-elements memory node join-bindings)
                                                             join-filter-fn
                                                             condition)))]
-                   token))))
+                   token)))
+
+  IConditionNode
+  (get-condition-description [this]
+    (let [{:keys [type constraints original-constraints]} condition
+          full-constraints (if (seq original-constraints)
+                             original-constraints
+                             constraints)]
+      [:not (into [type] full-constraints)])))
+
 
 ;; The test node represents a Rete extension in which
 (defrecord TestNode [id test children]
@@ -1149,12 +1314,20 @@
                                      transport memory listener))
               (doseq [token matched-tokens]
                 (send-accumulated node accum-condition accumulator result-binding token retracted-converted bindings
-                                  transport memory listener)))))))))
+                                  transport memory listener))))))))
+
+  IConditionNode
+  (get-condition-description [this]
+    (let [{:keys [accumulator from]} accum-condition
+          {:keys [type constraints]} from
+          condition (into [type] constraints)
+          result-symbol (symbol (name result-binding))]
+      [result-symbol '<- accumulator :from condition])))
 
 (defn- filter-accum-facts
   "Run a filter on elements against a given token for constraints that are not simple hash joins."
-  [join-filter-fn token candidate-facts]
-  (filter #(join-filter-fn token % {}) candidate-facts))
+  [node join-filter-fn token candidate-facts]
+  (filter #(join-node-matches node join-filter-fn token % {}) candidate-facts))
 
 ;; A specialization of the AccumulateNode that supports additional tests
 ;; that have to occur on the beta side of the network. The key difference between this and the simple
@@ -1180,7 +1353,7 @@
                 [fact-bindings candidate-facts] grouped-candidate-facts
 
                 ;; Filter to items that match the incoming token, then apply the accumulator.
-                :let [filtered-facts (filter-accum-facts join-filter-fn token candidate-facts)]
+                :let [filtered-facts (filter-accum-facts node join-filter-fn token candidate-facts)]
 
                 :when (or (seq filtered-facts)
                           ;; Even if there no filtered facts, if there are no new bindings we may
@@ -1237,7 +1410,7 @@
         (doseq [token tokens
                 [fact-bindings candidate-facts] grouped-candidate-facts
 
-                :let [filtered-facts (filter-accum-facts join-filter-fn token candidate-facts)]
+                :let [filtered-facts (filter-accum-facts node join-filter-fn token candidate-facts)]
 
                 :when (or (seq filtered-facts)
                           ;; Even if there no filtered facts, if there are no new bindings an initial value
@@ -1305,13 +1478,13 @@
       
       (doseq [token matched-tokens
 
-              :let [new-filtered-facts (filter-accum-facts join-filter-fn token candidates)]
+              :let [new-filtered-facts (filter-accum-facts node join-filter-fn token candidates)]
 
               ;; If no new elements matched the token, we don't need to do anything for this token
               ;; since the final result is guaranteed to be the same.
               :when (seq new-filtered-facts)
 
-              :let [previous-filtered-facts (filter-accum-facts join-filter-fn token previous-candidates)
+              :let [previous-filtered-facts (filter-accum-facts node join-filter-fn token previous-candidates)
 
                     previous-accum-result-init (cond
                                                  (seq previous-filtered-facts)
@@ -1407,9 +1580,9 @@
       (doseq [;; Get all of the previously matched tokens so we can retract and re-send them.
               token matched-tokens
               
-              :let [previous-facts (filter-accum-facts join-filter-fn token previous-candidates)
+              :let [previous-facts (filter-accum-facts node join-filter-fn token previous-candidates)
 
-                    new-facts (filter-accum-facts join-filter-fn token new-candidates)]
+                    new-facts (filter-accum-facts node join-filter-fn token new-candidates)]
 
               ;; The previous matching elements are a superset of the matching elements after retraction.
               ;; Therefore, if the counts before and after are equal nothing retracted actually matched
@@ -1462,7 +1635,18 @@
           (not= previous-converted new-converted)
           (do
             (retract-accumulated node accum-condition accumulator result-binding token previous-converted bindings transport memory listener)
-            (send-accumulated node accum-condition accumulator result-binding token new-converted bindings transport memory listener))))))) 
+            (send-accumulated node accum-condition accumulator result-binding token new-converted bindings transport memory listener)))))) 
+
+  IConditionNode
+  (get-condition-description [this]
+    (let [{:keys [accumulator from]} accum-condition
+          {:keys [type constraints original-constraints]} from
+          result-symbol (symbol (name result-binding))
+          full-constraints (if (seq original-constraints)
+                             original-constraints
+                             constraints)
+          condition (into [type] full-constraints)]
+      [result-symbol '<- accumulator :from condition])))
 
 (defn variables-as-keywords
   "Returns symbols in the given s-expression that start with '?' as keywords"
