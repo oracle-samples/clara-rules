@@ -5067,8 +5067,8 @@
         temperature-query1 (assoc query-template :name "temperature-query1")
         temperature-query2 (assoc query-template :name "temperature-query2")
         temperature-fact (->Temperature nil "MCI")]
-    (assert-ex-data {:constraint-exp '(> temperature 0)
-                     :bindings {:?location "MCI"}
+
+    (assert-ex-data {:bindings nil
                      :fact temperature-fact
                      :conditions-and-rules
                      {[clara.rules.testfacts.Temperature '(= ?location location) '(> temperature 0)]
@@ -5086,8 +5086,8 @@
         temperature-rule1 (assoc rule-template :name "temperature-rule1")
         temperature-rule2 (assoc rule-template :name "temperature-rule2")
         temperature-fact (->Temperature nil "MCI")]
-    (assert-ex-data {:constraint-exp '(> temperature 0)
-                     :bindings {:?location "MCI"}
+
+    (assert-ex-data {:bindings nil
                      :fact temperature-fact
                      :conditions-and-rules
                      {[clara.rules.testfacts.Temperature '(= ?location location) '(> temperature 0)]
@@ -5101,8 +5101,7 @@
                                       (println "Ok"))
         temperature-rule (assoc rule-template :name "temperature-rule")
         temperature-fact (->Temperature nil "MCI")]
-    (assert-ex-data {:constraint-exp '(> temperature 0)
-                     :bindings {}
+    (assert-ex-data {:bindings nil
                      :fact temperature-fact
                      :conditions-and-rules
                      {[:not [clara.rules.testfacts.Temperature '(> temperature 0)]]
@@ -5122,8 +5121,7 @@
                                       (println "Ok"))
         temperature-rule (assoc rule-template :name "temperature-rule")
         temperature-fact (->Temperature nil "MCI")]
-    (assert-ex-data {:constraint-exp '(> temperature 0)
-                     :bindings {:?location "MCI"}
+    (assert-ex-data {:bindings nil
                      :fact temperature-fact
                      :conditions-and-rules
                      {[clara.rules.testfacts.Temperature '(= ?location location) '(> temperature 0)]
@@ -5143,8 +5141,7 @@
         temperature-query (assoc query-template :name "temperature-query")
         temperature-fact (->Temperature nil "MCI")
         windspeed-fact (->WindSpeed 30 "MCI")]
-    (assert-ex-data {:constraint-exp '(> ?temperature windspeed)
-                     :bindings {:?location "MCI", :?temperature nil}
+    (assert-ex-data {:bindings {:?location "MCI", :?temperature nil}
                      :fact windspeed-fact
                      :conditions-and-rules
                      {[clara.rules.testfacts.WindSpeed '(= ?location location) '(> ?temperature windspeed)]
@@ -5165,8 +5162,7 @@
         temperature-query (assoc query-template :name "temperature-query")
         temperature-fact (->Temperature 90 "MCI")
         windspeed-fact (->WindSpeed nil "MCI")]
-    (assert-ex-data {:constraint-exp '(> ?temperature windspeed)
-                     :bindings {:?location "MCI", :?temperature 90}
+    (assert-ex-data {:bindings {:?location "MCI", :?temperature 90}
                      :fact windspeed-fact
                      :conditions-and-rules
                      {[clara.rules.testfacts.WindSpeed '(= ?location location) '(> ?temperature windspeed)]
@@ -5181,8 +5177,7 @@
   (let [query-template (dsl/parse-query [] [[?wind <- (acc/all) :from [Temperature (> temperature 0)]]])
         temperature-query (assoc query-template :name "temperature-query")
         temperature-fact (->Temperature nil "MCI")]
-    (assert-ex-data {:constraint-exp '(> temperature 0)
-                     :bindings {}
+    (assert-ex-data {:bindings nil
                      :fact temperature-fact
                      :conditions-and-rules
                      {['?wind '<- '(clara.rules.accumulators/all) :from [clara.rules.testfacts.Temperature '(> temperature 0)]]

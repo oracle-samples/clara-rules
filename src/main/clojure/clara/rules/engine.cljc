@@ -467,17 +467,13 @@
       production-section
       query-section])))
 
-(defn- throw-constraint-exception
+(defn- throw-condition-exception
   "Adds a useful error message when executing a constraint node raises an exception."
-  [error node fact env]
-  (let [exp (:constraint-exp error)
-        bindings (:bindings error)
-        bindings-description (if (empty? bindings)
+  [{:keys [cause node fact env bindings]}]
+  (let [bindings-description (if (empty? bindings)
                                "with no bindings\n"
                                (str "with bindings\n  " bindings))
-        message-header (string/join ["Constraint exception.\n"
-                                     "Exception raised during execution of constraint\n"
-                                     (str "  " exp "\n")
+        message-header (string/join ["Condition exception raised.\n"
                                      "when processing fact\n"
                                      (str "  " (pr-str fact) "\n")
                                      (str bindings-description "\n")
@@ -486,30 +482,23 @@
         condition-messages (->> conditions-and-rules
                                 (map-indexed single-condition-message)
                                 (string/join "\n"))
-        cause (:exception error)
-        message (str message-header "\n" condition-messages)
-        info (-> error
-                 (dissoc :exception)
-                 (merge {:conditions-and-rules conditions-and-rules
-                         :fact fact
-                         :node node}))]
-    (throw (ex-info message info cause))))
-
-(defn constraint-exception-data
-  "Returns exception data for constraint exceptions and nil otherwise."
-  [exception]
-  (let [data (ex-data exception)]
-    (if (:clara.rules.compiler/constraint-exception data)
-      (dissoc data :clara.rules.compiler/constraint-exception))))
+        message (str message-header "\n" condition-messages)]
+    (throw (ex-info message
+                    {:fact fact
+                     :bindings bindings
+                     :env env
+                     :conditions-and-rules conditions-and-rules}
+                    cause))))
 
 (defn- alpha-node-matches
   [facts env activation node]
   (for [fact facts
         :let [bindings (try (activation fact env)
                             (catch #?(:clj Exception :cljs :default) e
-                              (if-let [error (constraint-exception-data e)]
-                                (throw-constraint-exception error node fact env)
-                                (throw e))))]
+                                (throw-condition-exception {:cause e
+                                                            :node node
+                                                            :fact fact
+                                                            :env env})))]
         :when bindings] ; FIXME: add env.
     [fact bindings]))
 
@@ -519,16 +508,15 @@
 (defrecord AlphaNode [env children activation]
   IAlphaActivate
   (alpha-activate [node facts memory transport listener]
-    node
     (let [fact-binding-pairs (alpha-node-matches facts env activation node)]
       (l/alpha-activate! listener node (map first fact-binding-pairs))
       (send-elements
-        transport
-        memory
-        listener
-        children
-        (for [[fact bindings] fact-binding-pairs]
-          (->Element fact bindings)))))
+       transport
+       memory
+       listener
+       children
+       (for [[fact bindings] fact-binding-pairs]
+         (->Element fact bindings)))))
 
   (alpha-retract [node facts memory transport listener]
     (let [fact-binding-pairs (alpha-node-matches facts env activation node)]
@@ -662,9 +650,11 @@
   [node join-filter-fn token fact env]
   (let [beta-bindings (try (join-filter-fn token fact {})
                            (catch #?(:clj Exception :cljs :default) e
-                               (if-let [error (constraint-exception-data e)]
-                                 (throw-constraint-exception error node fact env)
-                                 (throw e))))]
+                               (throw-condition-exception {:cause e
+                                                           :node node
+                                                           :fact fact
+                                                           :env env
+                                                           :bindings (:bindings token)})))]
     beta-bindings))
 
 (defrecord ExpressionJoinNode [id condition join-filter-fn children binding-keys]
