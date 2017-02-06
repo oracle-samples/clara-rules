@@ -6,7 +6,9 @@
             [clojure.string :as string]
             [clara.rules.memory :as mem]
             [clara.rules.listener :as l]
-            [clara.rules.platform :as platform]))
+            [clara.rules.platform :as platform]
+            [clara.rules.update-cache.core :as uc]
+            #?(:clj [clara.rules.update-cache.cancelling :as ca])))
 
 ;; The accumulator is a Rete extension to run an accumulation (such as sum, average, or similar operation)
 ;; over a collection of values passing through the Rete network. This object defines the behavior
@@ -80,6 +82,11 @@
 
   ;; Fires pending rules and returns a new session where they are in a fired state.
   (fire-rules [session])
+
+  ;; Inserts the insertions, retracts the retractions, and fires the rules.
+  ;; Optimized for cases where the insertions and retractions are expected to frequently
+  ;; cancel each other out.
+  (replace-facts [session insertions retractions])
 
   ;; Runs a query agains thte session.
   (query [session query params])
@@ -163,9 +170,6 @@
   (alpha-activate [node facts memory transport listener])
   (alpha-retract [node facts memory transport listener]))
 
-;; Record indicating pending insertion or removal of a sequence of facts.
-(defrecord PendingUpdate [type facts])
-
 ;; Active session during rule execution.
 (def ^:dynamic *current-session* nil)
 
@@ -204,15 +208,12 @@
   [current-session]
   (letfn [(flush-all [current-session flushed-items?]
             (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} current-session
-                  pending-updates @(:pending-updates current-session)]
-
-              ;; Remove the facts here so they are re-inserted if we flush recursively.
-              (reset! (:pending-updates current-session) [])
+                  pending-updates (-> current-session :pending-updates uc/get-updates-and-reset!)]
 
               (if (empty? pending-updates)
                 flushed-items?
                 (do
-                  (doseq [partition (partition-by :type pending-updates)
+                  (doseq [partition pending-updates
                           :let [facts (mapcat :facts partition)]
                           [alpha-roots fact-group] (get-alphas-fn facts)
                           root alpha-roots]
@@ -221,7 +222,7 @@
                       (alpha-activate root fact-group transient-memory transport listener)
                       (alpha-retract root fact-group transient-memory transport listener)))
 
-                  ;; There may be new :pending-updates due to the flush just
+                  ;; There may be new pending updates due to the flush just
                   ;; made.  So keep flushing until there are none left.  Items
                   ;; were flushed though, so flush-items? is now true.
                   (flush-all current-session true)))))]
@@ -277,12 +278,12 @@
         (mem/add-insertions! transient-memory node token facts)
         (l/insert-facts-logical! listener node token facts)))
 
-    (swap! (:pending-updates *current-session*) into [(->PendingUpdate :insert facts)])))
+    (-> *current-session* :pending-updates (uc/add-insertions! facts))))
 
 (defn retract-facts!
   "Perform the fact retraction."
   [facts]
-  (swap! (:pending-updates *current-session*) into [(->PendingUpdate :retract facts)]))
+  (-> *current-session* :pending-updates (uc/add-retractions! facts)))
 
 ;; Record for the production node in the Rete network.
 (defrecord ProductionNode [id production rhs]
@@ -1481,13 +1482,13 @@
 
 (defn fire-rules*
   "Fire rules for the given nodes."
-  [rulebase nodes transient-memory transport listener get-alphas-fn]
+  [rulebase nodes transient-memory transport listener get-alphas-fn update-cache]
   (binding [*current-session* {:rulebase rulebase
                                :transient-memory transient-memory
                                :transport transport
                                :insertions (atom 0)
                                :get-alphas-fn get-alphas-fn
-                               :pending-updates (atom [])
+                               :pending-updates update-cache
                                :listener listener}]
 
     (loop [next-group (mem/next-activation-group transient-memory)
@@ -1623,13 +1624,58 @@
                    transient-memory
                    transport
                    transient-listener
-                   get-alphas-fn)
+                   get-alphas-fn
+                   (uc/get-ordered-update-cache))
 
       (LocalSession. rulebase
                      (mem/to-persistent! transient-memory)
                      transport
                      (l/to-persistent! transient-listener)
                      get-alphas-fn)))
+
+  (replace-facts [session insertions retractions]
+    
+    (let [transient-memory (mem/to-transient memory)
+          transient-listener (l/to-transient listener)
+          update-cache #?(:clj (ca/get-cancelling-update-cache)
+                          ;; TODO: Add a ClojureScript equivalent of the cancelling update cache.
+                          ;; For now just fall back to the same implementation
+                          ;; used for the other session operations.
+                          :cljs (uc/get-ordered-update-cache))]
+
+      ;; Bind the current session so that retractions will be stored
+      ;; in the pending updates where they can be removed by equal insertions.
+      (binding [*current-session* {:rulebase rulebase
+                                   :transient-memory transient-memory
+                                   :transport transport
+                                   :insertions (atom 0)
+                                   :get-alphas-fn get-alphas-fn
+                                   :pending-updates update-cache
+                                   :listener transient-listener}]
+
+        (doseq [[alpha-roots fact-group] (get-alphas-fn retractions)
+                root alpha-roots]
+          (alpha-retract root fact-group transient-memory transport transient-listener))
+        
+        (doseq [[alpha-roots fact-group] (get-alphas-fn insertions)
+                root alpha-roots]
+          (alpha-activate root fact-group transient-memory transport transient-listener))
+
+        (fire-rules* rulebase
+                     (:production-nodes rulebase)
+                     transient-memory
+                     transport
+                     transient-listener
+                     get-alphas-fn
+                     ;; This continues to use the cancelling cache after the first batch of insertions and retractions.
+                     ;; If this is suboptimal for some workflows we can revisit this.
+                     update-cache)
+
+        (LocalSession. rulebase
+                       (mem/to-persistent! transient-memory)
+                       transport
+                       (l/to-persistent! transient-listener)
+                       get-alphas-fn))))
 
   ;; TODO: queries shouldn't require the use of transient memory.
   (query [session query params]
