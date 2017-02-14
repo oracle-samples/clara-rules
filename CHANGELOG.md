@@ -1,5 +1,8 @@
 This is a history of changes to clara-rules.
 
+### 0.13.0
+* This release includes all changes in the previous 0.13.0-RC releases as well as improvements to error handling in the LHS discussed at [issue 255](https://github.com/cerner/clara-rules/issues/255).  Most notably relative to the 0.12.0 release, this replaces the previous durability implementation with a much more robust and performant one as discussed at [issue 198](https://github.com/cerner/clara-rules/issues/198).
+
 ### 0.13.0-RC7
 * The work to improve batching in order to improve performance at [issue 236](https://github.com/cerner/clara-rules/issues/236) didn't actually improve performance for reasons discussed and fixed at [issue 257](https://github.com/cerner/clara-rules/issues/257). 
 
