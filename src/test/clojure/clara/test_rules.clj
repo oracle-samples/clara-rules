@@ -278,7 +278,8 @@
         session (-> (mk-session [cold-query])
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI")))]
+                    (insert (->Temperature 80 "MCI"))
+                    fire-rules)]
 
     ;; The query should identify all items that wer einserted and matchd the
     ;; expected criteria.
@@ -295,7 +296,8 @@
                     (insert (->Temperature 20 "MCI")) ; Test multiple items in result.
                     (insert (->Temperature 10 "ORD"))
                     (insert (->Temperature 35 "BOS"))
-                    (insert (->Temperature 80 "BOS")))]
+                    (insert (->Temperature 80 "BOS"))
+                    fire-rules)]
 
     ;; Query by location.
     (is (= #{{:?l "BOS" :?t 35}}
@@ -312,7 +314,8 @@
 
         session (-> (mk-session [cold-query])
                     (insert (->Temperature 15 "MCI"))
-                    (insert (->Temperature 10 "MCI")))]
+                    (insert (->Temperature 10 "MCI"))
+                    fire-rules)]
 
     (is (= #{{:?t (->Temperature 15 "MCI")}
              {:?t (->Temperature 10 "MCI")}}
@@ -323,7 +326,8 @@
 
         session (-> (mk-session [cold-query])
                     (insert (->Temperature 15 "MCI"))
-                    (insert (->Temperature 10 "MCI")))]
+                    (insert (->Temperature 10 "MCI"))
+                    fire-rules)]
 
     ;; Ensure the condition's fact and values are all bound.
     (is (= #{{:?v 10, :?t (->Temperature 10 "MCI")}
@@ -348,7 +352,8 @@
         session (-> (mk-session [coldest-query])
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI")))]
+                    (insert (->Temperature 80 "MCI"))
+                    fire-rules)]
 
     ;; Accumulator returns the lowest value.
     (is (= #{{:?t (->Temperature 10 "MCI")}}
@@ -371,7 +376,8 @@
         session (-> (mk-session [coldest-query])
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI")))]
+                    (insert (->Temperature 80 "MCI"))
+                    fire-rules)]
 
     ;; Accumulator returns the lowest value.
     (is (= #{{:?t (->Temperature 10 "MCI")}}
@@ -417,7 +423,8 @@
                     (insert (->Temperature 30 "MCI"))
                     (insert (->Temperature 40 "MCI"))
                     (insert (->Temperature 50 "MCI"))
-                    (insert (->Temperature 60 "MCI")))]
+                    (insert (->Temperature 60 "MCI"))
+                    fire-rules)]
 
 
     ;; Accumulator returns the lowest value.
@@ -450,7 +457,8 @@
                     (insert (->Temperature 17 "MCI"))
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 80 "MCI"))
-                    (retract (->Temperature 10 "MCI")))]
+                    (retract (->Temperature 10 "MCI"))
+                    fire-rules)]
 
     ;; The accumulator result should be
     (is (= #{{:?t (->Temperature 15 "MCI")}}
@@ -492,13 +500,17 @@
                             (insert (->Temperature 5 "SFO"))
 
                             ;; Insert last to exercise left activation of accumulate node.
-                            (insert (->WindSpeed 30 "MCI")))
+                            (insert (->WindSpeed 30 "MCI"))
+                            fire-rules)
 
-                session-retracted (retract session (->WindSpeed 30 "MCI"))
+                session-retracted (-> session
+                                      (retract (->WindSpeed 30 "MCI"))
+                                      fire-rules)
                 
                 session-other-retracted (-> session
                                             (insert (->WindSpeed 30 "ORD"))
-                                            (retract (->WindSpeed 30 "ORD")))]]
+                                            (retract (->WindSpeed 30 "ORD"))
+                                            fire-rules)]]
 
     ;; Only the value that joined to WindSpeed should be visible.
     (is (= #{{:?t (->Temperature 10 "MCI") :?loc "MCI"}}
@@ -514,19 +526,20 @@
 
 (deftest test-bound-accumulator-var
   (let [coldest-query (dsl/parse-query [:?loc]
-                               [[?t <- (accumulate
-                                         :retract-fn identity-retract
-                                         :reduce-fn (fn [value item]
-                                                      (if (or (= value nil)
-                                                              (< (:temperature item) (:temperature value) ))
-                                                        item
-                                                        value)))
-                                  :from [ Temperature (= ?loc location)]]])
+                                       [[?t <- (accumulate
+                                                :retract-fn identity-retract
+                                                :reduce-fn (fn [value item]
+                                                             (if (or (= value nil)
+                                                                     (< (:temperature item) (:temperature value) ))
+                                                               item
+                                                               value)))
+                                         :from [ Temperature (= ?loc location)]]])
 
         session (-> (mk-session [coldest-query])
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 5 "SFO")))]
+                    (insert (->Temperature 5 "SFO"))
+                    fire-rules)]
 
     (is (= #{{:?t (->Temperature 10 "MCI") :?loc "MCI"}}
            (set (query session coldest-query :?loc "MCI"))))
@@ -936,7 +949,8 @@
                   left-activates-before-right (-> s
                                                   (insert ws10mci)
                                                   (insert t1mci
-                                                          t2lax))
+                                                          t2lax)
+                                                  fire-rules)
                   batched-inserts (-> s
                                       (insert ws10mci
                                               t1mci
@@ -1034,12 +1048,14 @@
          (-> session
              (insert (->WindSpeed 50 "MCI")
                      (->Temperature 51 "MCI"))
+             fire-rules
              (query same-wind-and-temp))))
 
     (is (= [{:?w (->WindSpeed 50 "MCI") :?t 50}]
            (-> session
                (insert (->WindSpeed 50 "MCI")
                        (->Temperature 50 "MCI"))
+               fire-rules
                (query same-wind-and-temp))))))
 
 
@@ -1048,12 +1064,17 @@
 
         session  (mk-session [not-cold-query])
 
-        session-with-temp (insert session (->Temperature 10 "MCI"))
-        session-retracted (retract session-with-temp (->Temperature 10 "MCI"))
+        session-with-temp (-> session
+                              (insert (->Temperature 10 "MCI"))
+                              fire-rules)
+        session-retracted (-> session-with-temp
+                              (retract (->Temperature 10 "MCI"))
+                              fire-rules)
         session-with-partial-retraction (-> session
                                             (insert (->Temperature 10 "MCI")
                                                     (->Temperature 15 "MCI"))
-                                            (retract (->Temperature 10 "MCI")))]
+                                            (retract (->Temperature 10 "MCI"))
+                                            fire-rules)]
 
     ;; No facts for the above criteria exist, so we should see a positive result
     ;; with no bindings.
@@ -1112,15 +1133,21 @@
         session  (mk-session [windy-but-not-cold-query])
 
         ;; Make it windy, so our query should indicate that.
-        session (insert session (->WindSpeed 40 "MCI"))
+        session (-> session
+                    (insert (->WindSpeed 40 "MCI"))
+                    fire-rules)
         windy-result  (set (query session windy-but-not-cold-query))
 
         ;; Make it hot and windy, so our query should still succeed.
-        session (insert session (->Temperature 80 "MCI"))
+        session (-> session
+                    (insert (->Temperature 80 "MCI"))
+                    fire-rules)
         hot-and-windy-result (set (query session windy-but-not-cold-query))
 
         ;; Make it cold, so our query should return nothing.
-        session (insert session (->Temperature 10 "MCI"))
+        session (-> session
+                    (insert (->Temperature 10 "MCI"))
+                    fire-rules)
         cold-result  (set (query session windy-but-not-cold-query))]
 
 
@@ -1375,12 +1402,14 @@
          (-> session
              (insert (->Temperature 50 "MCI"))
              (insert (->Temperature 40 "MCI"))
+             fire-rules
              (query all-temps-are-max))))
 
     (is (= [{:?t 50}]
            (-> session
                (insert (->Temperature 50 "MCI"))
                (insert (->Temperature 50 "MCI"))
+               fire-rules
                (query all-temps-are-max))))))
 
 (deftest test-external-activation-of-negation-condition-triggering-retraction
@@ -1420,7 +1449,12 @@
         temp (->Temperature 10 "MCI")
 
         session (-> (mk-session [cold-query])
-                    (insert temp))]
+                    (insert temp)
+                    fire-rules)
+
+        retracted-session (-> session
+                              (retract temp)
+                              fire-rules)]
 
     ;; Ensure the item is there as expected.
     (is (= #{{:?t 10}}
@@ -1428,25 +1462,31 @@
 
     ;; Ensure the item is retracted as expected.
     (is (= #{}
-           (set (query (retract session temp) cold-query))))))
+           (set (query retracted-session cold-query))))))
 
 (deftest test-noop-retraction
   (let [cold-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]])
 
         session (-> (mk-session [cold-query])
                     (insert (->Temperature 10 "MCI"))
-                    (retract (->Temperature 15 "MCI")))] ; Ensure retracting a non-existant item has no ill effects.
+                    (retract (->Temperature 15 "MCI"))
+                    fire-rules)] ; Ensure retracting a nonexistent item has no ill effects.
 
     (is (= #{{:?t 10}}
            (set (query session cold-query))))))
 
 (deftest test-retraction-of-join
   (let [same-wind-and-temp (dsl/parse-query [] [[Temperature (= ?t temperature)]
-                                         (WindSpeed (= ?t windspeed))])
+                                                (WindSpeed (= ?t windspeed))])
 
         session (-> (mk-session [same-wind-and-temp])
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->WindSpeed 10 "MCI")))]
+                    (insert (->WindSpeed 10 "MCI"))
+                    fire-rules)
+
+        retracted-session (-> session
+                              (retract (->Temperature 10 "MCI"))
+                              fire-rules)]
 
     ;; Ensure expected join occurred.
     (is (= #{{:?t 10}}
@@ -1455,9 +1495,7 @@
     ;; Ensure item was removed as viewed by the query.
 
     (is (= #{}
-           (set (query
-                 (retract session (->Temperature 10 "MCI"))
-                 same-wind-and-temp))))))
+           (set (query retracted-session same-wind-and-temp))))))
 
 (deftest test-retraction-of-equal-elements
   (let [insert-cold (dsl/parse-rule [[Temperature (= ?temp temperature)]]
@@ -1545,12 +1583,16 @@
 
 (deftest test-simple-disjunction
   (let [or-query (dsl/parse-query [] [[:or [Temperature (< temperature 20) (= ?t temperature)]
-                                           [WindSpeed (> windspeed 30) (= ?w windspeed)]]])
+                                       [WindSpeed (> windspeed 30) (= ?w windspeed)]]])
 
         session (mk-session [or-query])
 
-        cold-session (insert session (->Temperature 15 "MCI"))
-        windy-session (insert session (->WindSpeed 50 "MCI"))  ]
+        cold-session (-> session
+                         (insert (->Temperature 15 "MCI"))
+                         fire-rules)
+        windy-session (-> session
+                          (insert (->WindSpeed 50 "MCI"))
+                          fire-rules)]
 
     (is (= #{{:?t 15}}
            (set (query cold-session or-query))))
@@ -1569,11 +1611,13 @@
         rulebase [really-cold-or-cold-and-windy]
 
         cold-session (-> (mk-session rulebase)
-                         (insert (->Temperature -10 "MCI")))
+                         (insert (->Temperature -10 "MCI"))
+                         fire-rules)
 
         windy-session (-> (mk-session rulebase)
                           (insert (->Temperature 15 "MCI"))
-                          (insert (->WindSpeed 50 "MCI")))]
+                          (insert (->WindSpeed 50 "MCI"))
+                          fire-rules)]
 
     (is (= #{{:?t -10}}
            (set (query cold-session really-cold-or-cold-and-windy))))
@@ -1725,7 +1769,11 @@
 
         session (-> (mk-session [cold-rule cold-query])
                     (insert (->Temperature 10 "MCI"))
-                    (fire-rules))]
+                    (fire-rules))
+
+        retracted-session (-> session
+                              (retract (->Temperature 10 "MCI"))
+                              fire-rules)]
 
     (is (= #{{:?c 10}}
            (set (query session cold-query))))
@@ -1733,9 +1781,7 @@
     ;; The derived fact should continue to exist after a retraction
     ;; since we used an unconditional insert.
     (is (= #{{:?c 10}}
-           (set (query
-                 (retract session (->Temperature 10 "MCI"))
-                 cold-query))))))
+           (set (query retracted-session cold-query))))))
 
 (deftest test-unconditional-insert-all
   (let [rule-output (atom nil)
@@ -1749,7 +1795,11 @@
 
         session (-> (mk-session [cold-lousy-rule cold-query lousy-query])
                     (insert (->Temperature 10 "MCI"))
-                    (fire-rules))]
+                    (fire-rules))
+
+        retracted-session (-> session
+                              (retract (->Temperature 10 "MCI"))
+                              fire-rules)]
 
     (is (= #{{:?c 10}}
            (set (query session cold-query))))
@@ -1760,14 +1810,10 @@
     ;; The derived fact should continue to exist after a retraction
     ;; since we used an unconditional insert.
     (is (= #{{:?c 10}}
-           (set (query
-                 (retract session (->Temperature 10 "MCI"))
-                 cold-query))))
+           (set (query retracted-session cold-query))))
 
     (is (= #{{:?l (->LousyWeather)}}
-           (set (query
-                 (retract session (->Temperature 10 "MCI"))
-                 lousy-query))))))
+           (set (query retracted-session lousy-query))))))
 
 (deftest test-insert-and-retract-multi-input
   (let [rule-output (atom nil)
@@ -1985,7 +2031,8 @@
                     (insert (->Temperature 20 "MCI")) ; Test multiple items in result.
                     (insert (->Temperature 10 "ORD"))
                     (insert (->Temperature 35 "BOS"))
-                    (insert (->Temperature 80 "BOS")))]
+                    (insert (->Temperature 80 "BOS"))
+                    fire-rules)]
 
 
     ;; Query by location.
@@ -2009,6 +2056,7 @@
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 22 "BOS"))
                     (insert (->Temperature 50 "SFO"))
+                    fire-rules
                     (query sample/freezing-locations))))
         (str "Freezing locations not found using rules namespace " rules-ns))
 
@@ -2029,7 +2077,8 @@
                       (insert (->Temperature 15 "MCI"))
                       (insert (->Temperature 10 "BOS"))
                       (insert (->Temperature 50 "SFO"))
-                      (insert (->Temperature -10 "CHI")))]
+                      (insert (->Temperature -10 "CHI"))
+                      fire-rules)]
 
       (is (= #{{:?loc "MCI"} {:?loc "BOS"} {:?loc "CHI"}}
              (set (query session sample/freezing-locations)))
@@ -2121,7 +2170,8 @@
         session (-> (mk-session [distinct-temps-query])
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI")))]
+                    (insert (->Temperature 80 "MCI"))
+                    fire-rules)]
 
     ;; Finds two temperatures such that t1 is less than t2.
     (is (= #{ {:?t1 10, :?t2 15}}
@@ -2140,12 +2190,14 @@
     (is (empty? (-> session
                     (insert (->Temperature 10 "MCI")
                             (->WindSpeed 10 "MCI"))
+                    fire-rules
                     (query not-different-temps))))
 
     (is (= [{:?a "MCI" :?b "ORD"}]
            (-> session
                (insert (->Temperature 10 "MCI")
                        (->WindSpeed 10 "ORD"))
+               fire-rules
                (query not-different-temps))))))
 
 (deftest test-bean-support
@@ -2157,7 +2209,8 @@
 
         session (-> (mk-session [tz-offset-query])
                     (insert (TimeZone/getTimeZone "America/Chicago")
-                            (TimeZone/getTimeZone "UTC")))]
+                            (TimeZone/getTimeZone "UTC"))
+                    fire-rules)]
 
     (is (= #{{:?id "America/Chicago" :?offset -21600000}}
            (set (query session tz-offset-query :?offset -21600000))))
@@ -2244,7 +2297,8 @@
                     (insert {:type :temperature :value 15 :location "MCI"}
                             {:type :temperature :value 10 :location "MCI"}
                             {:type :windspeed :value 5 :location "MCI"}
-                            {:type :temperature :value 80 :location "MCI"}))]
+                            {:type :temperature :value 80 :location "MCI"})
+                    fire-rules)]
 
     (is (= #{{:?t 15} {:?t 10}}
            (set (query session cold-query))))))
@@ -2258,7 +2312,8 @@
                             {:type :temperature :value 10 :location "MCI"}
                             {:type :windspeed :value 5 :location "MCI"}
                             {:type :temperature :value 80 :location "MCI"})
-                    (retract {:type :temperature :value 15 :location "MCI"}))]
+                    (retract {:type :temperature :value 15 :location "MCI"})
+                    fire-rules)]
 
     (is (= #{{:?t 10}}
            (set (query session cold-query))))))
@@ -2269,7 +2324,8 @@
   (let [test-query (dsl/parse-query [] [[RecordWithDash (= ?f test-field)]])
 
         session (-> (mk-session [test-query])
-                    (insert (->RecordWithDash 15)))]
+                    (insert (->RecordWithDash 15))
+                    fire-rules)]
 
     (is (= #{{:?f 15}}
            (set (query session test-query))))))
@@ -2348,12 +2404,12 @@
         temp2 (->Temperature 15 "MCI")
 
         session (-> (mk-session [ident-query])
-                    (insert temp
-                            temp))
+                    (insert temp temp)
+                    fire-rules)
 
         session-with-dups (-> (mk-session [ident-query])
-                              (insert temp
-                                      temp2))]
+                              (insert temp temp2)
+                              fire-rules)]
 
     ;; The inserted facts are identical, so there cannot be a non-identicial match.
     (is (empty? (query session ident-query)))
@@ -2379,7 +2435,8 @@
                     (insert (->Temperature 20 "MCI")) ; Test multiple items in result.
                     (insert (->Temperature 10 "ORD"))
                     (insert (->Temperature 35 "BOS"))
-                    (insert (->Temperature 80 "BOS")))]
+                    (insert (->Temperature 80 "BOS"))
+                    fire-rules)]
 
     ;; Query by location.
     (is (= #{{:?l "BOS" :?t 35}}
@@ -2401,6 +2458,7 @@
                 (insert (->Temperature 15 "MCI"))
                 (insert (->Temperature 22 "BOS"))
                 (insert (->Temperature 50 "SFO"))
+                fire-rules
                 (query sample/freezing-locations)))))
 
   (let [session (-> (mk-session 'clara.sample-ruleset)
@@ -2433,7 +2491,8 @@
         session (-> (mk-session [special-ancestor-query type-ancestor-query] :ancestors-fn (fn [type] [:my-ancestor]))
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI")))]
+                    (insert (->Temperature 80 "MCI"))
+                    fire-rules)]
 
     ;; The special ancestor query should match everything since our trivial
     ;; ancestry function treats :my-ancestor as an ancestor of everything.
@@ -2756,7 +2815,8 @@
                     (insert {:type :temperature :value 15 :location "MCI"}
                             {:type :temperature :value 10 :location "MCI"}
                             {:type :windspeed :value 5 :location "MCI"}
-                            {:type :temperature :value 80 :location "MCI"}))]
+                            {:type :temperature :value 80 :location "MCI"})
+                    fire-rules)]
 
     (is (= #{{:?t 15} {:?t 10}}
            (set (query session match-external))))))
@@ -2772,7 +2832,8 @@
         session  (-> (mk-session [distinct-temps-query])
                      (insert (->Temperature 15 "MCI"))
                      (insert (->Temperature 10 "MCI"))
-                     (insert (->Temperature 80 "MCI")))]
+                     (insert (->Temperature 80 "MCI"))
+                     fire-rules)]
 
     ;; Finds two temperatures such that t1 is less than t2.
     (is (= #{ {:?t1 10, :?t2 15}}
@@ -2789,7 +2850,8 @@
         session  (-> (mk-session [distinct-temps-query])
                      (insert (->Temperature 15 "MCI"))
                      (insert (->Temperature 10 "MCI"))
-                     (insert (->Temperature 80 "MCI")))]
+                     (insert (->Temperature 80 "MCI"))
+                     fire-rules)]
 
     ;; Finds two temperatures such that t1 is less than t2.
     (is (= #{ {:?t1 10, :?t2 15}}
@@ -3437,6 +3499,7 @@
            (-> session
                (insert (->WindSpeed 50 "MCI"))
                (insert (->WindSpeed 60 "MCI"))
+               fire-rules
                (query has-windspeed))))
 
     ;; Retraction should remove exists check.
@@ -3446,6 +3509,7 @@
                (insert (->WindSpeed 60 "MCI"))
                (retract (->WindSpeed 50 "MCI"))
                (retract (->WindSpeed 60 "MCI"))
+               fire-rules
                (query has-windspeed))))
 
     ;; There should be one location for each distinct binding.
@@ -3457,6 +3521,7 @@
                (insert (->WindSpeed 80 "SFO"))
                (insert (->WindSpeed 80 "ORD"))
                (insert (->WindSpeed 90 "ORD"))
+               fire-rules               
                (query has-windspeed)
                (set))))))
 
@@ -3474,6 +3539,7 @@
            (-> session
                (insert (->WindSpeed 50 "MCI"))
                (insert (->WindSpeed 60 "MCI"))
+               fire-rules
                (query wind-and-temp))))
 
     ;; Differing locations should not yield a match.
@@ -3481,6 +3547,7 @@
            (-> session
                (insert (->WindSpeed 50 "MCI"))
                (insert (->Temperature 60 "ORD"))
+               fire-rules
                (query wind-and-temp))))
 
     ;; Simple match for both exists.
@@ -3490,6 +3557,7 @@
                (insert (->WindSpeed 60 "MCI"))
                (insert (->Temperature 60 "MCI"))
                (insert (->Temperature 70 "MCI"))
+               fire-rules
                (query wind-and-temp))))
 
     ;; There should be a match for each distinct city.
@@ -3499,6 +3567,7 @@
                (insert (->WindSpeed 60 "ORD"))
                (insert (->Temperature 60 "MCI"))
                (insert (->Temperature 70 "ORD"))
+               fire-rules
                (query wind-and-temp)
                (set))))))
 
@@ -3560,6 +3629,7 @@
                (insert (->Temperature 10 "MCI")
                        (->ColdAndWindy 5 50))
                (fire-rules)
+               fire-rules
                (query beta-bind-query))))
 
     ;; Test retraction
@@ -3569,6 +3639,7 @@
                      (->ColdAndWindy 5 50))
              (fire-rules)
              (retract (->Temperature 10 "MCI"))
+             fire-rules
              (query beta-bind-query))))
 
     ;; Test version that didn't compile with issue 142.
@@ -3846,10 +3917,12 @@
                                    (fire-rules))
 
         one-retracted-session (-> none-retracted-session
-                                  (retract (->First)))
+                                  (retract (->First))
+                                  fire-rules)
 
         both-retracted-session (-> one-retracted-session
-                                   (retract (->First)))]
+                                   (retract (->First))
+                                   fire-rules)]
     (is (= (query none-retracted-session second-query)
            (query none-retracted-session third-query)
            [{} {} {} {}])
@@ -5181,9 +5254,77 @@
                      :fact temperature-fact
                      :conditions-and-rules
                      {['?wind '<- '(clara.rules.accumulators/all) :from [clara.rules.testfacts.Temperature '(> temperature 0)]]
-                      (sorted-set [:query  "temperature-query"])}}
+                      (sorted-set [:query "temperature-query"])}}
                     (-> (mk-session [temperature-query] :cache false)
                         (insert temperature-fact)
                         (fire-rules)
                         (query temperature-query)))))
 
+(deftest test-stored-insertion-retraction-ordering
+
+  (let [r (dsl/parse-rule [[:exists [Cold]]]
+                          (insert! (->LousyWeather)))
+        
+        lousy-weather-query (dsl/parse-query [] [[LousyWeather]])
+
+        cold-query (dsl/parse-query [] [[Cold (= ?t temperature)]])
+        
+        empty-session (mk-session [r lousy-weather-query cold-query] :cache false)
+
+        single-ops-retract-first (-> empty-session
+                                     (retract (->Cold 0))
+                                     (insert (->Cold 0))
+                                     fire-rules)
+
+        single-ops-insert-first (-> empty-session
+                                    (insert (->Cold 0))
+                                    (retract (->Cold 0))
+                                    fire-rules)
+
+        single-ops-retract-fire-insertion (-> empty-session
+                                              (retract (->Cold 0))
+                                              fire-rules
+                                              (insert (->Cold 0)))
+
+        two-cold-one-retracted-first (-> empty-session
+                                         (insert (->Cold -10))
+                                         (retract (->Cold 10))
+                                         (insert (->Cold 10))
+                                         (retract (->Cold -10))
+                                         fire-rules)
+
+        ops-cleared-across-fire-rules (-> empty-session
+                                          (insert (->Cold -10))
+                                          (retract (->Cold 10))
+                                          fire-rules
+                                          (insert (->Cold 10))
+                                          (retract (->Cold -10))
+                                          fire-rules)]
+
+    (testing "Single insertion and retraction of Cold, with the retraction first"
+
+      (is (= (query single-ops-retract-first lousy-weather-query)
+             [{}]))
+
+      (is (= (query single-ops-retract-first cold-query)
+             [{:?t 0}])))
+
+    (testing "Single insertion and retraction of Cold, with the insertion first"
+
+      (is (empty? (query single-ops-insert-first lousy-weather-query)))
+      (is (empty? (query single-ops-insert-first cold-query))))
+
+    (testing "Two distinct Cold facts inserted and retracted, with the insertion first in one case and the retraction in the other"
+
+      (is (= (query two-cold-one-retracted-first lousy-weather-query)
+             [{}]))
+      (is (= (query two-cold-one-retracted-first cold-query)
+             [{:?t 10}])))
+
+    (testing (str "Two distinct Cold facts inserted and retracted, with the insertion first in one case and last in the other." \newline
+                  "A fire-rules call is between the insertion and retraction for each case to validate that calling fire-rules clear the cache")
+
+      (is (= (query ops-cleared-across-fire-rules lousy-weather-query)
+             [{}]))
+      (is (= (query ops-cleared-across-fire-rules cold-query)
+             [{:?t 10}])))))    

@@ -32,8 +32,8 @@
 
    This function does not modify the given session to mark rules as fired. Instead, it returns
    a new session in which the rules are marked as fired."
-  [session]
-  (eng/fire-rules session))
+  
+  [session] (eng/fire-rules session))
 
 (defn query
   "Runs the given query with the optional given parameters against the session.
@@ -238,7 +238,12 @@
 
     ;; ClojureScript implementation doesn't support salience yet, so
     ;; no activation group functions are used.
-    (eng/LocalSession. rulebase (eng/local-memory rulebase transport activation-group-sort-fn activation-group-fn get-alphas-fn) transport listener get-alphas-fn))))
+    (eng/LocalSession. rulebase
+                       (eng/local-memory rulebase transport activation-group-sort-fn activation-group-fn get-alphas-fn)
+                       transport
+                       listener
+                       get-alphas-fn
+                       []))))
 
 #?(:clj
    (extend-type clojure.lang.Symbol

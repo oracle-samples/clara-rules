@@ -99,7 +99,8 @@
   (let [session (-> my-session
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI")))]
+                    (insert (->Temperature 80 "MCI"))
+                    fire-rules)]
 
     ;; The query should identify all items that wer einserted and matchd the
     ;; expected criteria.
@@ -110,7 +111,8 @@
   (let [session (-> my-session
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI")))]
+                    (insert (->Temperature 80 "MCI"))
+                    fire-rules)]
 
     ;; Accumulator returns the lowest value.
     (is (= #{{:?t 10}}

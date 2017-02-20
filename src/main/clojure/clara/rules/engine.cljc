@@ -1748,50 +1748,82 @@
         (when (flush-updates *current-session*)
           (recur (mem/next-activation-group transient-memory) next-group))))))
 
-(deftype LocalSession [rulebase memory transport listener get-alphas-fn]
+(deftype LocalSession [rulebase memory transport listener get-alphas-fn pending-operations]
   ISession
   (insert [session facts]
-    (let [transient-memory (mem/to-transient memory)
-          transient-listener (l/to-transient listener)]
 
-      (l/insert-facts! transient-listener facts)
-
-      (binding [*pending-external-retractions* (atom [])]
-        ;; Bind the external retractions cache so that any logical retractions as a result
-        ;; of these insertions can be cached and executed as a batch instead of eagerly realizing
-        ;; them.  An external insertion of a fact that matches
-        ;; a negation or accumulator condition can cause logical retractions.
-        (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
-                root alpha-roots]
-          (alpha-activate root fact-group transient-memory transport transient-listener))
-        (external-retract-loop get-alphas-fn transient-memory transport transient-listener))
+    (let [new-pending-operations (conj pending-operations (->PendingUpdate :insertion
+                                                                           ;; Preserve the behavior prior to https://github.com/cerner/clara-rules/issues/268
+                                                                           ;; , particularly for the Java API, where the caller could freely mutate a
+                                                                           ;; collection of facts after passing it to Clara for the constituent
+                                                                           ;; facts to be inserted or retracted.  If the caller passes a persistent
+                                                                           ;; Clojure collection don't do any additional work.
+                                                                           (if (coll? facts)
+                                                                             facts
+                                                                             (into [] facts))))]
 
       (LocalSession. rulebase
-                     (mem/to-persistent! transient-memory)
+                     memory
                      transport
-                     (l/to-persistent! transient-listener)
-                     get-alphas-fn)))
+                     listener
+                     get-alphas-fn
+                     new-pending-operations)))
 
   (retract [session facts]
 
-    (let [transient-memory (mem/to-transient memory)
-          transient-listener (l/to-transient listener)]
-
-      (l/retract-facts! transient-listener facts)
-
-      (binding [*pending-external-retractions* (atom facts)]
-        (external-retract-loop get-alphas-fn transient-memory transport transient-listener))
+    (let [new-pending-operations (conj pending-operations (->PendingUpdate :retraction
+                                                                           ;; As in insert above defend against facts being a mutable collection.
+                                                                           (if (coll? facts)
+                                                                             facts
+                                                                             (into [] facts))))]
 
       (LocalSession. rulebase
-                     (mem/to-persistent! transient-memory)
+                     memory
                      transport
-                     (l/to-persistent! transient-listener)
-                     get-alphas-fn)))
+                     listener
+                     get-alphas-fn
+                     new-pending-operations)))
 
   (fire-rules [session]
 
     (let [transient-memory (mem/to-transient memory)
           transient-listener (l/to-transient listener)]
+
+      ;; We originally performed insertions and retractions immediately after the insert and retract calls,
+      ;; but this had the downside of making a pattern like "Retract facts, insert other facts, and fire the rules"
+      ;; perform at least three transitions between a persistent and transient memory.  Delaying the actual execution
+      ;; of the insertions and retractions until firing the rules allows us to cut this down to a single transition
+      ;; between persistent and transient memory.  There is some cost to the runtime dispatch on operation types here,
+      ;; but this is presumably less significant than the cost of memory transitions.
+      ;;
+      ;; We perform the insertions and retractions in the same order as they were applied to the session since
+      ;; if a fact is not in the session, retracted, and then subsequently inserted it should be in the session at
+      ;; the end.
+      (doseq [{op-type :type facts :facts} pending-operations]
+
+        (case op-type
+
+          :insertion
+          (do
+            (l/insert-facts! transient-listener facts)
+
+            (binding [*pending-external-retractions* (atom [])]
+              ;; Bind the external retractions cache so that any logical retractions as a result
+              ;; of these insertions can be cached and executed as a batch instead of eagerly realizing
+              ;; them.  An external insertion of a fact that matches
+              ;; a negation or accumulator condition can cause logical retractions.
+              (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
+                      root alpha-roots]
+                (alpha-activate root fact-group transient-memory transport transient-listener))
+              (external-retract-loop get-alphas-fn transient-memory transport transient-listener)))
+
+          :retraction
+          (do
+            (l/retract-facts! transient-listener facts)
+
+            (binding [*pending-external-retractions* (atom facts)]
+              (external-retract-loop get-alphas-fn transient-memory transport transient-listener)))))
+
       (fire-rules* rulebase
                    (:production-nodes rulebase)
                    transient-memory
@@ -1803,7 +1835,8 @@
                      (mem/to-persistent! transient-memory)
                      transport
                      (l/to-persistent! transient-listener)
-                     get-alphas-fn)))
+                     get-alphas-fn
+                     [])))
 
   ;; TODO: queries shouldn't require the use of transient memory.
   (query [session query params]
@@ -1849,7 +1882,8 @@
                  (if (> (count listeners) 0)
                    (l/delegating-listener listeners)
                    l/default-listener)
-                 get-alphas-fn))
+                 get-alphas-fn
+                 []))
 
 (defn local-memory
   "Returns a local, in-process working memory."

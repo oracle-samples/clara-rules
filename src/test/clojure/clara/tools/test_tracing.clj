@@ -64,7 +64,8 @@
                     (t/with-tracing)
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI")))]
+                    (insert (->Temperature 80 "MCI"))
+                    fire-rules)]
 
     (is (= [:add-facts :alpha-activate :right-activate :accum-reduced
             :left-activate :add-facts :alpha-activate :right-activate
