@@ -3627,9 +3627,9 @@
                                  (fire-rules)))
 
         run-session-untraced (fn []
-                               (mk-session [r1 r2])
-                               (insert (->First))
-                               (fire-rules))
+                               (-> (mk-session [r1 r2])
+                                   (insert (->First))
+                                   (fire-rules)))
 
         listeners-from-trace (fn [e] (mapcat :listeners
                                              (get-all-ex-data e)))]
