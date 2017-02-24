@@ -48,7 +48,8 @@
                              :location "MCI"})
                     (insert {:type :temperature
                              :temperature 80
-                             :location "MCI"}))]
+                             :location "MCI"})
+                    fire-rules)]
 
     ;; The query should identify all items that were inserted and matched the
     ;; expected criteria.
@@ -70,6 +71,7 @@
            (insert {:type :temperature :value 20})
            (insert {:type :threshold :value 0})
            (insert {:type :temperature :value 10})
+           fire-rules
            (query temps-below-threshold))))
 
   (let [results (-> accum-with-filter-session
@@ -77,6 +79,7 @@
                     (insert {:type :threshold :value 40})
                     (insert {:type :temperature :value 10})
                     (insert {:type :temperature :value 60})
+                    fire-rules
                     (query temps-below-threshold))
 
         [{threshold :?threshold low-temps :?low-temps }] results]
@@ -102,6 +105,7 @@
              (insert {:type :temperature :value 20})
              (insert {:type :threshold :value 0})
              (insert {:type :temperature :value 10})
+             fire-rules
              (query none-below-threshold))))
 
   ;; Values below the threshold exist, so we should not match.
@@ -111,4 +115,5 @@
            (insert {:type :threshold :value 40})
            (insert {:type :temperature :value 10})
            (insert {:type :temperature :value 60})
+           fire-rules
            (query none-below-threshold)))))

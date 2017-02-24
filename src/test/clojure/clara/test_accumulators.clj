@@ -59,10 +59,15 @@
         session (-> empty-session
                     (insert (->Temperature 30 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI")))
+                    (insert (->Temperature 80 "MCI"))
+                    fire-rules)
 
-        min-retracted (retract session (->Temperature 10 "MCI"))
-        max-retracted (retract session (->Temperature 80 "MCI"))]
+        min-retracted (-> session
+                          (retract (->Temperature 10 "MCI"))
+                          fire-rules)
+        max-retracted (-> session
+                          (retract (->Temperature 80 "MCI"))
+                          fire-rules)]
 
     (is (empty (query empty-session coldest)))
     (is (= {:?t 10} (first (query session coldest))))
@@ -86,9 +91,12 @@
         session (-> (mk-session [sum])
                     (insert (->Temperature 30 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI")))
+                    (insert (->Temperature 80 "MCI"))
+                    fire-rules)
 
-        retracted (retract session (->Temperature 30 "MCI"))]
+        retracted (-> session
+                      (retract (->Temperature 30 "MCI"))
+                      fire-rules)]
 
     (is (= {:?t 120} (first (query session sum))))
     (is (= {:?t 90} (first (query retracted sum))))))
@@ -99,9 +107,12 @@
         session (-> (mk-session [count])
                     (insert (->Temperature 30 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI")))
+                    (insert (->Temperature 80 "MCI"))
+                    fire-rules)
 
-        retracted (retract session (->Temperature 30 "MCI"))]
+        retracted (-> session
+                      (retract (->Temperature 30 "MCI"))
+                      fire-rules)]
 
     (is (= {:?c 3} (first (query session count))))
     (is (= {:?c 2} (first (query retracted count))))))
@@ -113,9 +124,12 @@
         session (-> (mk-session [distinct distinct-field])
                     (insert (->Temperature 80 "MCI"))
                     (insert (->Temperature 80 "MCI"))
-                    (insert (->Temperature 90 "MCI")))
+                    (insert (->Temperature 90 "MCI"))
+                    fire-rules)
 
-        retracted (retract session (->Temperature 90 "MCI"))]
+        retracted (-> session
+                      (retract (->Temperature 90 "MCI"))
+                      fire-rules)]
 
     (is (= #{{:?t #{ (->Temperature 80 "MCI")
                      (->Temperature 90 "MCI")}}}
@@ -139,7 +153,8 @@
         session (-> (mk-session [max-min-avg])
                     (insert (->Temperature 30 "MCI")
                             (->Temperature 10 "MCI")
-                            (->Temperature 80 "MCI")))]
+                            (->Temperature 80 "MCI"))
+                    fire-rules)]
 
     (is (= {:?max 80 :?min 10 :?avg 40} (first (query session max-min-avg))))))
 
@@ -156,7 +171,8 @@
                             [?c <- (acc/count) from [Temperature (= ?loc location)]]])
 
         session (-> (mk-session [count])
-                    (insert (->WindSpeed 20 "MCI")))]
+                    (insert (->WindSpeed 20 "MCI"))
+                    fire-rules)]
 
     (is (= {:?c 0 :?loc "MCI"} (first (query session count))))))
 
@@ -169,7 +185,8 @@
                             [WindSpeed (> windspeed 10) (= ?loc location)]])
 
         session (-> (mk-session [count])
-                    (insert (->WindSpeed 20 "MCI")))]
+                    (insert (->WindSpeed 20 "MCI"))
+                    fire-rules)]
 
     (is (= {:?c 0 :?loc "MCI"} (first (query session count))))))
 
@@ -182,7 +199,8 @@
                     (insert (->WindSpeed 20 "MCI")
                             (->WindSpeed 20 "SFO")
                             (->Temperature 40 "SFO")
-                            (->Temperature 50 "SFO")))]
+                            (->Temperature 50 "SFO"))
+                    fire-rules)]
 
     ;; Zero count at MCI, since no temperatures were inserted.
     (is (= {:?c 0 :?loc "MCI"} (first (query session count :?loc "MCI"))))
@@ -288,9 +306,12 @@
         session (-> (mk-session [max-query])
                     (insert (->Temperature 30 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI")))
+                    (insert (->Temperature 80 "MCI"))
+                    fire-rules)
 
-        retracted (retract session (->Temperature 80 "MCI"))]
+        retracted (-> session
+                      (retract (->Temperature 80 "MCI"))
+                      fire-rules)]
 
     (is (= {:?t (->Temperature 80 "MCI")} (first (query session max-query))))
     (is (= {:?t (->Temperature 30 "MCI")} (first (query retracted max-query))))))
@@ -308,9 +329,12 @@
         session (-> (mk-session [sum])
                     (insert (->Temperature 30 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI")))
+                    (insert (->Temperature 80 "MCI"))
+                    fire-rules)
 
-        retracted (retract session (->Temperature 30 "MCI"))]
+        retracted (-> session
+                      (retract (->Temperature 30 "MCI"))
+                      fire-rules)]
 
     (is (= {:?t 120} (first (query session sum))))
     (is (= {:?t 90} (first (query retracted sum))))))
@@ -334,11 +358,13 @@
                     (insert-all [(->Temperature 30 "MCI")
                                  (->Temperature 10 "MCI")
                                  (->Temperature 80 "MCI")
-                                 (->Temperature 80 "MCI")]))
+                                 (->Temperature 80 "MCI")])
+                    fire-rules)
 
         retracted-session (-> session
                               (retract (->Temperature 80 "MCI")
-                                       (->Temperature 80 "MCI")))]
+                                       (->Temperature 80 "MCI"))
+                              fire-rules)]
 
     (testing "grouping-accum"
       (is (= {:?t {30 [(->Temperature 30 "MCI")]

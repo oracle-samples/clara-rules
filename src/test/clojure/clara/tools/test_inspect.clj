@@ -116,7 +116,8 @@
         session (-> (mk-session [coldest-query])
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI")))]
+                    (insert (->Temperature 80 "MCI"))
+                    fire-rules)]
 
     (let [accum-condition (-> coldest-query :lhs  first (select-keys [:accumulator :from]))
           query-explanations (-> (inspect session) (:query-matches) (get coldest-query) )]
@@ -139,7 +140,8 @@
                     (insert (->Temperature 10 "MCI"))
                     (insert (->Temperature 20 "STL"))
                     (insert (->Temperature 80 "MCI"))
-                    (insert (->Temperature 25 "MCI")))]
+                    (insert (->Temperature 25 "MCI"))
+                    fire-rules)]
 
     (let [matches (-> (inspect session) (:query-matches) (get colder-query) first :matches)]
       (doseq [[fact node-data] matches]
@@ -159,7 +161,8 @@
         session  (-> (mk-session [distinct-temps-query] :cache false)
                      (insert (->Temperature 15 "MCI"))
                      (insert (->Temperature 10 "MCI"))
-                     (insert (->Temperature 80 "MCI")))]
+                     (insert (->Temperature 80 "MCI"))
+                     fire-rules)]
 
     ;; Ensure that no returned contraint includes a generated variable name.
     (doseq [{:keys [matches bindings]} (-> (inspect session) :query-matches (get distinct-temps-query))
