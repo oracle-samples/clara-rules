@@ -31,9 +31,18 @@
    state and will not be re-fired unless facts affecting the rule are added or retracted.
 
    This function does not modify the given session to mark rules as fired. Instead, it returns
-   a new session in which the rules are marked as fired."
-  
-  [session] (eng/fire-rules session))
+   a new session in which the rules are marked as fired.
+
+   This take an additional map of options as a second argument.  Current options:
+
+   :cancelling true (EXPERIMENTAL, subject to change/removal.  Not supported in ClojureScript.):  
+    Simultaneously propagate insertions and retractions through the rules network, at every step using the insertion and retractions of equals facts to cancel each
+    other out and avoid operations deeper in the rules network.  The behavior of unconditional insertions and RHS (right-hand side) retractions
+    is undefined when this option is enabled and this option should not be used when calling fire-rules can result in these operations.
+    Note that this is purely a performance optimization and no guarantees are made at this time on whether a given rule's RHS will be called.
+    When this option is used rule RHS code that is executed shouldn't do anything that impacts state other than perform logical insertions."
+  ([session] (eng/fire-rules session {}))
+  ([session opts] (eng/fire-rules session opts)))
 
 (defn query
   "Runs the given query with the optional given parameters against the session.
