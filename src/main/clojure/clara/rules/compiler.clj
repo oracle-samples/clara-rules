@@ -402,12 +402,16 @@
 
 (defn compile-join-filter
   "Compiles to a predicate function that ensures the given items can be unified. Returns a ready-to-eval
-   function that accepts a token, a fact, and an environment, and returns truthy if the given fact satisfies
-   the criteria."
-  [{:keys [type constraints args] :as unification-condition} ancestor-bindings env]
-  (let [accessors (field-name->accessors-used type constraints)
+   function that accepts the following:
 
-        binding-keys (variables-as-keywords constraints)
+   * a token from the parent node
+   * the fact
+   * a map of bindings from the fact, which was typically computed on the alpha side
+   * an environment
+
+   The function created here returns truthy if the given fact satisfies the criteria."
+  [{:keys [type constraints args] :as unification-condition} ancestor-bindings element-bindings env]
+  (let [accessors (field-name->accessors-used type constraints)
 
         destructured-env (if (> (count env) 0)
                            {:keys (mapv #(symbol (name %)) (keys env))}
@@ -424,18 +428,31 @@
                                              [name (list accessor '?__fact__)])
                                            accessors)))
 
-        token-assignments (mapcat #(list (symbol (name %)) (list 'get-in '?__token__ [:bindings %])) binding-keys)
+        ;; Get the bindings used in the join filter expression that are pulled from
+        ;; the token. This is simply the bindings in the constraints with the newly
+        ;; created element bindings for this condition removed.
+        token-binding-keys (remove element-bindings (variables-as-keywords constraints))
+
+        token-assignments (mapcat #(list (symbol (name %))
+                                         (list 'get-in '?__token__ [:bindings %]))
+                                  token-binding-keys)
+
+        new-binding-assignments (mapcat #(list (symbol (name %))
+                                               (list 'get '?__element-bindings__ %))
+                                        element-bindings)
 
         assignments (concat
                      fact-assignments
-                     token-assignments)
+                     token-assignments
+                     new-binding-assignments)
 
         equality-only-variables (into #{} (for [binding ancestor-bindings]
                                             (symbol (name (keyword binding)))))]
 
     `(fn [~'?__token__
          ~(add-meta '?__fact__ type)
-          ~destructured-env]
+         ~'?__element-bindings__
+         ~destructured-env]
        (let [~@assignments
              ~'?__bindings__ (atom {})]
          ~(compile-constraints constraints equality-only-variables)))))
@@ -1207,12 +1224,13 @@
          condition
          children
          join-bindings)
-        
+
         ;; If the join operation includes arbitrary expressions
         ;; that can't expressed as a hash join, we must use the expressions
         (if (:join-filter-expressions beta-node)
           (let [join-filter-expr (compile-join-filter (:join-filter-expressions beta-node)
                                                       (:join-filter-join-bindings beta-node)
+                                                      (:new-bindings beta-node)
                                                       (:env beta-node))]
             (with-meta
               (eng/->ExpressionJoinNode
@@ -1241,6 +1259,7 @@
 
         (let [join-filter-expr (compile-join-filter (:join-filter-expressions beta-node)
                                                     (:join-filter-join-bindings beta-node)
+                                                    (:new-bindings beta-node)
                                                     (:env beta-node))]
           (with-meta
             (eng/->NegationWithJoinFilterNode
@@ -1298,6 +1317,7 @@
 
           (let [join-filter-expr (compile-join-filter (:join-filter-expressions beta-node)
                                                       (:join-filter-join-bindings beta-node)
+                                                      (:new-bindings beta-node)
                                                       (:env beta-node))]
             (with-meta
               (eng/->AccumulateWithJoinFilterNode
@@ -1498,16 +1518,16 @@
   (equals [this other]
     (let [other ^AlphaRootsWrapper other]
       (cond
-        
-        (identical? fact-type (.fact-type other)) 
+
+        (identical? fact-type (.fact-type other))
         true
-        
+
         (not (== fact-type-hash (.fact-type-hash other)))
         false
-        
+
         :else
         (= fact-type (.fact-type other)))))
-  
+
   ;; Since know we will need to find the hashcode of this object in all cases just eagerly calculate it upfront
   ;; and avoid extra calls to hash later.
   (hashCode [this] fact-type-hash))
@@ -1557,7 +1577,7 @@
                                   ;; ensuring determinism, we respect that ordering here by conj'ing on to the existing
                                   ;; collection.
                                   (conj (wrapped-ancestors-fn fact-type) fact-type))))
-        
+
         update-roots->facts! (fn [^java.util.Map roots->facts roots-group fact]
                                (if-let [v (.get roots->facts roots-group)]
                                  (.add ^java.util.List v fact)
@@ -1570,7 +1590,7 @@
         (doseq [fact facts
                 roots-group (fact-type->roots (wrapped-fact-type-fn fact))]
           (update-roots->facts! roots->facts roots-group fact))
-        
+
         (let [return-list (java.util.LinkedList.)
               entries (.entrySet roots->facts)
               entries-it (.iterator entries)]
@@ -1579,14 +1599,14 @@
           ;; for performance but wrap them in unmodifiableList to make it clear that the caller is not expected to mutate these lists.
           ;; Since after this function returns the only reference to the fact lists will be through the unmodifiedList we can depend elsewhere
           ;; on these lists not changing.  Since the only expected workflow with these lists is to loop through them, not add or remove elements,
-          ;; we don't gain much from using a transient (which can be efficiently converted to a persistent data structure) rather than a mutable type. 
+          ;; we don't gain much from using a transient (which can be efficiently converted to a persistent data structure) rather than a mutable type.
           (loop []
             (when (.hasNext entries-it)
               (let [^java.util.Map$Entry e (.next entries-it)]
                 (.add return-list [(-> e ^AlphaRootsWrapper (.getKey) .roots)
                                    (java.util.Collections/unmodifiableList (.getValue e))])
                 (recur))))
-          
+
           (java.util.Collections/unmodifiableList return-list))))))
 
 
@@ -1697,7 +1717,7 @@
         ;; The returned salience will be a tuple of the form [rule-salience internal-salience],
         ;; where internal-salience is considered after the rule-salience and is assigned automatically by the compiler.
         activation-group-fn (eng/options->activation-group-fn options)
-        
+
         rulebase (build-network beta-tree beta-roots alpha-nodes productions
                                 fact-type-fn ancestors-fn activation-group-sort-fn activation-group-fn)
 

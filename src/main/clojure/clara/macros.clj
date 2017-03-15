@@ -99,6 +99,7 @@
               '~condition
               ~(com/compile-join-filter (:join-filter-expressions beta-node)
                                         (:join-filter-join-bindings beta-node)
+                                        (:new-bindings beta-node)
                                         {})
               ~(gen-beta-network child-ids beta-graph all-bindings)
               ~join-bindings)
@@ -115,6 +116,7 @@
               '~condition
               ~(com/compile-join-filter (:join-filter-expressions beta-node)
                                         (:join-filter-join-bindings beta-node)
+                                        (:new-bindings beta-node)
                                         {})
               ~(gen-beta-network child-ids beta-graph all-bindings)
               ~join-bindings)
@@ -139,6 +141,7 @@
               ~(:accumulator beta-node)
               ~(com/compile-join-filter (:join-filter-expressions beta-node)
                                         (:join-filter-join-bindings beta-node)
+                                        (:new-bindings beta-node)
                                         {})
               ~(:result-binding beta-node)
               ~(gen-beta-network child-ids beta-graph all-bindings)
