@@ -78,7 +78,7 @@
                        (if-let [cause (.getCause e)]
                          (conj (get-ex-chain cause) e)
                          [e]))]
-    
+
     (map ex-data
          (filter (partial instance? clojure.lang.IExceptionInfo)
                  (get-ex-chain e)))))
@@ -523,7 +523,7 @@
                 session-retracted (-> session
                                       (retract (->WindSpeed 30 "MCI"))
                                       fire-rules)
-                
+
                 session-other-retracted (-> session
                                             (insert (->WindSpeed 30 "ORD"))
                                             (retract (->WindSpeed 30 "ORD"))
@@ -684,7 +684,7 @@
 
         session (mk-session [get-cold-temp get-min-temp-under-threshold])
         simple-session (mk-session [get-min-temp-under-threshold])]
-    
+
     ;; No temp tests - no firing
 
     (assert-query-results 'no-thresh-no-temps
@@ -853,7 +853,7 @@
                   (query p))]
       (is (= (frequencies [{:?s 10 :?t 10}])
              (frequencies res)))))
-  
+
   (testing "AccumulateWithJoinFilterNode"
     (let [p (dsl/parse-query [] [[Cold (= ?t temperature)]
                                  [?s <- (acc/sum :temperature) :from [Temperature (< ?t temperature)]]])
@@ -906,7 +906,7 @@
              (insert thresh-11)
              fire-rules
              (query get-temp-history))))
-    
+
     (is (= (frequencies [{:?his (->TemperatureHistory [temp-10-mci])}])
            (frequencies two-groups-one-init)))
 
@@ -975,7 +975,7 @@
                                       fire-rules)
                   qresults (fn [s]
                              (frequencies (query s q)))]]
-      
+
       (testing (str "Testing for inserts for " join-type)
         (is (= (-> [{:?ws 10 :?ts [t1mci] :?loc "MCI"}
                     {:?ws 10 :?ts [t2lax] :?loc "LAX"}]
@@ -1576,11 +1576,11 @@
         first-cold (dsl/parse-rule [[First]]
                                    (insert! (->ColdAndWindy 20 20))
                                    {:salience -1})
-        
+
         second-cold (dsl/parse-rule [[Second]]
                                     (insert! (->ColdAndWindy 10 10))
                                     {:salience -2})
-        
+
         hot-query (dsl/parse-query [] [[Hot]])
 
         invariant-productions [min-temp-rule first-cold second-cold hot-query]]
@@ -2892,17 +2892,17 @@
           [[:default-sort :default-group :forward-order]
            [:default-sort :salience-group :forward-order]
            [:default-sort :neg-salience-group :backward-order]
-           
+
            [:numeric-greatest-sort :default-group :forward-order]
            [:numeric-greatest-sort :salience-group :forward-order]
            [:numeric-greatest-sort :neg-salience-group :backward-order]
 
-           
+
            [:boolean-greatest-sort :default-group :forward-order]
            [:boolean-greatest-sort :salience-group :forward-order]
            [:boolean-greatest-sort :neg-salience-group :backward-order]
 
-           
+
            [:numeric-least-sort :default-group :backward-order]
            [:numeric-least-sort :salience-group :backward-order]
            [:numeric-least-sort :neg-salience-group :forward-order]
@@ -3538,7 +3538,7 @@
                (insert (->WindSpeed 80 "SFO"))
                (insert (->WindSpeed 80 "ORD"))
                (insert (->WindSpeed 90 "ORD"))
-               fire-rules               
+               fire-rules
                (query has-windspeed)
                (set))))))
 
@@ -3704,10 +3704,10 @@
 (deftest test-retrieve-listeners-from-failed-rhs
   (let [r1 (dsl/parse-rule [[First]]
                            (insert! (->Second)))
-        
+
         r2 (dsl/parse-rule [[Second]]
                            (throw (ex-info "Test exception" {})))
-        
+
         run-session-traced (fn []
                              (-> (mk-session [r1 r2])
                                  (t/with-tracing)
@@ -3858,7 +3858,7 @@
 
 (deftest test-equivalent-rule-sources-caching
   (is (instance? clojure.lang.IAtom @#'com/session-cache)
-      "Enforce that this test is revisited if the cache structure (an implementation detail) is changed.  
+      "Enforce that this test is revisited if the cache structure (an implementation detail) is changed.
        This test should have a clean cache but should also not impact the global cache, which
        requires resetting the cache for the duration of this test.")
 
@@ -3876,7 +3876,7 @@
         s6 (mk-session [test-rule] :fact-type-fn alternate-alpha-fn)
         s7 (mk-session [test-rule test-rule] :fact-type-fn alternate-alpha-fn)
         s8 (mk-session [test-rule cold-query] :fact-type-fn alternate-alpha-fn)
-        
+
         ;; Find all distinct references, with distinctness determined by reference equality.
         ;; If the reference to a session is identical to a previous session we infer that
         ;; the session was the result of a cache hit; if the reference is not identical to
@@ -3978,7 +3978,7 @@
                            [:not [:or [ColdAndWindy (= ?t temperature)]
                                   [Hot (= ?t temperature)]]]]
                           (insert-unconditional! (->First)))
-        
+
         q (dsl/parse-query [] [[First]])
 
         session->results (fn [session] (-> session
@@ -4063,7 +4063,7 @@
 
         r3 (dsl/parse-rule [[Hot (= ?t temperature)]]
                            (insert! (->Temperature ?t "MCI")))
-        
+
         r4 (dsl/parse-rule [[?ts <- (acc/all :temperature) :from [Temperature]]]
                            (do (swap! results conj ?ts)
                                (insert! (->TemperatureHistory ?ts)))
@@ -4097,7 +4097,7 @@
                                                                    (= ?temperature temperature)]]]
                            (insert! (->TemperatureHistory [?result ?temperature])))
         q1 (dsl/parse-query [] [[TemperatureHistory (= ?temps temperatures)]])]
-    
+
     (doseq [[empty-session node-type] [[(mk-session [r1 q1] :cache false)
                                         "AccumulateNode"]
                                        [(mk-session [r2 q1] :cache false)
@@ -4180,11 +4180,11 @@
 (deftest test-multiple-minimum-accum-retractions
   (let [coldest-rule-1 (dsl/parse-rule [[?coldest-temp <- (acc/min :temperature :returns-fact true) :from [ColdAndWindy]]]
                                        (insert! (->Cold (:temperature ?coldest-temp))))
-        
+
         coldest-rule-2 (dsl/parse-rule [[Hot (= ?max-temp temperature)]
                                         [?coldest-temp <- (acc/min :temperature :returns-fact true) :from [ColdAndWindy (< temperature ?max-temp)]]]
                                        (insert! (->Cold (:temperature ?coldest-temp))))
-        
+
         cold-query (dsl/parse-query [] [[Cold (= ?t temperature)]])]
 
     (doseq [[empty-session node-type]
@@ -4196,7 +4196,7 @@
       ;; is to verify that even accumulator activations and retractions that do not immediately change the tokens propagated
       ;; downstream are registered appropriately for the purpose of truth maintenance later.  This pattern ensures that we have
       ;; distinct activations and retractions.
-      
+
       (let [all-temps-session (-> empty-session
                                   (insert (->ColdAndWindy 10 10) (->Hot 100))
                                   fire-rules
@@ -4321,7 +4321,7 @@
         r2 (dsl/parse-rule [[?lowest-hot <- (acc/min :temperature) :from [Hot]]
                             [?coldest-temp <- (acc/min :temperature) :from [Cold (< temperature ?lowest-hot)]]]
                            (swap! r2-atom conj ?coldest-temp))]
-    
+
     (reset! r1-atom [])
     (-> (mk-session [r1] :cache false)
         (insert (->Cold 10))
@@ -4409,10 +4409,10 @@
                             [?ts <- (acc/all) :from [Temperature (join-filter-equals ?loc location)]]]
                            (insert! (->TemperatureHistory [?loc (map :temperature ?ts)])))
         q (dsl/parse-query [] [[TemperatureHistory (= ?ts temperatures)]])]
-    
+
     (doseq [[empty-session join-type] [[(mk-session [r1 q] :cache false) "simple hash join"]
                                        [(mk-session [r2 q] :cache false) "filter join"]]]
-      
+
       (is (= (-> empty-session
                  (insert (->WindSpeed 10 "MCI"))
                  fire-rules
@@ -4457,9 +4457,9 @@
         binding-from-parent-non-equals (dsl/parse-rule [[Cold (= ?t temperature)]
                                                         [?hot-facts <- (acc/all) :from [Hot (join-filter-equals ?t temperature)]]]
                                                        (insert! (->Temperature [?t []] "MCI")))
-        
+
         q (dsl/parse-query [] [[Temperature (= ?t temperature)]])]
-    
+
     (is (= [{:?t [nil []]}]
            (-> (mk-session [binding-from-self q] :cache false)
                (insert (->Hot nil))
@@ -4468,14 +4468,14 @@
         "An explicit value of nil in a field used to create a binding group should allow the binding to be created.")
 
     (doseq [[parent-rule constraint-type] [[binding-from-parent "simple hash join"]
-                                           [binding-from-parent-non-equals "filter join"]]] 
+                                           [binding-from-parent-non-equals "filter join"]]]
       (is (= [{:?t [nil []]}]
              (-> (mk-session [parent-rule q] :cache false)
                  (insert (->Cold nil))
                  fire-rules
                  (query q)))
           (str "An explicit value of nil from a parent should allow the binding to be created for a " constraint-type)))))
-           
+
 (def false-initial-value-accum (acc/accum
                                 {:initial-value false
                                  ;; Propagate whichever argument is not nil.
@@ -4498,7 +4498,7 @@
                                                                                                           (< temperature (:temperature hot-fact)))
                                                                                                         ?all-hot)]]]
                                                   (insert! (->TemperatureHistory ?t)))]]]
-    
+
     (is (= (-> (mk-session [cold-rule t-history-query] :cache false)
                fire-rules
                (query t-history-query))
@@ -4530,7 +4530,7 @@
                                                     [?t <- false-if-empty-accum-all :from [Cold ((constantly true) ?hot-temps)]]]
                                                    (insert! (->TemperatureHistory ?t)))]]
           :let [empty-session (mk-session [t-history-query cold-rule] :cache false)]]
-    
+
     (is (= (-> empty-session
                fire-rules
                (query t-history-query))
@@ -4606,7 +4606,7 @@
                fire-rules
                (query cold-and-windy-query))
            [{:?t false}])
-        (str "The minimum temperature should retract back to boolean false for node type " node-type))))     
+        (str "The minimum temperature should retract back to boolean false for node type " node-type))))
 
 (definterface Marker)
 (defrecord Type1 [] Marker)
@@ -4625,7 +4625,7 @@
         retract2 (-> retract1
                      (retract (->Type1))
                      fire-rules)]
-    
+
     (is (= (frequencies [{:?m (->Type1)}
                          {:?m (->Type2)}])
            (frequencies (query init-state q))))
@@ -4706,7 +4706,7 @@
            firing order should also be reversed.")
 
       ;; Reset the line metadata on the rules to what it was previously.
-      (alter-meta! #'order-rules/rule-C (fn [m] (assoc m :line rule-C-line))) 
+      (alter-meta! #'order-rules/rule-C (fn [m] (assoc m :line rule-C-line)))
       (alter-meta! #'order-rules/rule-D (fn [m] (assoc m :line rule-D-line))))
 
     (reset! fire-order [])
@@ -4771,21 +4771,21 @@
         ;; Make two "alpha roots" that the 2 rules above insertions will need to propagate to.
         q1 (dsl/parse-query [] [[?c <- Cold  (swap! qholder conj :cold)]])
         q2 (dsl/parse-query [] [[?h <- Hot (swap! qholder conj :hot)]])
-        
+
         order1 (mk-session [r1 r2 q1 q2] :cache false)
         order2 (mk-session [r2 r1 q1 q2] :cache false)
 
         run-session (fn [s]
                       (let [s (-> s
-                                  (insert (->Temperature 10 "MCI")) 
+                                  (insert (->Temperature 10 "MCI"))
                                   fire-rules)]
                         [(-> s (query q1) frequencies)
                          (-> s (query q2) frequencies)]))
-        
+
         [res11 res12] (run-session order1)
         holder1 @qholder
         _ (reset! qholder [])
-        
+
         [res21 res22] (run-session order2)
         holder2 @qholder
         _ (reset! qholder [])]
@@ -4797,7 +4797,7 @@
     (is (= (frequencies [{:?h (->Hot 10)}])
            res12
            res22))
-    
+
     (is (= [:cold :hot] holder1))
     (is (= [:hot :cold] holder2))))
 
@@ -4812,7 +4812,7 @@
         empty-session (mk-session [rule cold-query] :cache false)
 
         windy-fact (->ColdAndWindy 20 20)]
-    
+
     (is (= (-> empty-session
                (insert windy-fact)
                (insert windy-fact)
@@ -4879,7 +4879,7 @@
                             [?ws <- (acc/all) :from [ColdAndWindy (= ?t temperature)
                                                      (even? windspeed)]]]
                            (insert! (->TemperatureHistory (map :windspeed ?ws))))
-        
+
         q (dsl/parse-query [] [[TemperatureHistory (= ?ws temperatures)]])]
 
     (doseq [[empty-session join-type] [[(mk-session [r1 q] :cache false) "filter join"]
@@ -5126,27 +5126,27 @@
   ;; access the facts passed to the condition without exposing Clara internals.
   ;; see issue 257 for more details of the bug surrounding this test
   (let [accum-state (atom [])
-        
+
         stateful-accum (acc/accum
                          {:initial-value []
                           :reduce-fn conj
                           :retract-fn (fn [items retracted] (remove #{retracted} items))
-                          :convert-return-fn (fn [items] 
-                                               (do 
+                          :convert-return-fn (fn [items]
+                                               (do
                                                  (swap! accum-state conj items)
                                                  items))})
-        
+
         common-ancestor-rule (dsl/parse-rule [[?lists <- stateful-accum :from [List]]]
                                              ;; don't care about whats inserted
                                              (->LousyWeather))
-        
+
         array-list (ArrayList.)
         linked-list (LinkedList.)
-        
+
         ses (-> (mk-session [common-ancestor-rule])
               (insert-all [array-list linked-list])
               (fire-rules))]
-    
+
     (is (not-any? #(= 1 (count %)) @accum-state)
         "Facts with common ancestors should be batched together, expected either the initial accumulator value or a vector containing both lists but never a vector containing one list.")))
 
@@ -5281,11 +5281,11 @@
 
   (let [r (dsl/parse-rule [[:exists [Cold]]]
                           (insert! (->LousyWeather)))
-        
+
         lousy-weather-query (dsl/parse-query [] [[LousyWeather]])
 
         cold-query (dsl/parse-query [] [[Cold (= ?t temperature)]])
-        
+
         empty-session (mk-session [r lousy-weather-query cold-query] :cache false)
 
         single-ops-retract-first (-> empty-session
@@ -5344,7 +5344,7 @@
       (is (= (query ops-cleared-across-fire-rules lousy-weather-query)
              [{}]))
       (is (= (query ops-cleared-across-fire-rules cold-query)
-             [{:?t 10}])))))    
+             [{:?t 10}])))))
 
 (deftest test-cancelling-facts
   (binding [*side-effect-holder* (atom false)]
@@ -5452,5 +5452,63 @@
                     (insert (->Cold -10))
                     (fire-rules {:cancelling true})
                     (query cold-query))))))
-    
-  
+
+;; Test for https://github.com/cerner/clara-rules/issues/267
+(deftest test-local-scope-visible-in-join-filter
+  (let [check-local-binding (dsl/parse-query [] [[WindSpeed (= ?w windspeed)]
+                                                 [Temperature (= ?t temperature)
+                                                  (join-filter-equals ?w ?t 10)]])
+
+        check-local-binding-accum (dsl/parse-query [] [[WindSpeed (= ?w windspeed)]
+                                                       [?results <- (acc/all) :from [Temperature (= ?t temperature)
+                                                                                     (join-filter-equals ?w ?t 10)]]])
+
+        check-reuse-previous-binding (dsl/parse-query [] [[WindSpeed (= ?t windspeed) (= ?w windspeed)]
+                                                          [Temperature (= ?t temperature)
+                                                           (join-filter-equals ?w ?t 10)]])
+
+        check-exception (dsl/parse-query [] [[WindSpeed (= ?w windspeed)]
+                                             [Temperature (= ?t temperature)
+                                              (> ?t ?w)]])
+
+        check-accum-result-previous-binding (dsl/parse-query []
+                                                             [[?t <- (acc/min :temperature) :from [Temperature]]
+                                                              [ColdAndWindy (= ?t temperature) (join-filter-equals ?t windspeed)]])]
+
+    (is (= [{:?w 10 :?t 10}]
+           (-> (mk-session [check-local-binding])
+               (insert (->WindSpeed 10 "MCI") (->Temperature 10 "MCI"))
+               (fire-rules)
+               (query check-local-binding))))
+
+    (is (= [{:?w 10 :?t 10 :?results [(->Temperature 10 "MCI")]}]
+           (-> (mk-session [check-local-binding-accum])
+               (insert (->WindSpeed 10 "MCI") (->Temperature 10 "MCI"))
+               (fire-rules)
+               (query check-local-binding-accum))))
+
+    (is (= [{:?w 10 :?t 10}]
+           (-> (mk-session [check-reuse-previous-binding])
+               (insert (->WindSpeed 10 "MCI") (->Temperature 10 "MCI"))
+               (fire-rules)
+               (query check-reuse-previous-binding))))
+
+    (let [e (try
+              (-> (mk-session [check-exception])
+                  (insert (->WindSpeed 10 "MCI") (->Temperature nil "MCI"))
+                  (fire-rules)
+                  (query check-exception))
+              (is false "Scope binding test is expected to throw an exception.")
+              (catch Exception e e))]
+
+      (is (= {:?w 10, :?t nil}
+             (-> e (ex-data) :bindings))))
+
+    (is (empty? (-> (mk-session [check-accum-result-previous-binding])
+                    (insert (->Temperature -10 "MCI"))
+                    (insert (->ColdAndWindy -20 -20))
+                    fire-rules
+                    (query check-accum-result-previous-binding)))
+        "Validate that the ?t binding from the previous accumulator result is used, rather
+         than the binding in the ColdAndWindy condition that would create a ?t binding if one were
+         not already present")))

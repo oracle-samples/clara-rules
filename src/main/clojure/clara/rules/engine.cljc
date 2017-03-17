@@ -213,8 +213,8 @@
   "Retract all facts, then group and retract all facts that must be logically retracted because of these
    retractions, and so forth, until logical consistency is reached.  When an external retraction causes multiple
   facts of the same type to be retracted in the same iteration of the loop this improves efficiency since they can be grouped.
-  For example, if we have a rule that matches on FactA and inserts FactB, and then a later rule that accumulates on FactB, 
-  if we have multiple FactA external retractions it is more efficient to logically retract all the FactB instances at once to minimize the  number of times we must re-accumulate on FactB.  
+  For example, if we have a rule that matches on FactA and inserts FactB, and then a later rule that accumulates on FactB,
+  if we have multiple FactA external retractions it is more efficient to logically retract all the FactB instances at once to minimize the  number of times we must re-accumulate on FactB.
   This is similar to the function of the pending-updates in the fire-rules* loop."
   [get-alphas-fn memory transport listener]
   (loop []
@@ -258,7 +258,7 @@
     (flush-all current-session false)))
 
 (defn insert-facts!
-  "Place facts in a stateful cache to be inserted into the session 
+  "Place facts in a stateful cache to be inserted into the session
   immediately after the RHS of a rule fires."
   [facts unconditional]
   (if unconditional
@@ -286,7 +286,7 @@
 
     (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
             root alpha-roots]
-      
+
       (alpha-retract root fact-group transient-memory transport listener))))
 
 (defn ^:private flush-insertions!
@@ -646,14 +646,15 @@
       (into [type] constraints))))
 
 (defn- join-node-matches
-  [node join-filter-fn token fact env]
-  (let [beta-bindings (try (join-filter-fn token fact {})
+  [node join-filter-fn token fact fact-bindings env]
+  (let [beta-bindings (try (join-filter-fn token fact fact-bindings {})
                            (catch #?(:clj Exception :cljs :default) e
                                (throw-condition-exception {:cause e
                                                            :node node
                                                            :fact fact
                                                            :env env
-                                                           :bindings (:bindings token)})))]
+                                                           :bindings (merge (:bindings token)
+                                                                            fact-bindings)})))]
     beta-bindings))
 
 (defrecord ExpressionJoinNode [id condition join-filter-fn children binding-keys]
@@ -671,7 +672,7 @@
            token tokens
            :let [fact (:fact element)
                  fact-binding (:bindings element)
-                 beta-bindings (join-node-matches node join-filter-fn token fact {})]
+                 beta-bindings (join-node-matches node join-filter-fn token fact fact-binding {})]
            :when beta-bindings]
        (->Token (conj (:matches token) [fact id])
                 (conj fact-binding (:bindings token) beta-bindings)))))
@@ -687,7 +688,7 @@
            element (mem/get-elements memory node join-bindings)
            :let [fact (:fact element)
                  fact-bindings (:bindings element)
-                 beta-bindings (join-node-matches node join-filter-fn token fact {})]
+                 beta-bindings (join-node-matches node join-filter-fn token fact fact-bindings {})]
            :when beta-bindings]
        (->Token (conj (:matches token) [fact id])
                 (conj fact-bindings (:bindings token) beta-bindings)))))
@@ -707,7 +708,7 @@
      children
      (for [token (mem/get-tokens memory node join-bindings)
            {:keys [fact bindings] :as element} elements
-           :let [beta-bindings (join-node-matches node join-filter-fn token fact {})]
+           :let [beta-bindings (join-node-matches node join-filter-fn token fact bindings {})]
            :when beta-bindings]
        (->Token (conj (:matches token) [fact id])
                 (conj (:bindings token) bindings beta-bindings)))))
@@ -721,7 +722,7 @@
      children
      (for [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)
            token (mem/get-tokens memory node join-bindings)
-           :let [beta-bindings (join-node-matches node join-filter-fn token fact {})]
+           :let [beta-bindings (join-node-matches node join-filter-fn token fact bindings {})]
            :when beta-bindings]
        (->Token (conj (:matches token) [fact id])
                 (conj (:bindings token) bindings beta-bindings)))))
@@ -783,8 +784,8 @@
 (defn- matches-some-facts?
   "Returns true if the given token matches one or more of the given elements."
   [node token elements join-filter-fn condition]
-  (some (fn [{:keys [fact]}]
-          (join-node-matches node join-filter-fn token fact (:env condition)))
+  (some (fn [{:keys [fact bindings]}]
+          (join-node-matches node join-filter-fn token fact bindings (:env condition)))
         elements))
 
 ;; A specialization of the NegationNode that supports additional tests
@@ -978,7 +979,7 @@
                               (convert-return-fn initial-value))]
 
       (mem/add-tokens! memory node join-bindings tokens)
-      
+
       (cond
         ;; If there are previously accumulated results to propagate, use them.  If this is the
         ;; first time there are matching tokens, then the reduce will have to happen for the
@@ -998,7 +999,7 @@
                                       ^::accum-node [previous previous-reduced])
                       converted (when (some? previous-reduced)
                                   (convert-return-fn previous-reduced))]]
-          
+
           ;; Newly accumulated results need to be added to memory.
           (when first-reduce?
             (l/add-accum-reduced! listener node join-bindings accum-reduced fact-bindings)
@@ -1025,12 +1026,12 @@
           ;; Therefore the join-bindings and fact-bindings are exactly equal.
           (l/add-accum-reduced! listener node join-bindings accum-reduced join-bindings)
           (mem/add-accum-reduced! memory node join-bindings accum-reduced join-bindings)
-          
+
           ;; Send the created accumulated item to the children for each token.
           (doseq [token tokens]
             (send-accumulated node accum-condition accumulator result-binding token initial-converted {}
                               transport memory listener)))
-        
+
         ;; Propagate nothing if the above conditions don't apply.
         :else
         nil)))
@@ -1043,7 +1044,7 @@
                   ;; Note:  Memory *must* be read here before the memory is potentially cleared in the
                   ;; following lines.
                   previous-results (mem/get-accum-reduced-all memory node join-bindings)
-                  
+
                   ;; If there are no new bindings created by the accumulator condition then
                   ;; a left-activation can create a new binding group in the accumulator memory.
                   ;; If this token is later removed without corresponding elements having been added,
@@ -1090,7 +1091,7 @@
       [bindings (mapv :fact element-group)]))
 
   (right-activate-reduced [node join-bindings fact-seq memory transport listener]
-    
+
     ;; Combine previously reduced items together, join to matching tokens, and emit child tokens.
     (doseq [:let [convert-return-fn (:convert-return-fn accumulator)
                   ;; Note that we want to iterate over all tokens with the desired join bindings later
@@ -1132,7 +1133,7 @@
                     ;; If there are never matches, time will be saved by never reducing.
                     :else
                     ::not-reduced)
-                  
+
                   converted (when (and (some? combined-reduced)
                                        (not= ::not-reduced combined-reduced))
                               (convert-return-fn combined-reduced))
@@ -1141,7 +1142,7 @@
                                                 (some? previous-reduced)
                                                 (not= ::not-reduced previous-reduced))
                                        (convert-return-fn previous-reduced))
-                  
+
                   accum-reduced ^::accum-node [combined combined-reduced]]]
 
       ;; Add the combined results to memory.
@@ -1164,7 +1165,7 @@
         (doseq [token matched-tokens]
           (send-accumulated node accum-condition accumulator result-binding token converted bindings
                             transport memory listener))
-        
+
 
         ;; If there are previous results, then propagate downstream if the new result differs from
         ;; the previous result.  If the new result is equal to the previous result don't do
@@ -1246,7 +1247,7 @@
                   previous-converted (when (and (some? previous-reduced)
                                                 (not= ::not-reduced previous-reduced))
                                        (convert-return-fn previous-reduced))]]
-      
+
       (if all-retracted?
         (do
           ;; When everything has been retracted we need to remove the accumulated results from memory.
@@ -1258,9 +1259,9 @@
             ;; Retract the previous token.
             (retract-accumulated node accum-condition accumulator result-binding token previous-converted bindings
                                  transport memory listener))
-          
+
           (let [initial-value (:initial-value accumulator)
-                
+
                 initial-converted (when initial-value
                                     (convert-return-fn initial-value))]
 
@@ -1315,8 +1316,8 @@
 
 (defn- filter-accum-facts
   "Run a filter on elements against a given token for constraints that are not simple hash joins."
-  [node join-filter-fn token candidate-facts]
-  (filter #(join-node-matches node join-filter-fn token % {}) candidate-facts))
+  [node join-filter-fn token candidate-facts bindings]
+  (filter #(join-node-matches node join-filter-fn token % bindings {}) candidate-facts))
 
 ;; A specialization of the AccumulateNode that supports additional tests
 ;; that have to occur on the beta side of the network. The key difference between this and the simple
@@ -1342,7 +1343,7 @@
                 [fact-bindings candidate-facts] grouped-candidate-facts
 
                 ;; Filter to items that match the incoming token, then apply the accumulator.
-                :let [filtered-facts (filter-accum-facts node join-filter-fn token candidate-facts)]
+                :let [filtered-facts (filter-accum-facts node join-filter-fn token candidate-facts fact-bindings)]
 
                 :when (or (seq filtered-facts)
                           ;; Even if there no filtered facts, if there are no new bindings we may
@@ -1352,7 +1353,7 @@
 
                 :let [accum-result (do-accumulate accumulator filtered-facts)
                       converted-result (when (some? accum-result)
-                                         (convert-return-fn accum-result))] 
+                                         (convert-return-fn accum-result))]
 
                 :when (some? converted-result)]
 
@@ -1399,7 +1400,7 @@
         (doseq [token tokens
                 [fact-bindings candidate-facts] grouped-candidate-facts
 
-                :let [filtered-facts (filter-accum-facts node join-filter-fn token candidate-facts)]
+                :let [filtered-facts (filter-accum-facts node join-filter-fn token candidate-facts fact-bindings)]
 
                 :when (or (seq filtered-facts)
                           ;; Even if there no filtered facts, if there are no new bindings an initial value
@@ -1464,16 +1465,16 @@
         (l/add-accum-reduced! listener node join-bindings combined-candidates bindings)
 
         (mem/add-accum-reduced! memory node join-bindings combined-candidates bindings))
-      
+
       (doseq [token matched-tokens
 
-              :let [new-filtered-facts (filter-accum-facts node join-filter-fn token candidates)]
+              :let [new-filtered-facts (filter-accum-facts node join-filter-fn token candidates bindings)]
 
               ;; If no new elements matched the token, we don't need to do anything for this token
               ;; since the final result is guaranteed to be the same.
               :when (seq new-filtered-facts)
 
-              :let [previous-filtered-facts (filter-accum-facts node join-filter-fn token previous-candidates)
+              :let [previous-filtered-facts (filter-accum-facts node join-filter-fn token previous-candidates bindings)
 
                     previous-accum-result-init (cond
                                                  (seq previous-filtered-facts)
@@ -1505,10 +1506,10 @@
                                                              ;; to use the actual initial value, not nil.
                                                              accumulator)]
                                    (do-accumulate accum-previous-init new-filtered-facts))
-                    
+
                     previous-converted (when (some? previous-accum-result)
                                          (convert-return-fn previous-accum-result))
-                    
+
                     new-converted (when (some? accum-result)
                                     (convert-return-fn accum-result))]]
 
@@ -1561,17 +1562,17 @@
 
             :let [facts (mapv :fact elements)
                   new-candidates (second (mem/remove-first-of-each facts previous-candidates))]]
-      
+
       ;; Add the new candidates to our node.
       (l/add-accum-reduced! listener node join-bindings new-candidates bindings)
       (mem/add-accum-reduced! memory node join-bindings new-candidates bindings)
 
       (doseq [;; Get all of the previously matched tokens so we can retract and re-send them.
               token matched-tokens
-              
-              :let [previous-facts (filter-accum-facts node join-filter-fn token previous-candidates)
 
-                    new-facts (filter-accum-facts node join-filter-fn token new-candidates)]
+              :let [previous-facts (filter-accum-facts node join-filter-fn token previous-candidates bindings)
+
+                    new-facts (filter-accum-facts node join-filter-fn token new-candidates bindings)]
 
               ;; The previous matching elements are a superset of the matching elements after retraction.
               ;; Therefore, if the counts before and after are equal nothing retracted actually matched
@@ -1592,7 +1593,7 @@
                     ;; of candidates in the memory, since, for example (acc/all) can return both [A B] and [B A] but these are not equal.
 
                     new-result (cond
-                                 
+
                                  (seq new-facts)
                                  (do-accumulate accumulator new-facts)
 
@@ -1601,15 +1602,15 @@
                                  (:initial-value accumulator)
 
                                  :else nil)
-                    
+
                     previous-converted (when (some? previous-result)
                                          (convert-return-fn previous-result))
-                    
+
                     new-converted (when (some? new-result)
                                     (convert-return-fn new-result))]]
 
         (cond
-          
+
           ;; When both the previous and new results are nil do nothing.
           (and (nil? previous-converted)
                (nil? new-converted))
@@ -1624,7 +1625,7 @@
           (not= previous-converted new-converted)
           (do
             (retract-accumulated node accum-condition accumulator result-binding token previous-converted bindings transport memory listener)
-            (send-accumulated node accum-condition accumulator result-binding token new-converted bindings transport memory listener)))))) 
+            (send-accumulated node accum-condition accumulator result-binding token new-converted bindings transport memory listener))))))
 
   IConditionNode
   (get-condition-description [this]
@@ -1709,7 +1710,7 @@
                     (when-let [batched (seq @batched-rhs-retractions)]
                       (flush-rhs-retractions! batched))
                     (catch #?(:clj Exception :cljs :default) e
-                           
+
                            ;; If the rule fired an exception, help debugging by attaching
                            ;; details about the rule itself, cached insertions, and any listeners
                            ;; while propagating the cause.
@@ -1845,14 +1846,14 @@
                                                      :insertion)))
                                         (mapcat :facts))
                                   pending-operations)
-                      
+
                       retractions (sequence
                                    (comp (filter (fn [pending-op]
                                                    (= (:type pending-op)
                                                       :retraction)))
                                          (mapcat :facts))
                                    pending-operations)
-                      
+
                       update-cache (ca/get-cancelling-update-cache)]
 
                   (binding [*current-session* {:rulebase rulebase
@@ -2003,4 +2004,3 @@
       [(rule-salience-fn production)
        (internal-salience-levels (or (some-> production :props :clara-rules/internal-salience)
                                      :default))])))
-
