@@ -1,10 +1,15 @@
 This is a history of changes to clara-rules.
 
+### 0.14.0
+* Fixed a bug where variables bindings created in constraints could be missed by subsequent constraints in the same condition.  See [issue 267](https://github.com/cerner/clara-rules/issues/267) for details.
+* Delayed inserting and retracting facts until fire-rules is called.  Some queries that would reflect changes to the rules network immediately after insertions and retractions now will not reflect these changes until after fire-rules is called.  See [issue 268](https://github.com/cerner/clara-rules/issues/268) for further details and discussion of the reasons for this change.
+* Added an experimental performance optimization option to allow insertions and retractions of equal facts to cancel each other out during rules firing. See [issue 249](https://github.com/cerner/clara-rules/issues/249) for details.
+
 ### 0.13.0
 * This release includes all changes in the previous 0.13.0-RC releases as well as improvements to error handling in the LHS discussed at [issue 255](https://github.com/cerner/clara-rules/issues/255).  Most notably relative to the 0.12.0 release, this replaces the previous durability implementation with a much more robust and performant one as discussed at [issue 198](https://github.com/cerner/clara-rules/issues/198).
 
 ### 0.13.0-RC7
-* The work to improve batching in order to improve performance at [issue 236](https://github.com/cerner/clara-rules/issues/236) didn't actually improve performance for reasons discussed and fixed at [issue 257](https://github.com/cerner/clara-rules/issues/257). 
+* The work to improve batching in order to improve performance at [issue 236](https://github.com/cerner/clara-rules/issues/236) didn't actually improve performance for reasons discussed and fixed at [issue 257](https://github.com/cerner/clara-rules/issues/257).
 
 ### 0.13.0-RC6
 This release is mostly for performance improvements to durability over 0.13.0-RC5.
