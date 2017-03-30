@@ -118,6 +118,24 @@
   ;; Right-activate the node with items reduced in the above pre-reduce step.
   (right-activate-reduced [node join-bindings reduced  memory transport listener]))
 
+(defprotocol IAccumInspect
+  "This protocol is expected to be implemented on accumulator nodes in the rules network.
+   It is not expected that users will implement this protocol, and most likely will not call
+   the protocol function directly."
+  (token->matching-elements [node memory token]
+    "Takes a token that was previously propagated from the node, 
+     or a token that is a descendant of such a token, and returns the facts in elements 
+     matching the token propagated from the node.  During rules firing
+     accumulators only propagate bindings created and the result binding
+     downstream rather than all facts that were accumulated over, but there
+     are use-cases in session inspection where we want to retrieve the individual facts.
+    
+     Example: [?min-temp <- (acc/min :temperature) :from [Temperature (= temperature ?loc)]]
+              [?windspeed <- [WindSpeed (= location ?loc)]]
+     
+     Given a token propagated from the node for the WindSpeed condition 
+     we could retrieve the Temperature facts from the matching location."))
+
 ;; The transport protocol for sending and retracting items between nodes.
 (defprotocol ITransport
   (send-elements [transport memory listener nodes elements])
@@ -505,6 +523,7 @@
 ;; each of which evaluates a single condition and
 ;; propagates matches to its children.
 (defrecord AlphaNode [env children activation]
+
   IAlphaActivate
   (alpha-activate [node facts memory transport listener]
     (let [fact-binding-pairs (alpha-node-matches facts env activation node)]
@@ -1312,7 +1331,24 @@
           {:keys [type constraints]} from
           condition (into [type] constraints)
           result-symbol (symbol (name result-binding))]
-      [result-symbol '<- accumulator :from condition])))
+      [result-symbol '<- accumulator :from condition]))
+
+  IAccumInspect
+  (token->matching-elements [this memory token]
+    ;; Tokens are stored in the memory keyed on join bindings with previous nodes and new bindings
+    ;; introduced in this node.  Each of these sets of bindings is known at the time of rule network
+    ;; compilation.  It is expected that this function will receive tokens that were propagated from this
+    ;; node to its children and may have had other bindings added in the process.  The bindings map entries
+    ;; in the tokens created by descendants based on tokens propagated from ancestors are subsets of the bindings
+    ;; in each ancestor.  Put differently, if token T1 is passed to a child that create a token T2 based on it
+    ;; and passes it to its children, the following statement is true:
+    ;; (= (select-keys (-> t1 :bindings keys) t2)
+    ;;    (:bindings t1))
+    ;; This being the case, we can use the downstream token to find out what binding key-value pairs were used
+    ;; to create the token "stream" of which it is part.
+    (let [join-bindings (-> token :bindings (select-keys (get-join-keys this)))
+          fact-bindings (-> token :bindings (select-keys new-bindings))]
+      (first (mem/get-accum-reduced memory this join-bindings (merge join-bindings fact-bindings))))))
 
 (defn- filter-accum-facts
   "Run a filter on elements against a given token for constraints that are not simple hash joins."
@@ -1325,6 +1361,7 @@
 ;; are not consistent with the given token.
 (defrecord AccumulateWithJoinFilterNode [id accum-condition accumulator join-filter-fn
                                          result-binding children binding-keys new-bindings]
+
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport listener]
 
@@ -1636,7 +1673,27 @@
                              original-constraints
                              constraints)
           condition (into [type] full-constraints)]
-      [result-symbol '<- accumulator :from condition])))
+      [result-symbol '<- accumulator :from condition]))
+
+  ;; The explanation of the implementation of token->matching-elements on AccumulateNode applies here as well.
+  ;; Note that since we store all facts propagated from the alpha network to this condition in the accum memory,
+  ;; regardless of whether they meet the join condition with upstream facts from the beta network, we rerun the
+  ;; the join filter function.  Since the :matches are not used in the join filter function and the bindings in the
+  ;; token will contain all bindings used in the "ancestor token" to join with these same facts, we can just pass the token
+  ;; as-is to the join filter.
+  IAccumInspect
+  (token->matching-elements [this memory token]
+    (let [join-bindings (-> token :bindings (select-keys (get-join-keys this)))
+          fact-bindings (-> token :bindings (select-keys new-bindings))
+          unfiltered-facts (mem/get-accum-reduced memory this join-bindings (merge join-bindings fact-bindings))]
+      ;; The functionality to throw conditions with meaningful information assumes that all bindings in the token
+      ;; are meaningful to the join, which is not the case here since the token passed is from a descendant of this node, not
+      ;; this node.  The generated error message also wouldn't make much sense in the context of session inspection.
+      ;; We could create specialized error handling here, but in reality most cases that cause errors here would also cause
+      ;; errors at rule firing time so the benefit would be limited.  Nevertheless there would be some benefit and it is
+      ;; possible that we will do it in the future..
+      (filter (fn [fact] (join-filter-fn token fact fact-bindings {}))
+              unfiltered-facts))))
 
 (defn variables-as-keywords
   "Returns symbols in the given s-expression that start with '?' as keywords"

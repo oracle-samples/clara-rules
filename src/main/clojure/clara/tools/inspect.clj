@@ -11,12 +11,40 @@
             [schema.core :as s]
             [schema.macros :as sm]))
 
+(s/defschema ConditionMatch
+  "A structure associating a condition with the facts that matched them.  The fields are:
+   :fact - A fact propagated from this condition in a rule or query.  For non-accumulator conditions,
+           this will be the fact matched by the condition.  For accumulator conditions, it will be the result
+           of the accumulation.  So, for example, if we have a condition like
+
+           [?cold <- Cold]
+
+           a ConditionMatch for this condition will have a Cold fact in its :fact field.  If we have a condition like
+
+           [?min-cold <- (acc/min :temperature) :from [Cold]]
+     
+           the value of :fact will be the minimum temperature returned by the accumulator.
+
+    :condition - A structure representing this condition.  This is the same structure used inside the structures defining
+                 rules and queries.
+
+    :facts-accumulated (nullable) : When the condition is an accumulator condition, this will contain the individual facts over 
+                                    which the accumulator ran.  For example, in the case above with the condition
+
+                                    [?min-cold <- (acc/min :temperature) :from [Cold]]
+                                    
+                                    this will contain the individual Cold facts over which we accumulated, while the :fact field
+                                    will contain the result of the accumulation."
+  {:fact s/Any
+   :condition schema/Condition
+   (s/optional-key :facts-accumulated) [s/Any]})
+
 ;; A structured explanation of why a rule or query matched.
 ;; This is derived from the Rete-style tokens, but this token
 ;; is designed to propagate all context needed to easily inspect
-;; the state of rules.
-(s/defrecord Explanation [matches :- [[(s/one s/Any "fact") (s/one schema/Condition "condition")]] ; Fact, condition tuples
-                           bindings :- {s/Keyword s/Any}]) ; Bound variables
+;; the state of rules.  
+(s/defrecord Explanation [matches :- [ConditionMatch]
+                          bindings :- {s/Keyword s/Any}]) ; Bound variables
 
 ;; Schema of an inspected rule session.
 (def InspectionSchema
@@ -42,9 +70,10 @@
 (defn- to-explanations
   "Helper function to convert tokens to explanation records."
   [session tokens]
-  (let [id-to-node (get-in (eng/components session) [:rulebase :id-to-node])]
+  (let [memory (-> session eng/components :memory)
+        id-to-node (get-in (eng/components session) [:rulebase :id-to-node])]
 
-    (for [{:keys [matches bindings]} tokens]
+    (for [{:keys [matches bindings] :as token} tokens]
       (->Explanation
        ;; Convert matches to explanation structure.
        (for [[fact node-id] matches
@@ -59,7 +88,12 @@
                                {:type (:type (:condition node))
                                 :constraints (or (seq (:original-constraints (:condition node)))
                                                  (:constraints (:condition node)))})]]
-         [fact condition])
+         (if (:accum-condition node)
+           {:fact fact
+            :condition condition
+            :facts-accumulated (eng/token->matching-elements node memory token)}
+           {:fact fact
+            :condition condition}))
 
        ;; Remove generated bindings from user-facing explanation.
        (into {} (remove (fn [[k v]] (.startsWith (name k) "?__gen__")) bindings))))))
