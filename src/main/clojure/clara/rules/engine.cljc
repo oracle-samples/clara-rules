@@ -1893,13 +1893,12 @@
                      get-alphas-fn
                      [])))
 
-  ;; TODO: queries shouldn't require the use of transient memory.
   (query [session query params]
     (let [query-node (get-in rulebase [:query-nodes query])]
       (when (= nil query-node)
         (platform/throw-error (str "The query " query " is invalid or not included in the rule base.")))
 
-      (->> (mem/get-tokens (mem/to-transient memory) query-node params)
+      (->> (mem/get-tokens memory query-node params)
 
            ;; Get the bindings for each token and filter generate symbols.
            (map (fn [{bindings :bindings}]
