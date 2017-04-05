@@ -6,9 +6,11 @@
             [clara.rules.engine :as eng]
             [clara.rules.accumulators :as acc]
             [clojure.test :refer :all]
+            [clara.test-rules :as tr]
             schema.test)
-  (:import [clara.rules.testfacts Temperature WindSpeed Cold Hot
-            ColdAndWindy LousyWeather First Second Third Fourth]))
+  (:import [clara.rules.testfacts Temperature TemperatureHistory
+            WindSpeed Cold Hot ColdAndWindy LousyWeather
+            First Second Third Fourth]))
 
 (use-fixtures :once schema.test/validate-schemas)
 
@@ -29,17 +31,17 @@
                     (insert (->Temperature 90 "MCI"))
                     (fire-rules))
 
-        hot-rule-90-explanation (map->Explanation {:matches [[(->Temperature 90 "MCI")
-                                                              (first (:lhs hot-rule))]],
+        hot-rule-90-explanation (map->Explanation {:matches [{:fact (->Temperature 90 "MCI")
+                                                              :condition (first (:lhs hot-rule))}],
                                                    :bindings {:?t 90}})
 
-        cold-rule-15-explanation (map->Explanation {:matches [[(->Temperature 15 "MCI")
-                                                               (first (:lhs cold-query))]],
+        cold-rule-15-explanation (map->Explanation {:matches [{:fact (->Temperature 15 "MCI")
+                                                               :condition (first (:lhs cold-query))}],
 
                                                     :bindings {:?t 15}})
 
-        cold-rule-10-explanation (map->Explanation {:matches [[(->Temperature 10 "MCI")
-                                                               (first (:lhs cold-query))]],
+        cold-rule-10-explanation (map->Explanation {:matches [{:fact (->Temperature 10 "MCI")
+                                                               :condition (first (:lhs cold-query))}],
                                                     :bindings {:?t 10}})]
 
     (let [session (-> (mk-session [cold-query cold-rule hot-rule])
@@ -122,10 +124,13 @@
     (let [accum-condition (-> coldest-query :lhs  first (select-keys [:accumulator :from]))
           query-explanations (-> (inspect session) (:query-matches) (get coldest-query) )]
 
-      (is (= [(map->Explanation {:matches [[(->Temperature 10 "MCI") accum-condition]]
+      (is (= [(map->Explanation {:matches [{:fact (->Temperature 10 "MCI")
+                                            :facts-accumulated [(->Temperature 15 "MCI")
+                                                                (->Temperature 10 "MCI")
+                                                                (->Temperature 80 "MCI")]
+                                            :condition accum-condition}]
                                  :bindings {:?t (->Temperature 10 "MCI")}})]
              query-explanations)))))
-
 
 (deftest test-accum-join-inspect
   (let [lowest-temp (acc/min :temperature :returns-fact true)
@@ -133,7 +138,7 @@
         ;; Get the coldest temperature at MCI that is warmer than the temperature in STL.
         colder-query (dsl/parse-query [] [[Temperature (= "STL" location) (= ?stl-temperature temperature)]
                                           [?t <- lowest-temp from [Temperature (> temperature ?stl-temperature)
-                                                                               (= "MCI location")]]])
+                                                                   (= "MCI location")]]])
 
         session (-> (mk-session [colder-query] :cache false)
                     (insert (->Temperature 15 "MCI"))
@@ -143,20 +148,26 @@
                     (insert (->Temperature 25 "MCI"))
                     fire-rules)]
 
-    (let [matches (-> (inspect session) (:query-matches) (get colder-query) first :matches)]
-      (doseq [[fact node-data] matches]
+    (let [matches (-> (inspect session)
+                      :query-matches
+                      (get colder-query)
+                      first
+                      :matches)
+
+          conditions-matched (map :condition matches)]
+      (doseq [condition conditions-matched]
 
         ;; The accumulator condition should have two constraints.
-        (when (:accumulator node-data)
-          (is (= 2 (-> node-data :from :constraints (count)))))))))
+        (when (:accumulator condition)
+          (is (= 2 (-> condition :from :constraints (count)))))))))
 
 (deftest test-extract-test-inspect
   (let [distinct-temps-query (dsl/parse-query [] [[Temperature (< temperature 20)
-                                                               (= ?t1 temperature)]
+                                                   (= ?t1 temperature)]
 
                                                   [Temperature (< temperature 20)
-                                                               (= ?t2 temperature)
-                                                               (< ?t1 temperature)]])
+                                                   (= ?t2 temperature)
+                                                   (< ?t1 temperature)]])
 
         session  (-> (mk-session [distinct-temps-query] :cache false)
                      (insert (->Temperature 15 "MCI"))
@@ -166,7 +177,229 @@
 
     ;; Ensure that no returned contraint includes a generated variable name.
     (doseq [{:keys [matches bindings]} (-> (inspect session) :query-matches (get distinct-temps-query))
-            [fact {:keys [ type constraints]}] matches
+            constraints (map (comp :constraints :condition) matches)
             term (flatten constraints)]
       (is (not (and (symbol? term)
                     (.startsWith (name term) "?__gen" )))))))
+
+(defn session->accumulated-facts-map
+  "Given a session, return a map of logically inserted facts to any accumulated-over facts
+   that justify that insertion"
+  [session]
+  (let [;; These "count is 1" requirements could be loosened if needed but they simplify
+        ;; the tests.  The actual schemas allow these things to be sequences, and this
+        ;; is completely valid, but we probably don't need situations that would lead them
+        ;; to be sequences to test the functionality added in
+        ;; https://github.com/cerner/clara-rules/issues/276 and this avoids needing to either
+        ;; filter the sequences according to the semantics of each test case or weakening
+        ;; test cases by just testing against the first thing in each sequence and ignoring
+        ;; any (erroneously present) later elements.
+        fail-on-multiple-insertions (fn [explanations]
+                                      (if (< 1 (count explanations))
+                                        ;; Since we expect this function to be called in the scope
+                                        ;; of a test case use a false assertion rather than throwing
+                                        ;; an exception so that the test fails
+                                        ;; rather than reporting an error.
+                                        (is false
+                                            (str "There should be only one "
+                                                 "insertion of a given fact in these tests"))
+                                        explanations))
+
+        fail-on-multiple-accum-conditions (fn [matches]
+                                            (if (< 1 (count matches))
+                                              (is false
+                                                  (str "There should only be one accumulator "
+                                                       "condition in these tests"))
+                                              matches))]
+
+    (as-> session x
+      (inspect x)
+      (:fact->explanations x)
+      (into {}
+            (map (fn [[k v]]
+                   [k (->> v
+                           fail-on-multiple-insertions
+                           first
+                           :explanation
+                           :matches
+                           (filter (comp :accumulator :condition))
+                           fail-on-multiple-accum-conditions
+                           first
+                           :facts-accumulated
+                           frequencies)]))
+            x))))
+
+(deftest test-get-matching-accum-facts-with-no-previous-conditions-and-new-binding
+  (let [min-freezing-at-loc-rule
+        (dsl/parse-rule
+         [[?min <- (acc/min :temperature) from [Temperature (< temperature 0) (= ?loc location)]]]
+         (insert! (->Cold ?min)))
+
+        cold-query (dsl/parse-query [] [[Cold (= ?t temperature)]])
+
+        empty-session (mk-session [min-freezing-at-loc-rule cold-query]
+                                  :cache false)
+
+        fired-session (-> empty-session
+                          (insert (->Temperature 20 "MCI")
+                                  (->Temperature -20 "MCI")
+                                  (->Temperature -5 "ORD"))
+                          fire-rules)]
+
+    (is (= (frequencies (query fired-session cold-query))
+           {{:?t -20} 1
+            {:?t -5} 1})
+        "Sanity check of the facts inserted")
+
+    (is (= (session->accumulated-facts-map fired-session)
+           {(->Cold -20) {(->Temperature -20 "MCI") 1}
+            (->Cold -5) {(->Temperature -5 "ORD") 1}}))))
+
+(deftest test-get-matching-accum-facts-with-no-previous-conditions
+  (let [min-freezing-at-loc-rule
+        (dsl/parse-rule
+         [[?min <- (acc/min :temperature) from [Temperature (< temperature 0)]]]
+         (insert! (->Cold ?min)))
+
+        cold-query (dsl/parse-query [] [[Cold (= ?t temperature)]])
+
+        empty-session (mk-session [min-freezing-at-loc-rule cold-query]
+                                  :cache false)
+
+        fired-session (-> empty-session
+                          (insert (->Temperature 20 "MCI")
+                                  (->Temperature -20 "MCI")
+                                  (->Temperature -5 "ORD"))
+                          fire-rules)]
+
+    (is (= (frequencies (query fired-session cold-query))
+           {{:?t -20} 1})
+        "Sanity check of the facts inserted")
+
+    (is (= (session->accumulated-facts-map fired-session)
+           {(->Cold -20) {(->Temperature -20 "MCI") 1
+                          (->Temperature -5 "ORD") 1}}))))
+
+(deftest test-get-matching-accum-facts-join-with-previous-no-new-bindings
+  (let [windspeed-with-temps-simple-join
+        (dsl/parse-rule [[?w <- WindSpeed (= ?loc location)]
+                         [?temps <- (acc/all) from [Temperature (= ?loc location)]]]
+                        (insert! (->TemperatureHistory [?loc (->> ?temps
+                                                                  (map :temperature)
+                                                                  frequencies)])))
+
+        windspeed-with-temps-simple-join-unused-previous-binding
+        (dsl/parse-rule [[?w <- WindSpeed (= ?loc location) (= ?windspeed windspeed)]
+                         [?temps <- (acc/all) from [Temperature (= ?loc location)]]]
+                        (insert! (->TemperatureHistory [?loc (->> ?temps
+                                                                  (map :temperature)
+                                                                  frequencies)])))
+
+        windspeed-with-temps-simple-join-subsequent-binding
+        (dsl/parse-rule [[?temps <- (acc/all) from [Temperature (= ?loc location)]]
+                         [?w <- WindSpeed (= ?loc location) (= ?windspeed windspeed)]]
+                        (insert! (->TemperatureHistory [?loc (->> ?temps
+                                                                  (map :temperature)
+                                                                  frequencies)])))
+
+        windspeed-with-temps-complex-join
+        (dsl/parse-rule [[?w <- WindSpeed (= ?loc location)]
+                         [?temps <- (acc/all) from [Temperature (tr/join-filter-equals ?loc location)]]]
+                        (insert! (->TemperatureHistory [?loc (->> ?temps
+                                                                  (map :temperature)
+                                                                  frequencies)])))
+
+        windspeed-with-temps-complex-join-unused-previous-binding
+        (dsl/parse-rule [[?w <- WindSpeed (= ?loc location) (= ?windspeed windspeed)]
+                         [?temps <- (acc/all) from [Temperature (tr/join-filter-equals ?loc location)]]]
+                        (insert! (->TemperatureHistory [?loc (->> ?temps
+                                                                  (map :temperature)
+                                                                  frequencies)])))
+
+        windspeed-with-temps-complex-join-subsequent-binding
+        (dsl/parse-rule [[?temps <- (acc/all) from [Temperature (tr/join-filter-equals ?loc location)]]
+                         [?w <- WindSpeed (= ?loc location) (= ?windspeed windspeed)]]
+                        (insert! (->TemperatureHistory [?loc (->> ?temps
+                                                                  (map :temperature)
+                                                                  frequencies)])))
+
+        temp-history-query (dsl/parse-query [] [[TemperatureHistory (= ?temps temperatures)]])]
+
+    (doseq [[empty-session
+             join-type
+             unused-previous-binding
+             subsequent-binding] [[(mk-session [windspeed-with-temps-simple-join
+                                                temp-history-query]
+                                               :cache false)
+                                   "Simple join"
+                                   false
+                                   false]
+
+                                  [(mk-session [windspeed-with-temps-simple-join-unused-previous-binding
+                                                temp-history-query]
+                                               :cache false)
+                                   "Simple join"
+                                   true
+                                   false]
+
+                                  [(mk-session [windspeed-with-temps-simple-join-subsequent-binding
+                                                temp-history-query]
+                                               :cache false)
+                                   "Simple join"
+                                   false
+                                   true]
+
+                                  [(mk-session [windspeed-with-temps-complex-join
+                                                temp-history-query]
+                                               :cache false)
+                                   "Complex join"
+                                   false
+                                   false]
+
+                                  [(mk-session [windspeed-with-temps-complex-join-unused-previous-binding
+                                                temp-history-query]
+                                               :cache false)
+                                   "Complex join"
+                                   true
+                                   false]
+
+                                  [(mk-session [windspeed-with-temps-complex-join-subsequent-binding
+                                                temp-history-query]
+                                               :cache false)
+                                   "Complex join"
+                                   false
+                                   true]]
+
+            :let [fired-session (-> empty-session
+                                    (insert (->WindSpeed 20 "MCI")
+                                            (->Temperature 10 "MCI")
+                                            (->Temperature 0 "MCI")
+                                            (->WindSpeed 50 "JFK")
+                                            (->Temperature -30 "JFK"))
+                                    fire-rules)]]
+
+      (is (= (-> fired-session
+                 (query temp-history-query)
+                 frequencies)
+             {{:?temps ["MCI" (frequencies [10 0])]} 1
+              {:?temps ["JFK" (frequencies [-30])]} 1})
+          (str "Sanity check for join type: "
+               join-type
+               " with unused previous binding: "
+               unused-previous-binding
+               " and subsequent binding: "
+               subsequent-binding))
+
+      (is (= (session->accumulated-facts-map fired-session)
+             {(->TemperatureHistory ["MCI" (frequencies [10 0])])
+              {(->Temperature 10 "MCI") 1
+               (->Temperature 0 "MCI") 1}
+
+              (->TemperatureHistory ["JFK" (frequencies [-30])])
+              {(->Temperature -30 "JFK") 1}})
+          (str "Check the accumulated facts for join type: "
+               join-type
+               " with unused previous binding: "
+               unused-previous-binding
+               " and subsequent binding: "
+               subsequent-binding))))) 
