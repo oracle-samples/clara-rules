@@ -14,7 +14,8 @@
             [lein-figwheel "0.5.2" :exclusions [org.clojure/clojure]]]
   :codox {:namespaces [clara.rules clara.rules.dsl clara.rules.accumulators
                        clara.rules.listener clara.rules.durability
-                       clara.tools.inspect clara.tools.tracing]
+                       clara.tools.inspect clara.tools.tracing
+                       clara.tools.fact-graph]
           :metadata {:doc/format :markdown}}
   :javadoc-opts {:package-names "clara.rules"}
   :source-paths ["src/main/clojure"]
