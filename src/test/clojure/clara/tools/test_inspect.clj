@@ -402,4 +402,25 @@
                " with unused previous binding: "
                unused-previous-binding
                " and subsequent binding: "
-               subsequent-binding))))) 
+               subsequent-binding)))))
+
+(deftest test-inspect-retracted-fact
+  (let [temp-query (dsl/parse-query [] [[Temperature (= ?t temperature)]])
+        session (-> (mk-session [temp-query] :cache false)
+                    (insert (->Temperature 10 "MCI"))
+                    fire-rules
+                    (retract (->Temperature 10 "MCI"))
+                    fire-rules)
+        condition-matching-facts (-> session
+                                     inspect
+                                     :condition-matches
+                                     vals)
+
+        query-matches (-> session
+                          inspect
+                          :query-matches
+                          vals)]
+    
+    (is (every? empty? query-matches))
+    (is (every? empty? condition-matching-facts))))
+

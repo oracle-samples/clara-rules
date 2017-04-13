@@ -443,7 +443,10 @@
          []))
 
   (get-elements-all [memory node]
-    (vals (get alpha-memory (:id node) {})))
+    (sequence
+     cat
+     (vals
+      (get alpha-memory (:id node) {}))))
 
   (get-tokens [memory node bindings]
     (get (get beta-memory (:id node) {})
@@ -451,7 +454,9 @@
          []))
 
   (get-tokens-all [memory node]
-    (vals (get beta-memory (:id node) {})))
+    (sequence
+     cat
+     (vals (get beta-memory (:id node) {}))))
 
   (get-accum-reduced [memory node join-bindings fact-bindings]
     (get-in accum-memory [(:id node) join-bindings fact-bindings] ::no-accum-reduced))
@@ -543,26 +548,40 @@
              (coll? previous-elements)
              (let [remaining-elements (->linked-list previous-elements)
                    removed-elements (first (remove-first-of-each! elements remaining-elements))]
-               (set! alpha-memory
-                     (assoc! alpha-memory
-                             (:id node)
-                             (assoc binding-element-map
-                                    join-bindings
-                                    remaining-elements)))
-               removed-elements)
+               ;; If there are no remaining elements under a binding group for the node remove the binding group.
+               ;; This allows these binding values to be garbage collected.
+               (let [new-bindings-map (if (.isEmpty ^java.util.List remaining-elements)
+                                        (dissoc binding-element-map join-bindings)
+                                        (assoc binding-element-map
+                                               join-bindings
+                                               remaining-elements))]
+                 (set! alpha-memory
+                       (assoc! alpha-memory
+                               (:id node)
+                               new-bindings-map))
+                 removed-elements))
 
              ;; Already mutable, so we do not need to re-associate to alpha-memory.
              previous-elements
-             (first (remove-first-of-each! elements previous-elements)))))
+             (let [removed-elements (first (remove-first-of-each! elements previous-elements))]
+               (when (.isEmpty ^java.util.List previous-elements)
+                 (set! alpha-memory
+                       (assoc! alpha-memory
+                               (:id node)
+                               (dissoc binding-element-map join-bindings))))
+               removed-elements))))
        :cljs
        (let [binding-element-map (get alpha-memory (:id node) {})
              previous-elements (get binding-element-map join-bindings [])
-             [removed-elements filtered-elements] (remove-first-of-each elements previous-elements)]
+             [removed-elements filtered-elements] (remove-first-of-each elements previous-elements)
+             new-bindings-map (if (seq filtered-elements)
+                                (assoc binding-element-map join-bindings filtered-elements)
+                                (dissoc binding-element-map join-bindings))]
 
          (set! alpha-memory
                (assoc! alpha-memory
                        (:id node)
-                       (assoc binding-element-map join-bindings filtered-elements)))
+                       new-bindings-map))
 
          ;; Return the removed elements.
          removed-elements)))
@@ -635,26 +654,37 @@
                (cond
                  (coll? previous-tokens)
                  (let [remaining-tokens (->linked-list previous-tokens)
-                       removed-tokens (two-pass-remove! remaining-tokens tokens)]
+                       removed-tokens (two-pass-remove! remaining-tokens tokens)
+                       new-tokens-map (if (.isEmpty ^java.util.List remaining-tokens)
+                                        (dissoc binding-token-map join-bindings)
+                                        (assoc binding-token-map join-bindings remaining-tokens))]
                    (set! beta-memory
                          (assoc! beta-memory
                                  (:id node)
-                                 (assoc binding-token-map
-                                        join-bindings
-                                        remaining-tokens)))
+                                 new-tokens-map))
                    removed-tokens)
 
                  previous-tokens
-                 (two-pass-remove! previous-tokens tokens))))))
+                 (let [removed-tokens (two-pass-remove! previous-tokens tokens)]
+                   (when (.isEmpty ^java.util.List previous-tokens)
+                     (set! beta-memory
+                           (assoc! beta-memory
+                                   (:id node)
+                                   (dissoc binding-token-map join-bindings))))
+
+                   removed-tokens))))))
        :cljs
        (let [binding-token-map (get beta-memory (:id node) {})
              previous-tokens (get binding-token-map join-bindings [])
-             [removed-tokens filtered-tokens] (remove-first-of-each tokens previous-tokens)]
+             [removed-tokens filtered-tokens] (remove-first-of-each tokens previous-tokens)
+             new-tokens-map (if (seq filtered-tokens)
+                              (assoc binding-token-map join-bindings filtered-tokens)
+                              (dissoc binding-token-map join-bindings))]
 
          (set! beta-memory
                (assoc! beta-memory
                        (:id node)
-                       (assoc binding-token-map join-bindings filtered-tokens)))
+                       new-tokens-map))
 
          ;; Return the removed tokens.
          removed-tokens)))
@@ -925,7 +955,10 @@
          []))
 
   (get-elements-all [memory node]
-    (flatten (vals (get alpha-memory (:id node) {}))))
+    (sequence
+     cat
+     (vals
+      (get alpha-memory (:id node) {}))))
 
   (get-tokens [memory node bindings]
     (get (get beta-memory (:id node) {})
@@ -933,7 +966,9 @@
          []))
 
   (get-tokens-all [memory node]
-    (flatten (vals (get beta-memory (:id node) {}))))
+    (sequence
+     cat
+     (vals (get beta-memory (:id node) {}))))
 
   (get-accum-reduced [memory node join-bindings fact-bindings]
     ;; nil is a valid previously reduced value that can be found in the map.
