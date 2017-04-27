@@ -98,6 +98,21 @@
        ;; Remove generated bindings from user-facing explanation.
        (into {} (remove (fn [[k v]] (.startsWith (name k) "?__gen__")) bindings))))))
 
+(defn ^:private gen-fact->explanations
+  [session]
+
+  (let [{:keys [memory rulebase]} (eng/components session)
+        {:keys [productions production-nodes query-nodes]} rulebase
+        rule-to-rule-node (into {} (for [rule-node production-nodes]
+                                           [(:production rule-node) rule-node]))]
+    (apply merge-with into
+           (for [[rule rule-node] rule-to-rule-node
+                 token (keys (mem/get-insertions-all memory rule-node))
+                 insertion-group (mem/get-insertions memory rule-node token)
+                 insertion insertion-group]
+             {insertion [{:rule rule
+                          :explanation (first (to-explanations session [token]))}]}))))
+        
 (s/defn inspect
   " Returns a representation of the given rule session useful to understand the
    state of the underlying rules.
@@ -160,13 +175,7 @@
                                 insertion insertion-group]
                             {:explanation (first (to-explanations session [token])) :fact insertion})]))
 
-     :fact->explanations (apply merge-with into
-                                (for [[rule rule-node] rule-to-nodes
-                                      token (keys (mem/get-insertions-all memory rule-node))
-                                      insertion-group (mem/get-insertions memory rule-node token)
-                                      insertion insertion-group]
-                                  {insertion [{:rule rule
-                                               :explanation (first (to-explanations session [token]))}]}))}))
+     :fact->explanations (gen-fact->explanations session)}))
 
 (defn- explain-activation
   "Prints a human-readable explanation of the facts and conditions that created the Rete token."
