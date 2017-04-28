@@ -920,7 +920,9 @@
       [:not (into [type] full-constraints)])))
 
 
-;; The test node represents a Rete extension in which
+;; The test node represents a Rete extension in which an arbitrary test condition is run
+;; against bindings from ancestor nodes. Since this node
+;; performs no joins it does not accept right activations or retractions.
 (defrecord TestNode [id test children]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport listener]
