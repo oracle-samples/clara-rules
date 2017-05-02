@@ -424,3 +424,24 @@
     (is (every? empty? query-matches))
     (is (every? empty? condition-matching-facts))))
 
+(deftest test-negation-condition-matches
+  (let [not-cold-rule (dsl/parse-rule [[:not [Temperature (< temperature 0)]]]
+                                      (insert! (->Hot :unknown)))
+
+        empty-session (mk-session [not-cold-rule] :cache false)
+
+        with-matching-fact-session (-> empty-session
+                                       (insert (->Temperature -10 "MCI"))
+                                       fire-rules)
+
+        with-non-matching-fact-session (-> empty-session
+                                           (insert (->Temperature 10 "MCI"))
+                                           fire-rules)]
+
+    (is (= {(-> not-cold-rule :lhs first) []}
+           (-> empty-session inspect :condition-matches)
+           (-> with-non-matching-fact-session inspect :condition-matches)))
+
+    (is (= {(-> not-cold-rule :lhs first) [(->Temperature -10 "MCI")]}
+           (-> with-matching-fact-session inspect :condition-matches)))))
+
