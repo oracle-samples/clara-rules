@@ -57,12 +57,25 @@
   "Returns facts matching each condition"
   [beta-graph memory]
   (let [join-node-ids (for [[node-id beta-node] (:id-to-condition-node beta-graph)
-                            :when (= :join (:node-type beta-node))]
-                        [node-id beta-node])]
+                            :let [node-type (:node-type beta-node)]
+                            :when (contains? #{:join :negation}
+                                             node-type)]
+                        [node-id beta-node node-type])]
     (reduce
-     (fn [matches [node-id beta-node]]
+     (fn [matches [node-id beta-node node-type]]
        (update-in matches
-                  [(:condition beta-node)]
+                  (condp = node-type
+
+                    :join
+                    [(:condition beta-node)]
+
+                    ;; Negation nodes store the fact that they are a negation
+                    ;; in their :node-type and strip the information out of the
+                    ;; :condition field.  We reconstruct the negation boolean condition
+                    ;; that is contained in rule and query data structures created by defrule
+                    ;; and that conforms to the Condition schema.
+                    :negation
+                    [[:not (:condition beta-node)]]) 
                   concat (map :fact (mem/get-elements-all memory {:id node-id}))))
      {}
      join-node-ids)))
