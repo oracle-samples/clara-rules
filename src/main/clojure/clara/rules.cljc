@@ -245,8 +245,6 @@
                    (l/delegating-listener listeners)
                    l/default-listener)]
 
-    ;; ClojureScript implementation doesn't support salience yet, so
-    ;; no activation group functions are used.
     (eng/LocalSession. rulebase
                        (eng/local-memory rulebase transport activation-group-sort-fn activation-group-fn get-alphas-fn)
                        transport
