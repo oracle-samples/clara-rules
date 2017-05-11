@@ -142,9 +142,24 @@
 
     ;; We preserve a map of fact types to alpha nodes for efficiency,
     ;; effectively memoizing this operation.
-    (let [alpha-map (atom {})]
+    (let [alpha-map (atom {})
+          wrapped-fact-type-fn (if (= fact-type-fn type)
+                                 type
+                                 (fn [fact]
+                                   (if (isa? (type fact) :clara.rules.engine/system-type)
+                                     ;; Internal system types always use ClojureScript's type mechanism.
+                                     (type fact)
+                                     ;; All other types defer to the provided function.
+                                     (fact-type-fn fact))))
+          wrapped-ancestors-fn (fn [fact-type]
+                                 (if (isa? fact-type :clara.rules.engine/system-type)
+                                   ;; Exclude system types from having ancestors for now
+                                   ;; since none of our use-cases require them.  If this changes
+                                   ;; we may need to define a custom hierarchy for them.
+                                   #{}
+                                   (ancestors-fn fact-type)))]
       (fn [facts]
-        (for [[fact-type facts] (platform/tuned-group-by fact-type-fn facts)]
+        (for [[fact-type facts] (platform/tuned-group-by wrapped-fact-type-fn facts)]
 
           (if-let [alpha-nodes (get @alpha-map fact-type)]
 
@@ -152,7 +167,7 @@
             [alpha-nodes facts]
 
             ;; The alpha nodes weren't cached for the type, so get them now.
-            (let [ancestors (conj (ancestors-fn fact-type) fact-type)
+            (let [ancestors (conj (wrapped-ancestors-fn fact-type) fact-type)
 
                   ;; Get all alpha nodes for all ancestors.
                   new-nodes (distinct
