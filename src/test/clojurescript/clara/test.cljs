@@ -3,6 +3,7 @@
   (:require [clara.test-rules]
             [cljs.test]
             [clara.test-salience]
+            [clara.test-complex-negation]
             [clara.test-common]))
 
 (enable-console-print!)
@@ -13,4 +14,7 @@
     (println "FAIL")))
 
 (defn ^:export run []
-  (test/run-tests 'clara.test-rules 'clara.test-common 'clara.test-salience))
+  (test/run-tests 'clara.test-rules
+                  'clara.test-common
+                  'clara.test-salience
+                  'clara.test-complex-negation))
