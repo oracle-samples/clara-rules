@@ -1,5 +1,14 @@
 This is a history of changes to clara-rules.
 
+### 0.15.0
+* Provide information on facts accumulated over, not just the result of the accumulation, in session inspection.  This is a breaking change to the structure of the clara.tools.inspect.Explanation record.  The information available in the Explanation record now is a superset of that available in 0.14.0.  See [issue 276](https://github.com/cerner/clara-rules/issues/276) for further details.
+* Fix a memory leak in which the memory held references to bindings from retracted facts.  Fixing this leak also fixed some incorrect return data in session inspection. See [issue 280](https://github.com/cerner/clara-rules/issues/280) for details.
+* Added a feature that uses data from session inspection to create a directed
+graph of facts to logical insertions as a result of those facts. See [issue 277](https://github.com/cerner/clara-rules/issues/277) for details.
+* Remove the unused input-condition field from the clara.rules.engine.Accumulator record. See [issue 287](https://github.com/cerner/clara-rules/issues/287) for details.
+* Return information on matches for negation conditions in session inspection. See [issue 289](https://github.com/cerner/clara-rules/issues/289) for details.
+* Extend the fix for incorrect handling of nested complex negation conditions [issue 149](https://github.com/cerner/clara-rules/issues/149) to ClojureScript; see [issue 241](https://github.com/cerner/clara-rules/issues/241) for details.
+
 ### 0.14.0
 * Fixed a bug where variables bindings created in constraints could be missed by subsequent constraints in the same condition.  See [issue 267](https://github.com/cerner/clara-rules/issues/267) for details.
 * Delayed inserting and retracting facts until fire-rules is called.  Some queries that would reflect changes to the rules network immediately after insertions and retractions now will not reflect these changes until after fire-rules is called.  See [issue 268](https://github.com/cerner/clara-rules/issues/268) for further details and discussion of the reasons for this change.
