@@ -38,7 +38,6 @@
   []
   [?t <- lowest-temp :from [Temperature]])
 
-
 (defrule is-cold-and-windy
   "Rule to determine whether it is indeed cold and windy."
 
@@ -82,10 +81,27 @@
   [WindSpeed (== ?w windspeed) (== ?loc location)]
   [Temperature (== ?t temperature) (== ?loc location)])
 
+;; The idea here is that Number will resolve to java.lang.Number in a Clojure environment,
+;; so this validates that we correctly handle symbols in a ClojureScript rule that happen
+;; to resolve to something in a Clojure environment.  Since ClojureScript's compiler
+;; is in Clojure failing to handle this correctly can cause us to attempt to embed
+;; Java objects in ClojureScript code, which won't work.  See issue 300.
+(defrecord Number [value])
+
+(defquery num-query
+  []
+  [?n <- Number])
+
 (defsession my-session 'clara.test-rules)
 (defsession my-session-map 'clara.test-rules :fact-type-fn :type)
 (defsession my-session-data (clara.test-rules-data/weather-rules))
 
+(deftest test-number-query
+  (is (= (-> my-session
+             (insert (->Number 5))
+             fire-rules
+             (query num-query))
+         [{:?n (->Number 5)}])))
 
 (deftest test-simple-defrule
   (let [session (insert my-session (->Temperature 10 "MCI"))]

@@ -47,7 +47,12 @@
   "Creates a condition with the given optional result binding when parsing a rule."
   [condition result-binding expr-meta]
   (let [type (if (symbol? (first condition))
-               (if-let [resolved (resolve (first condition))]
+               (if-let [resolved (and
+                                  ;; If we are compiling ClojureScript rules we don't want
+                                  ;; to resolve the symbol in the ClojureScript compiler's
+                                  ;; Clojure environment.  See issue 300.
+                                  (not (com/compiling-cljs?))
+                                  (resolve (first condition)))]
 
                  ;; If the type resolves to a var, grab its contents for the match.
                  (if (var? resolved)
