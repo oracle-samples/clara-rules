@@ -4,7 +4,8 @@
             [cljs.test]
             [clara.test-salience]
             [clara.test-complex-negation]
-            [clara.test-common]))
+            [clara.test-common]
+            [clara.test-testing-utils]))
 
 (enable-console-print!)
 
@@ -17,4 +18,5 @@
   (test/run-tests 'clara.test-rules
                   'clara.test-common
                   'clara.test-salience
+                  'clara.test-testing-utils
                   'clara.test-complex-negation))

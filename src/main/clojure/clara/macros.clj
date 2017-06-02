@@ -200,8 +200,34 @@
 
      {:type (com/effective-type type)
       :alpha-fn (com/compile-condition type (first args) constraints fact-binding env)
-      :children (vec beta-children)
-      })))
+      :children (vec beta-children)})))
+
+(defn productions->session-assembly-form
+  [productions options]
+  (let [beta-graph (com/to-beta-graph productions)
+        ;; Compile the children of the logical root condition.
+        beta-network (gen-beta-network (get-in beta-graph [:forward-edges 0]) beta-graph #{})
+
+        alpha-graph (com/to-alpha-graph beta-graph)
+        alpha-nodes (compile-alpha-nodes alpha-graph)]
+    
+    `(let [beta-network# ~beta-network
+           alpha-nodes# ~alpha-nodes
+           productions# '~productions
+           options# ~options]
+       (clara.rules/assemble-session beta-network# alpha-nodes# productions# options#))))
+
+(defn sources-and-options->session-assembly-form
+  [sources-and-options]
+  (let [sources (take-while #(not (keyword? %)) sources-and-options)
+        options (apply hash-map (drop-while #(not (keyword? %)) sources-and-options))
+        ;; Eval to unquote ns symbols, and to eval exprs to look up
+        ;; explicit rule sources
+        sources (eval (vec sources))
+        productions (vec (for [source sources
+                               production (get-productions source)]
+                           production))]
+    (productions->session-assembly-form productions options)))
 
 (defmacro defsession
   "Creates a sesson given a list of sources and keyword-style options, which are typically ClojureScript namespaces.
@@ -220,36 +246,16 @@
 
   Typical usage would be like this, with a session defined as a var:
 
-(defsession my-session 'example.namespace)
+  (defsession my-session 'example.namespace)
 
-That var contains an immutable session that then can be used as a starting point to create sessions with
-caller-provided data. Since the session itself is immutable, it can be safely used from multiple threads
-and will not be modified by callers. So a user might grab it, insert facts, and otherwise
-use it as follows:
+  That var contains an immutable session that then can be used as a starting point to create sessions with
+  caller-provided data. Since the session itself is immutable, it can be safely used from multiple threads
+  and will not be modified by callers. So a user might grab it, insert facts, and otherwise
+  use it as follows:
 
    (-> my-session
      (insert (->Temperature 23))
      (fire-rules))
-"
+  "
   [name & sources-and-options]
-  (let [sources (take-while #(not (keyword? %)) sources-and-options)
-        options (apply hash-map (drop-while #(not (keyword? %)) sources-and-options))
-        ;; Eval to unquote ns symbols, and to eval exprs to look up
-        ;; explicit rule sources
-        sources (eval (vec sources))
-        productions (vec (for [source sources
-                               production (get-productions source)]
-                           production))
-
-        beta-graph (com/to-beta-graph productions)
-        ;; Compile the children of the logical root condition.
-        beta-network (gen-beta-network (get-in beta-graph [:forward-edges 0]) beta-graph #{})
-
-        alpha-graph (com/to-alpha-graph beta-graph)
-        alpha-nodes (compile-alpha-nodes alpha-graph)]
-
-    `(let [beta-network# ~beta-network
-           alpha-nodes# ~alpha-nodes
-           productions# '~productions
-           options# ~options]
-       (def ~name (clara.rules/assemble-session beta-network# alpha-nodes# productions# options#)))))
+  `(def ~name ~(sources-and-options->session-assembly-form sources-and-options)))
