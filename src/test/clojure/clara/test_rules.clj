@@ -15,8 +15,7 @@
             [clara.sample-ruleset-seq :as srs]
             [clara.order-ruleset :as order-rules]
             [schema.test]
-            [clara.rules.update-cache.core :as uc]
-            [clara.rules.update-cache.cancelling :as ca])
+            [clara.tools.testing-utils :as tu])
   (import [clara.rules.testfacts Temperature WindSpeed Cold Hot TemperatureHistory
            ColdAndWindy LousyWeather First Second Third Fourth FlexibleFields]
           [clara.rules.engine
@@ -30,16 +29,7 @@
            LinkedList
            ArrayList]))
 
-(defn opts-fixture
-  ;; For operations other than replace-facts uc/get-ordered-update-cache is currently
-  ;; always used.  This fixture ensures that CancellingUpdateCache is tested for a wide
-  ;; variety of different cases rather than a few cases cases specific to it.
-  [f]
-  (f)
-  (with-redefs [uc/get-ordered-update-cache ca/get-cancelling-update-cache]
-    (f)))
-
-(use-fixtures :once schema.test/validate-schemas opts-fixture)
+(use-fixtures :once schema.test/validate-schemas tu/opts-fixture)
 
 ;; Shared dynamic var to hold stateful constructs used by rules.  Rules cannot
 ;; use the environmental in their test body in their RHS, so we need a var that
