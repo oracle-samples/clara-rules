@@ -5,7 +5,9 @@
   is functionality needed to test the rules engine itself."
   (:require [clara.macros :as m]
             [clara.rules.dsl :as dsl]
-            [clara.rules.compiler :as com]))
+            [clara.rules.compiler :as com]
+            [clara.rules.update-cache.core :as uc]
+            [clara.rules.update-cache.cancelling :as ca]))
 
 (defmacro def-rules-test
   "This macro allows creation of rules, queries, and sessions from arbitrary combinations of rules
@@ -64,3 +66,13 @@
                           ~@(sequence cat sym->query)]
                       ~@forms))]
     test-form))
+
+(defn opts-fixture
+  ;; For operations other than replace-facts uc/get-ordered-update-cache is currently
+  ;; always used.  This fixture ensures that CancellingUpdateCache is tested for a wide
+  ;; variety of different cases rather than a few cases cases specific to it.
+  [f]
+  (f)
+  (with-redefs [uc/get-ordered-update-cache ca/get-cancelling-update-cache]
+    (f)))
+  
