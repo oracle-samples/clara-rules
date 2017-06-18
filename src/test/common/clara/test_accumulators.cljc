@@ -32,6 +32,7 @@
                                               ->TemperatureHistory TemperatureHistory
                                               ->Cold Cold
                                               ->WindSpeed WindSpeed]]
+               [cljs.test :as test]
                [schema.test :as st])
      (:require-macros [clara.tools.testing-utils :refer [def-rules-test]]
                       [cljs.test :refer [is deftest run-tests testing use-fixtures]])))

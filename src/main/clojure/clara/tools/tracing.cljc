@@ -118,4 +118,4 @@
                          (filter #(instance? PersistentTracingListener %) )
                          (first))]
     (.-trace ^PersistentTracingListener listener)
-    (throw (IllegalStateException. "No tracing listener attached to session."))))
+    (throw (ex-info "No tracing listener attached to session." {:session session}))))

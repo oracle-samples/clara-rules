@@ -7,7 +7,8 @@
             [clara.test-common]
             [clara.test-testing-utils]
             [clara.test-accumulators]
-            [clara.test-exists]))
+            [clara.test-exists]
+            [clara.tools.test-tracing]))
 
 (enable-console-print!)
 
@@ -23,4 +24,5 @@
                   'clara.test-testing-utils
                   'clara.test-complex-negation
                   'clara.test-accumulators
-                  'clara.test-exists))
+                  'clara.test-exists
+                  'clara.tools.test-tracing))
