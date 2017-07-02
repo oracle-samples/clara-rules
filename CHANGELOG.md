@@ -1,5 +1,11 @@
 This is a history of changes to clara-rules.
 
+### 0.15.1
+* Do not resolve condition type symbols in the Clojur environment. See [issue 300](https://github.com/cerner/clara-rules/issues/300).
+* Add def-rules-test macro. See [issue 296](https://github.com/cerner/clara-rules/issues/296).
+* Support tracing in ClojureScript. See [issue 308](https://github.com/cerner/clara-rules/issues/308).
+* Upgrade Schema version.
+
 ### 0.15.0
 * Provide information on facts accumulated over, not just the result of the accumulation, in session inspection.  This is a breaking change to the structure of the clara.tools.inspect.Explanation record.  The information available in the Explanation record now is a superset of that available in 0.14.0.  See [issue 276](https://github.com/cerner/clara-rules/issues/276) for further details.
 * Fix a memory leak in which the memory held references to bindings from retracted facts.  Fixing this leak also fixed some incorrect return data in session inspection. See [issue 280](https://github.com/cerner/clara-rules/issues/280) for details.
