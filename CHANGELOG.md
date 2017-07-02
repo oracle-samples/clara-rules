@@ -1,7 +1,7 @@
 This is a history of changes to clara-rules.
 
 ### 0.15.1
-* Do not resolve condition type symbols in the Clojur environment. See [issue 300](https://github.com/cerner/clara-rules/issues/300).
+* Do not resolve condition type symbols in the Clojure environment. See [issue 300](https://github.com/cerner/clara-rules/issues/300).
 * Add def-rules-test macro. See [issue 296](https://github.com/cerner/clara-rules/issues/296).
 * Support tracing in ClojureScript. See [issue 308](https://github.com/cerner/clara-rules/issues/308).
 * Upgrade Schema version.
