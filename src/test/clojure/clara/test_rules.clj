@@ -154,18 +154,6 @@
 
     (is (has-fact? @subzero-rule-output (->Temperature -10 "MCI")))))
 
-(deftest test-cancelled-activation
-  (let [rule-output (atom nil)
-        cold-rule (dsl/parse-rule [[Temperature (< temperature 20)]]
-                                  (reset! rule-output ?__token__) )
-
-        session (-> (mk-session [cold-rule])
-                    (insert (->Temperature 10 "MCI"))
-                    (retract (->Temperature 10 "MCI"))
-                    (fire-rules))]
-
-    (is (= nil @rule-output))))
-
 (deftest test-simple-binding
   (let [rule-output (atom nil)
         cold-rule (dsl/parse-rule [[Temperature (< temperature 20) (= ?t temperature)]]
@@ -1504,46 +1492,6 @@
     (is (= #{}
            (set (query retracted-session same-wind-and-temp))))))
 
-(deftest test-retraction-of-equal-elements
-  (let [insert-cold (dsl/parse-rule [[Temperature (= ?temp temperature)]]
-
-                                    ;; Insert 2 colds that have equal
-                                    ;; values to ensure they are both
-                                    ;;retracted
-                                    (insert! (->Cold ?temp)
-                                             (->Cold ?temp)))
-
-        find-cold (dsl/parse-query [] [[?c <- Cold]])
-
-        ;; Each temp should insert 2 colds.
-        session-inserted (-> (mk-session [insert-cold find-cold])
-                             (insert (->Temperature 50 "LAX"))
-                             (insert (->Temperature 50 "MCI"))
-                             fire-rules)
-
-        ;; Retracting one temp should retract both of its
-        ;; logically inserted colds, but leave the others, even though
-        ;; they are equal.
-        session-retracted (-> session-inserted
-                              (retract (->Temperature 50 "MCI"))
-                              fire-rules)]
-
-    (is (= 4 (count (query session-inserted find-cold))))
-
-    (is (= [{:?c (->Cold 50)}
-            {:?c (->Cold 50)}
-            {:?c (->Cold 50)}
-            {:?c (->Cold 50)}]
-
-           (query session-inserted find-cold)))
-
-    (is (= 2 (count (query session-retracted find-cold))))
-
-    (is (= [{:?c (->Cold 50)}
-            {:?c (->Cold 50)}]
-
-           (query session-retracted find-cold)))))
-
 (deftest test-negation-of-changing-result-from-accumulator-in-fire-rules
   (let [min-temp-rule (dsl/parse-rule [[?c <- (acc/min :temperature :returns-fact true) :from [ColdAndWindy]]]
                                       (insert! (->Cold (:temperature ?c)))
@@ -1700,150 +1648,6 @@
 
     (is (= #{{:?c 10}}
            (set (query session cold-lousy-query))))))
-
-
-(deftest test-insert-and-retract
-  (let [rule-output (atom nil)
-        ;; Insert a new fact and ensure it exists.
-        cold-rule (dsl/parse-rule [[Temperature (< temperature 20) (= ?t temperature)]]
-                                  (insert! (->Cold ?t)) )
-
-        cold-query (dsl/parse-query [] [[Cold (= ?c temperature)]])
-
-        session (-> (mk-session [cold-rule cold-query])
-                    (insert (->Temperature 10 "MCI"))
-                    (fire-rules))
-
-        retracted (-> session
-                      (retract (->Temperature 10 "MCI"))
-                      (fire-rules))]
-
-    (is (= #{{:?c 10}}
-           (set (query session cold-query))))
-
-    ;; Ensure retracting the temperature also removes the logically inserted fact.
-    (is (empty?
-         (query
-          retracted
-          cold-query)))))
-
-(deftest test-insert-and-retract-custom-type
-  (let [;; Insert a new fact and ensure it exists.
-        cold-rule (dsl/parse-rule [[:temperature [{value :value}] (< value 20) (= ?t value)]]
-                                  (insert! {:type :cold :value ?t}))
-
-        cold-query (dsl/parse-query [] [[:cold [{value :value}] (= ?c value)]])
-
-        session (-> (mk-session [cold-rule cold-query] :fact-type-fn :type :cache false)
-                    (insert {:type :temperature :value 10})
-                    (fire-rules))
-
-        retracted (-> session
-                      (retract {:type :temperature :value 10})
-                      (fire-rules))]
-
-    (is (= #{{:?c 10}}
-           (set (query session cold-query))))
-
-    ;; Ensure retracting the temperature also removes the logically inserted fact.
-    (is (empty?
-         (query
-          retracted
-          cold-query)))))
-
-(deftest test-insert-retract-join ;; Test for issue #67
-  (let [cold-not-windy-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]
-                                                  [:not [WindSpeed]]])
-
-        session (-> (mk-session [cold-not-windy-query])
-                    (insert (->WindSpeed 30 "MCI"))
-                    (retract (->WindSpeed 30 "MCI"))
-                    (fire-rules))]
-
-    (is (= [{:?t 10}]
-           (-> session
-               (insert (->Temperature 10 "MCI"))
-               (fire-rules)
-               (query cold-not-windy-query))))))
-
-(deftest test-unconditional-insert
-  (let [rule-output (atom nil)
-        ;; Insert a new fact and ensure it exists.
-        cold-rule (dsl/parse-rule [[Temperature (< temperature 20) (= ?t temperature)]]
-                                  (insert-unconditional! (->Cold ?t)) )
-
-        cold-query (dsl/parse-query [] [[Cold (= ?c temperature)]])
-
-        session (-> (mk-session [cold-rule cold-query])
-                    (insert (->Temperature 10 "MCI"))
-                    (fire-rules))
-
-        retracted-session (-> session
-                              (retract (->Temperature 10 "MCI"))
-                              fire-rules)]
-
-    (is (= #{{:?c 10}}
-           (set (query session cold-query))))
-
-    ;; The derived fact should continue to exist after a retraction
-    ;; since we used an unconditional insert.
-    (is (= #{{:?c 10}}
-           (set (query retracted-session cold-query))))))
-
-(deftest test-unconditional-insert-all
-  (let [rule-output (atom nil)
-        ;; Insert a new fact and ensure it exists.
-        cold-lousy-rule (dsl/parse-rule [[Temperature (< temperature 20) (= ?t temperature)]]
-                                  (insert-all-unconditional! [(->Cold ?t) (->LousyWeather)]))
-
-        cold-query (dsl/parse-query [] [[Cold (= ?c temperature)]])
-
-        lousy-query (dsl/parse-query [] [[?l <- LousyWeather]])
-
-        session (-> (mk-session [cold-lousy-rule cold-query lousy-query])
-                    (insert (->Temperature 10 "MCI"))
-                    (fire-rules))
-
-        retracted-session (-> session
-                              (retract (->Temperature 10 "MCI"))
-                              fire-rules)]
-
-    (is (= #{{:?c 10}}
-           (set (query session cold-query))))
-
-    (is (= #{{:?l (->LousyWeather)}}
-           (set (query session lousy-query))))
-
-    ;; The derived fact should continue to exist after a retraction
-    ;; since we used an unconditional insert.
-    (is (= #{{:?c 10}}
-           (set (query retracted-session cold-query))))
-
-    (is (= #{{:?l (->LousyWeather)}}
-           (set (query retracted-session lousy-query))))))
-
-(deftest test-insert-and-retract-multi-input
-  (let [rule-output (atom nil)
-        ;; Insert a new fact and ensure it exists.
-        cold-rule (dsl/parse-rule [[Temperature (< temperature 20) (= ?t temperature)]
-                                   [WindSpeed (> windspeed 30) (= ?w windspeed)]]
-                           (insert! (->ColdAndWindy ?t ?w)) )
-
-        cold-query (dsl/parse-query [] [[ColdAndWindy (= ?ct temperature) (= ?cw windspeed)]])
-
-        session (-> (mk-session [cold-rule cold-query])
-                    (insert (->Temperature 10 "MCI"))
-                    (insert (->WindSpeed 40 "MCI"))
-                    (fire-rules))]
-
-    (is (= #{{:?ct 10 :?cw 40}}
-           (set (query session cold-query))))
-
-    ;; Ensure retracting the temperature also removes the logically inserted fact.
-    (is (empty?
-         (query
-          (fire-rules (retract session (->Temperature 10 "MCI")))
-          cold-query)))))
 
 (deftest test-expression-to-dnf
 
@@ -2142,7 +1946,7 @@
                     (insert (->First))
                     (fire-rules))]
 
-    ;; The query should identify all items that wer einserted and matchd the
+    ;; The query should identify all items that were inserted and matched the
     ;; expected criteria.
     (is (= #{{:?item (->Fourth)}}
            (set (query session item-query))))))
@@ -2522,83 +2326,6 @@
     ;; only two distinct conditions in our network, plus the root node.
     (is (= 3 (count (:id-to-condition-node beta-graph))))))
 
-;; Tests to insure an item inserted and retracted during a rule fire sequence
-;; is properly removed.
-(deftest test-retract-inserted-during-rule
-  (let [history (dsl/parse-rule [[?temps <- (acc/distinct) :from [Temperature]]]
-                                (insert! (->TemperatureHistory ?temps)))
-
-        temp-query (dsl/parse-query [] [[?t <- TemperatureHistory]])
-
-        ;; Rule only for creating data when fired to expose this bug.
-        create-data (dsl/parse-rule []
-                                    (insert! (->Temperature 20 "MCI")
-                                             (->Temperature 25 "MCI")
-                                             (->Temperature 30 "SFO")))
-
-        ;; The bug this is testing dependend on rule order, so we test
-        ;; multiple orders.
-        session1  (-> (mk-session [create-data temp-query history])
-                      (t/with-tracing)
-                      (fire-rules))
-
-        session2 (-> (mk-session [history create-data temp-query])
-                     (fire-rules))
-
-        session3 (-> (mk-session [history temp-query create-data])
-                     (fire-rules))
-
-        session4 (-> (mk-session [temp-query create-data history])
-                     (fire-rules))]
-
-    ;; We should match an empty list to start.
-    (is (= [{:?t (->TemperatureHistory #{(->Temperature 20 "MCI")
-                                         (->Temperature 25 "MCI")
-                                         (->Temperature 30 "SFO")})}]
-           (query session1 temp-query)
-           (query session2 temp-query)
-           (query session3 temp-query)
-           (query session4 temp-query)))))
-
-
-(deftest test-retract-inserted-during-rule-with-salience
-  (let [history (dsl/parse-rule [[?temps <- (acc/distinct) :from [Temperature]]]
-                                (insert! (->TemperatureHistory ?temps))
-                                {:salience -10})
-
-        temp-query (dsl/parse-query [] [[?t <- TemperatureHistory]])
-
-        ;; Rule only for creating data when fired to expose this bug.
-        create-data (dsl/parse-rule []
-                                    (insert! (->Temperature 20 "MCI")
-                                             (->Temperature 25 "MCI")
-                                             (->Temperature 30 "SFO")))
-
-        ;; The bug this is testing dependend on rule order, so we test
-        ;; multiple orders.
-        session1  (-> (mk-session [create-data temp-query history])
-                      (t/with-tracing)
-                      (fire-rules))
-
-        session2 (-> (mk-session [history create-data temp-query])
-                                    (fire-rules))
-
-        session3 (-> (mk-session [history temp-query create-data])
-                                    (fire-rules))
-
-        session4 (-> (mk-session [temp-query create-data history])
-                                    (fire-rules))]
-
-
-    ;; We should match an empty list to start.
-    (is (= [{:?t (->TemperatureHistory #{(->Temperature 20 "MCI")
-                                         (->Temperature 25 "MCI")
-                                         (->Temperature 30 "SFO")})}]
-           (query session1 temp-query)
-           (query session2 temp-query)
-           (query session3 temp-query)
-           (query session4 temp-query)))))
-
 (deftest test-query-for-many-added-elements
   (let [n 6000
         temp-query (dsl/parse-query [] [[Temperature (= ?t temperature)]])
@@ -2627,40 +2354,6 @@
 
     (is (= n
            (count (query session cold-query))))))
-
-(deftest test-retracting-many-logical-insertions-for-same-rule
-  (let [n 6000
-        ;; Do a lot of individual logical insertions for a single rule firing to
-        ;; expose any StackOverflowError potential of stacking lazy evaluations in working memory.
-        cold-temp (dsl/parse-rule [[Temperature (< temperature 30) (= ?t temperature)]]
-                                  ;; Many insertions based on the Temperature fact.
-                                  (dotimes [i n]
-                                    (insert! (->Cold (- ?t i)))))
-        ;; Note: Adding a binding to this query, such as [Cold (= ?t temperature)]
-        ;; will cause poor performance (really slow) for 6K retractions.
-        ;; This is due to an issue with how retractions on elements is done at a per-grouped
-        ;; on :bindings level.  If every Cold fact has a different temperature, none of them
-        ;; share a :bindings when retractions happen.  This causes a lot of seperate, expensive
-        ;; retractions in the network.
-        ;; We need to find a way to do this in batch when/if possible.
-        cold-query (dsl/parse-query [] [[Cold]])
-
-        session (-> (mk-session [cold-temp cold-query])
-                    (insert (->Temperature 10 "MCI"))
-                    fire-rules)]
-
-    ;; Show the initial state for a sanity check.
-    (is (= n
-           (count (query session cold-query))))
-
-    ;; Retract the Temperature fact that supports all of the
-    ;; logical insertions.  This would trigger a StackOverflowError
-    ;; if the insertions were stacked lazily "from the head".
-    (is (= 0
-           (count (query (-> session
-                             (retract (->Temperature 10 "MCI"))
-                             fire-rules)
-                         cold-query))))))
 
 (deftest test-many-retract-accumulated-for-same-accumulate-with-join-filter-node
   (let [n 6000
@@ -3765,77 +3458,6 @@
 
     (assert-ex-data {:condition (-> q2 :lhs first)}
                     (mk-session [q2]))))
-
-(deftest test-duplicate-insertions-with-only-one-removed
-  (let [r (dsl/parse-rule [[ColdAndWindy (= ?t temperature)]]
-                          (insert! (->Cold ?t)))
-        q (dsl/parse-query [] [[Cold (= ?t temperature)]])
-        query-session (fn []
-                        (-> (mk-session [r q])
-                            (insert (->ColdAndWindy 10 10))
-                            (insert (->ColdAndWindy 10 10))
-                            (fire-rules)
-                            (retract (->ColdAndWindy 10 10))
-                            (fire-rules)
-                            (query q)))]
-    (is (= [{:?t 10}] (query-session))
-        "Removal of one duplicate fact that causes an immediately downstream rule to fire should not
-         retract insertions that were due to other duplicate facts.")))
-
-(deftest test-tiered-identical-insertions-with-retractions
-  ;; The idea here is to test the behavior when the retraction
-  ;; of a single token should cause multiple tokens to be retracted.
-  (let [r1 (dsl/parse-rule [[First]]
-                           (insert! (->Second) (->Second)))
-        r2 (dsl/parse-rule [[Second]]
-                           (insert! (->Third)))
-        third-query (dsl/parse-query [] [[Third]])
-
-        second-query (dsl/parse-query [] [[Second]])
-
-        none-retracted-session (-> (mk-session [r1 r2 third-query second-query])
-                                   (insert (->First) (->First))
-                                   (fire-rules))
-
-        one-retracted-session (-> none-retracted-session
-                                  (retract (->First))
-                                  fire-rules)
-
-        both-retracted-session (-> one-retracted-session
-                                   (retract (->First))
-                                   fire-rules)]
-    (is (= (query none-retracted-session second-query)
-           (query none-retracted-session third-query)
-           [{} {} {} {}])
-        "nothing retracted")
-    (is (= (query one-retracted-session second-query)
-           (query one-retracted-session third-query)
-           [{} {}])
-        "one First retracted")
-    (is (= (query both-retracted-session second-query)
-           (query both-retracted-session third-query))
-        "Both First facts retracted")))
-
-(deftest duplicate-reasons-for-retraction-test
-  (let [r1 (dsl/parse-rule [[First]]
-                           ;; As of writing the engine rearranges
-                           ;; this so that the retraction comes last.
-                           (do (retract! (->Cold 5))
-                               (insert! (->Third))))
-        r2 (dsl/parse-rule [[Second]
-                            [:not [Third]]]
-                           (insert! (->Cold 5)))
-        q (dsl/parse-query [] [[Cold (= ?t temperature)]])
-        base-session (mk-session [r1 r2 q])]
-    (is (= (-> base-session
-               (insert (->Second))
-               (fire-rules)
-               (insert (->First))
-               (fire-rules)
-               (query q))
-           [])
-        "A retraction that becomes redundant after reordering of insertions
-         and retractions due to batching should not cause failure.")))
 
 (deftest test-complex-nested-truth-maintenance-with-unconditional-insert
   (let [r (dsl/parse-rule [[Cold (= ?t temperature)]
@@ -4951,38 +4573,6 @@
                     (fire-rules))]
 
     (is (has-fact? @rule-output (->Temperature 10 "MCI")))))
-
-(deftest test-remove-pending-activation-with-equal-previous-insertion
-  ;; See issue 250 for details of the bug fix this tests.
-  (let [lousy-weather-rule (dsl/parse-rule [[?cw <- ColdAndWindy]]
-                                           (insert! (->LousyWeather)))
-
-        lousy-weather-query (dsl/parse-query [] [[LousyWeather]])
-
-        empty-session (mk-session [lousy-weather-rule lousy-weather-query] :cache false)
-
-        ;; Test paths in remove-activations! that only match on facts that are equal by
-        ;; value but not by reference.
-        end-session-equal-facts (-> empty-session
-                                    (insert (->ColdAndWindy 10 10))
-                                    fire-rules
-                                    (insert (->ColdAndWindy 10 10))
-                                    (retract (->ColdAndWindy 10 10))
-                                    fire-rules)
-
-        ;; Test paths in remove-activations! in LocalMemory that only match on facts that are
-        ;; equal by reference.
-        end-session-identical-facts (let [fact (->ColdAndWindy 10 10)]
-                                      (-> empty-session
-                                          (insert fact)
-                                          fire-rules
-                                          (insert fact)
-                                          (retract fact)
-                                          fire-rules))]
-
-    (is (= (query end-session-equal-facts lousy-weather-query)
-           (query end-session-identical-facts lousy-weather-query)
-           [{}]))))
 
 (deftest test-alpha-batching-with-multiple-ancestors
   ;; Validate that two distinct fact types are batched together when passed to a condition on a
