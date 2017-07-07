@@ -154,46 +154,6 @@
 
     (is (has-fact? @subzero-rule-output (->Temperature -10 "MCI")))))
 
-(deftest test-simple-binding
-  (let [rule-output (atom nil)
-        cold-rule (dsl/parse-rule [[Temperature (< temperature 20) (= ?t temperature)]]
-                                  (reset! rule-output ?t) )
-
-        session (-> (mk-session [cold-rule])
-                    (insert (->Temperature 10 "MCI")))]
-
-
-    (fire-rules session)
-    (is (= 10 @rule-output))))
-
-(deftest test-simple-binding-variable-second
-  (let [rule-output (atom nil)
-        cold-rule (dsl/parse-rule [[Temperature (< temperature 20) (= temperature ?t)]]
-                                  (reset! rule-output ?t))
-
-        session (-> (mk-session [cold-rule])
-                    (insert (->Temperature 10 "MCI")))]
-
-
-    (fire-rules session)
-    (is (= 10 @rule-output))))
-
-(deftest test-multiple-binding
-  (let [rule-output-t (atom nil)
-        rule-output-u (atom nil)
-        rule-output-v (atom nil)
-        cold-rule (dsl/parse-rule [[Temperature (< temperature 20) (= ?t temperature ?u ?v)]]
-                                  (do (reset! rule-output-t ?t)
-                                      (reset! rule-output-u ?u)
-                                      (reset! rule-output-v ?v)))
-
-        session (-> (mk-session [cold-rule])
-                    (insert (->Temperature 10 "MCI")))]
-
-
-    (fire-rules session)
-    (is (= 10 @rule-output-t @rule-output-u @rule-output-v))))
-
 (deftest test-multiple-comparison-binding
   (let [rule-output (atom nil)
         cold-rule (dsl/parse-rule [[Temperature (= ?t temperature 10)]]
@@ -276,7 +236,7 @@
                     (insert (->Temperature 80 "MCI"))
                     fire-rules)]
 
-    ;; The query should identify all items that wer einserted and matchd the
+    ;; The query should identify all items that were inserted and matchd the
     ;; expected criteria.
     (is (= #{{:?t 15} {:?t 10}}
            (set (query session cold-query))))))
@@ -2011,25 +1971,6 @@
                fire-rules
                (query not-different-temps))))))
 
-(deftest test-bean-support
-
-  ;; Use TimeZone for this test as it is an available JavaBean-like object.
-  (let [tz-offset-query (dsl/parse-query [:?offset]
-                                  [[TimeZone (= ?offset rawOffset)
-                                             (= ?id ID)]])
-
-        session (-> (mk-session [tz-offset-query])
-                    (insert (TimeZone/getTimeZone "America/Chicago")
-                            (TimeZone/getTimeZone "UTC"))
-                    fire-rules)]
-
-    (is (= #{{:?id "America/Chicago" :?offset -21600000}}
-           (set (query session tz-offset-query :?offset -21600000))))
-
-    (is (= #{{:?id "UTC" :?offset 0}}
-           (set (query session tz-offset-query :?offset 0))))))
-
-
 (deftest test-multi-insert-retract
 
   (is (= #{{:?loc "MCI"} {:?loc "BOS"}}
@@ -2086,61 +2027,6 @@
                            (insert (->Temperature 80 "MCI"))
                            (fire-rules))
                        cold-query))))))
-
-(deftest test-destructured-args
-
-  (comment
-    (let [cold-query (dsl/parse-query [] [[Temperature [{temp-arg :temperature}] (< temp-arg 20) (= ?t temp-arg)]])
-
-          session (-> (mk-session [cold-query])
-                      (insert (->Temperature 15 "MCI"))
-                      (insert (->Temperature 10 "MCI"))
-                      (insert (->Temperature 80 "MCI")))]
-
-      (is (= #{{:?t 15} {:?t 10}}
-             (set (query session cold-query)))))))
-
-(deftest test-general-map
-  (let [cold-query (dsl/parse-query []
-                             [[:temperature [{temp :value}] (< temp 20) (= ?t temp)]])
-
-        session (-> (mk-session [cold-query] :fact-type-fn :type)
-                    (insert {:type :temperature :value 15 :location "MCI"}
-                            {:type :temperature :value 10 :location "MCI"}
-                            {:type :windspeed :value 5 :location "MCI"}
-                            {:type :temperature :value 80 :location "MCI"})
-                    fire-rules)]
-
-    (is (= #{{:?t 15} {:?t 10}}
-           (set (query session cold-query))))))
-
-(deftest test-retract-general-map
-  (let [cold-query (dsl/parse-query []
-                             [[:temperature [{temp :value}] (< temp 20) (= ?t temp)]])
-
-        session (-> (mk-session [cold-query] :fact-type-fn :type)
-                    (insert {:type :temperature :value 15 :location "MCI"}
-                            {:type :temperature :value 10 :location "MCI"}
-                            {:type :windspeed :value 5 :location "MCI"}
-                            {:type :temperature :value 80 :location "MCI"})
-                    (retract {:type :temperature :value 15 :location "MCI"})
-                    fire-rules)]
-
-    (is (= #{{:?t 10}}
-           (set (query session cold-query))))))
-
-(defrecord RecordWithDash [test-field])
-
-(deftest test-bean-with-dash
-  (let [test-query (dsl/parse-query [] [[RecordWithDash (= ?f test-field)]])
-
-        session (-> (mk-session [test-query])
-                    (insert (->RecordWithDash 15))
-                    fire-rules)]
-
-    (is (= #{{:?f 15}}
-           (set (query session test-query))))))
-
 
 (deftest test-no-loop
   (let [reduce-temp (dsl/parse-rule [[?t <- Temperature (> temperature 0) (= ?v temperature)]]
@@ -2657,83 +2543,6 @@
             (is (= [-50 0 50 100] @salience-rule-output)
                 test-fail-str)))))))
 
-(deftest test-variable-visibility
-  (let [temps-for-locations (dsl/parse-rule [[:location (= ?loc (:loc this))]
-
-                                             [Temperature
-                                              (= ?temp temperature)
-                                              ;; This can only have one binding right
-                                              ;; now due to work that needs to be done
-                                              ;; still in clara.rules.compiler/extract-from-constraint
-                                              ;; around support multiple bindings in a condition.
-                                              (contains? #{?loc} location)]]
-
-                                            (insert! (->Cold ?temp)))
-
-        find-cold (dsl/parse-query [] [[?c <- Cold]])
-
-        session (-> (mk-session [temps-for-locations find-cold])
-                    (insert ^{:type :location} {:loc "MCI"})
-                    (insert (->Temperature 10 "MCI"))
-                    fire-rules)]
-
-    (is (= #{{:?c (->Cold 10)}}
-           (set (query session find-cold))))))
-
-(deftest test-nested-binding
-  (let [same-wind-and-temp (dsl/parse-query []
-                                            [[Temperature (= ?t temperature)]
-                                             [WindSpeed (or (= ?t windspeed)
-                                                            (= "MCI" location))]])
-
-        session (mk-session [same-wind-and-temp])]
-
-    ;; Matches because temperature and windspeed match.
-    (is (= [{:?t 10}]
-           (-> session
-               (insert (->Temperature 10  "MCI")
-                       (->WindSpeed 10  "SFO"))
-               (fire-rules)
-               (query same-wind-and-temp))))
-
-    ;; Matches because cities match.
-    (is (= [{:?t 10}]
-           (-> session
-               (insert (->Temperature 10  "MCI")
-                       (->WindSpeed 20  "MCI"))
-               (fire-rules)
-               (query same-wind-and-temp))))
-
-    ;; No match because neither city nor temperature/windspeed match.
-    (is (empty? (-> session
-                    (insert (->Temperature 10  "MCI")
-                            (->WindSpeed 20  "SFO"))
-                    (fire-rules)
-                    (query same-wind-and-temp))))))
-
-;; Test for: https://github.com/cerner/clara-rules/issues/97
-(deftest test-nested-binding-with-disjunction
-  (let [any-cold? (dsl/parse-rule [[Temperature (= ?t temperature)]
-                                   [:or
-                                    [Cold (< temperature ?t)]
-                                    [Cold (< temperature 5)]]]
-
-                                  (insert! ^{:type :found-cold} {:found true}))
-
-        found-cold (dsl/parse-query [] [[?f <- :found-cold]])
-
-        session (-> (mk-session [any-cold? found-cold])
-                    (insert (->Temperature 10 "MCI")
-                            (->Cold 5))
-                    fire-rules)
-
-        results (query session found-cold)]
-
-    (is (= 1 (count results)))
-
-    (is (= ^{:type found-cold} {:?f {:found true}}
-           (first results)))))
-
 (deftest test-negation-with-extracted-test
     (let [colder-temp (dsl/parse-rule [[Temperature (= ?t temperature)]
                                        [:not [Cold (or (< temperature ?t)
@@ -2992,45 +2801,8 @@
     (is (= 42 @rule-output))))
 
 (def locals-shadowing-tester
-  "Used to demonstrate local shadowing works in `test-rhs-locals-shadowing-vars` below."
+  "Used to demonstrate local shadowing works in `test-explicit-rhs-map-can-use-ns-name-for-unqualified-symbols` below."
   :bad)
-
-(deftest test-rhs-locals-shadowing-vars
-  (let [r1 (dsl/parse-rule [[:test]]
-                           (let [{:keys [locals-shadowing-tester]} {:locals-shadowing-tester :good}]
-                             (insert! ^{:type :result}
-                                      {:r :r1
-                                       :v locals-shadowing-tester})))
-        r2 (dsl/parse-rule [[:test]]
-                           (let [locals-shadowing-tester :good]
-                             (insert! ^{:type :result}
-                                      {:r :r2
-                                       :v locals-shadowing-tester})))
-        r3 (dsl/parse-rule [[:test]]
-                           (let [[locals-shadowing-tester] [:good]]
-                             (insert! ^{:type :result}
-                                      {:r :r3
-                                       :v locals-shadowing-tester})))
-        r4 (dsl/parse-rule [[:test]]
-                           (insert-all! (for [_ (range 1)
-                                              :let [locals-shadowing-tester :good]]
-                                          ^{:type :result}
-                                          {:r :r4
-                                           :v locals-shadowing-tester})))
-        q (dsl/parse-query [] [[?r <- :result]])]
-    (is (= #{{:r :r1
-              :v :good}
-             {:r :r2
-              :v :good}
-             {:r :r3
-              :v :good}
-             {:r :r4
-              :v :good}}
-           (set (map :?r
-                     (-> (mk-session [r1 r2 r3 r4 q])
-                         (insert ^{:type :test} {})
-                         fire-rules
-                         (query q))))))))
 
 (deftest test-explicit-rhs-map-can-use-ns-name-for-unqualified-symbols
   (let [;; The :rhs form only makes sense within the scope of another
@@ -3109,17 +2881,6 @@
 
     (is (= -1 @int-value))))
 
-(deftest test-qualified-java-introp
-  (let [find-string-substring (dsl/parse-query []
-                                               [[?s <- String (and (<= 2 (count this))
-                                                                   (.. this (substring 2) toString))]])
-        session (-> (mk-session [find-string-substring])
-                    (insert "abc")
-                    fire-rules)]
-
-    (is (= [{:?s "abc"}]
-           (query session find-string-substring)))))
-
 (deftest test-condition-comparison-nil-safe
   (let [q (dsl/parse-query []
                            ;; Make two conditions that are very similar, but differ
@@ -3162,30 +2923,6 @@
     (is (= #{{:?s "abc"}}
            qlist-result
            qcons-result))))
-
-(deftest test-record-fields-with-munged-names
-  (let [ff (map->FlexibleFields {:it-works? true
-                                 :a->b {:a :b}
-                                 :x+y [:x :y]
-                                 :bang! :bang!})
-        q (dsl/parse-query []
-                           [[?ff <- FlexibleFields (= ?it-works? it-works?)
-                             (= ?a->b a->b)
-                             (= ?x+y x+y)
-                             (= ?bang! bang!)]])
-
-        res (-> (mk-session [q])
-                (insert ff)
-                fire-rules
-                (query q)
-                set)]
-
-    (is (= #{{:?ff ff
-              :?it-works? true
-              :?a->b {:a :b}
-              :?x+y [:x :y]
-              :?bang! :bang!}}
-           res))))
 
 ;; Test for https://github.com/cerner/clara-rules/issues/142
 (deftest test-beta-binding
@@ -4320,6 +4057,7 @@
         "Validate that we can still go through a persistent/transient transition in the memory
          after firing rules causes the activation memory to be emptied.")))
 
+;; TODO: Move this to test-dsl once a strategy for replicating assert-ex-data is determined and implemented.
 (deftest test-reused-var-in-constraints
   (let [q (dsl/parse-query [] [[Temperature (= ?t (+ 5 temperature)) (< ?t 10)]])
 
@@ -4907,45 +4645,14 @@
                     (fire-rules {:cancelling true})
                     (query cold-query))))))
 
-;; Test for https://github.com/cerner/clara-rules/issues/267
+;; Partial test for https://github.com/cerner/clara-rules/issues/267
+;; This test has a counterpart of the same name in clara.test-dsl.  Once
+;; we land on a strategy for error checking tests in ClojureScript we can move this
+;; test case there.
 (deftest test-local-scope-visible-in-join-filter
-  (let [check-local-binding (dsl/parse-query [] [[WindSpeed (= ?w windspeed)]
-                                                 [Temperature (= ?t temperature)
-                                                  (join-filter-equals ?w ?t 10)]])
-
-        check-local-binding-accum (dsl/parse-query [] [[WindSpeed (= ?w windspeed)]
-                                                       [?results <- (acc/all) :from [Temperature (= ?t temperature)
-                                                                                     (join-filter-equals ?w ?t 10)]]])
-
-        check-reuse-previous-binding (dsl/parse-query [] [[WindSpeed (= ?t windspeed) (= ?w windspeed)]
-                                                          [Temperature (= ?t temperature)
-                                                           (join-filter-equals ?w ?t 10)]])
-
-        check-exception (dsl/parse-query [] [[WindSpeed (= ?w windspeed)]
+  (let [check-exception (dsl/parse-query [] [[WindSpeed (= ?w windspeed)]
                                              [Temperature (= ?t temperature)
-                                              (> ?t ?w)]])
-
-        check-accum-result-previous-binding (dsl/parse-query []
-                                                             [[?t <- (acc/min :temperature) :from [Temperature]]
-                                                              [ColdAndWindy (= ?t temperature) (join-filter-equals ?t windspeed)]])]
-
-    (is (= [{:?w 10 :?t 10}]
-           (-> (mk-session [check-local-binding])
-               (insert (->WindSpeed 10 "MCI") (->Temperature 10 "MCI"))
-               (fire-rules)
-               (query check-local-binding))))
-
-    (is (= [{:?w 10 :?t 10 :?results [(->Temperature 10 "MCI")]}]
-           (-> (mk-session [check-local-binding-accum])
-               (insert (->WindSpeed 10 "MCI") (->Temperature 10 "MCI"))
-               (fire-rules)
-               (query check-local-binding-accum))))
-
-    (is (= [{:?w 10 :?t 10}]
-           (-> (mk-session [check-reuse-previous-binding])
-               (insert (->WindSpeed 10 "MCI") (->Temperature 10 "MCI"))
-               (fire-rules)
-               (query check-reuse-previous-binding))))
+                                              (> ?t ?w)]])]
 
     (let [e (try
               (-> (mk-session [check-exception])
@@ -4956,13 +4663,4 @@
               (catch Exception e e))]
 
       (is (= {:?w 10, :?t nil}
-             (-> e (ex-data) :bindings))))
-
-    (is (empty? (-> (mk-session [check-accum-result-previous-binding])
-                    (insert (->Temperature -10 "MCI"))
-                    (insert (->ColdAndWindy -20 -20))
-                    fire-rules
-                    (query check-accum-result-previous-binding)))
-        "Validate that the ?t binding from the previous accumulator result is used, rather
-         than the binding in the ColdAndWindy condition that would create a ?t binding if one were
-         not already present")))
+             (-> e (ex-data) :bindings))))))

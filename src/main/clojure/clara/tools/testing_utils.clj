@@ -75,4 +75,3 @@
   (f)
   (with-redefs [uc/get-ordered-update-cache ca/get-cancelling-update-cache]
     (f)))
-  
