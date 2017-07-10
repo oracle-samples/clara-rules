@@ -200,7 +200,71 @@
            (set (query session distinct-field-query))))
 
     (is (= #{{:?t #{ 80}}}
-           (set (query retracted distinct-field-query))))))
+           (set (query retracted distinct-field-query))))
+
+    ;; Tests for https://github.com/cerner/clara-rules/issues/325 without the field argument.
+    (let [retract-one-dup (-> empty-session
+                              (insert (->Temperature 80 "MCI") (->Temperature 80 "MCI"))
+                              fire-rules
+                              (retract (->Temperature 80 "MCI"))
+                              fire-rules)
+
+          retract-both-dups (-> retract-one-dup
+                                (retract (->Temperature 80 "MCI"))
+                                fire-rules)
+
+          retract-both-dups-add-another (-> retract-one-dup
+                                            (insert (->Temperature 0 "ORD"))
+                                            fire-rules
+                                            (retract (->Temperature 80 "MCI"))
+                                            fire-rules)]
+
+      (is (= [{:?t #{(->Temperature 80 "MCI")}}]
+             (query retract-one-dup distinct-query)))
+
+      (is (= [{:?t #{}}]
+             (query retract-both-dups distinct-query)))
+
+      (is (= [{:?t #{(->Temperature 0 "ORD")}}]
+             (query retract-both-dups-add-another distinct-query))))
+
+    ;; Tests for https://github.com/cerner/clara-rules/issues/325 with the field argument.
+    (let [retract-one-dup-field (-> empty-session
+                                    (insert (->Temperature 80 "MCI") (->Temperature 80 "DFW"))
+                                    fire-rules
+                                    (retract (->Temperature 80 "MCI"))
+                                    fire-rules)
+
+          retract-both-dups-field (-> retract-one-dup-field
+                                      (retract (->Temperature 80 "DFW"))
+                                      fire-rules)
+
+          retract-both-dups-add-another-field (-> retract-one-dup-field
+                                                  (insert (->Temperature 0 "MCI"))
+                                                  fire-rules
+                                                  (retract (->Temperature 80 "DFW"))
+                                                  fire-rules)]
+      (is (= [{:?t #{80}}]
+             (query retract-one-dup-field distinct-field-query)))
+
+      (is (= [{:?t #{}}]
+             (query retract-both-dups-field distinct-field-query)))
+
+      (is (= [{:?t #{0}}]
+             (query retract-both-dups-add-another-field distinct-field-query))))))
+
+(def-rules-test test-distinct-nil-field
+  {:queries [distinct-windspeeds [[]
+                                  [[?winds <- (acc/distinct :windspeed) :from [Temperature]]]]]
+
+   :sessions [empty-session [distinct-windspeeds] {}]}
+
+  (is (= [{:?winds #{nil}}]
+
+         (-> empty-session
+             (insert (->Temperature 80 "MCI"))
+             fire-rules
+             (query distinct-windspeeds)))))
 
 (def-rules-test test-min-max-average-multi-condition-join
 
