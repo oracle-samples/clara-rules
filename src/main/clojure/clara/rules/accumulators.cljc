@@ -170,16 +170,18 @@
 (defn distinct
   "Returns an accumulator producing a distinct set of facts.
    If given a field, returns a distinct set of values for that field."
-  ([]
-     (accum
-      {:initial-value #{}
-       :reduce-fn (fn [items value] (conj items value))
-       :retract-fn (fn [items retracted] (disj items retracted))}))
+  ([] (distinct identity))
   ([field]
-     (accum
-      {:initial-value #{}
-       :reduce-fn (fn [items value] (conj items (field value)))
-       :retract-fn (fn [items retracted] (disj items (field retracted)))})))
+   (accum
+    {:initial-value {}
+     :reduce-fn (fn [freq-map value] (update freq-map (field value) (fnil inc 0)))
+     :retract-fn (fn [freq-map retracted-item]
+                   (let [item-field (field retracted-item)
+                         current (get freq-map item-field)]
+                     (if (= 1 current)
+                       (dissoc freq-map item-field)
+                       (update freq-map item-field dec))))
+     :convert-return-fn (comp set keys)})))
 
 (defn all
   "Returns an accumulator that preserves all accumulated items.
