@@ -1,5 +1,8 @@
 This is a history of changes to clara-rules.
 
+### 0.15.2
+* Fix a bug in the distinct accumulator.  See [issue 325](https://github.com/cerner/clara-rules/issues/325).
+
 ### 0.15.1
 * Do not resolve condition type symbols in the Clojure environment. See [issue 300](https://github.com/cerner/clara-rules/issues/300).
 * Add def-rules-test macro. See [issue 296](https://github.com/cerner/clara-rules/issues/296).
