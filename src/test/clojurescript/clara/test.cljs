@@ -10,7 +10,8 @@
             [clara.test-exists]
             [clara.tools.test-tracing]
             [clara.test-truth-maintenance]
-            [clara.test-dsl]))
+            [clara.test-dsl]
+            [clara.test-accumulation]))
 
 (enable-console-print!)
 
@@ -29,4 +30,5 @@
                   'clara.test-exists
                   'clara.tools.test-tracing
                   'clara.test-truth-maintenance
-                  'clara.test-dsl))
+                  'clara.test-dsl
+                  'clara.test-accumulation))
