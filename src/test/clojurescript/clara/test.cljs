@@ -11,7 +11,8 @@
             [clara.tools.test-tracing]
             [clara.test-truth-maintenance]
             [clara.test-dsl]
-            [clara.test-accumulation]))
+            [clara.test-accumulation]
+            [clara.test-memory]))
 
 (enable-console-print!)
 
@@ -31,4 +32,5 @@
                   'clara.tools.test-tracing
                   'clara.test-truth-maintenance
                   'clara.test-dsl
-                  'clara.test-accumulation))
+                  'clara.test-accumulation
+                  'clara.test-memory))

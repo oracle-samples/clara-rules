@@ -1512,59 +1512,6 @@
     ;; only two distinct conditions in our network, plus the root node.
     (is (= 3 (count (:id-to-condition-node beta-graph))))))
 
-(deftest test-query-for-many-added-elements
-  (let [n 6000
-        temp-query (dsl/parse-query [] [[Temperature (= ?t temperature)]])
-
-        ;; Do not batch insert to expose any StackOverflowError potential
-        ;; of stacking lazy evaluations in working memory.
-        session (reduce insert (mk-session [temp-query])
-                        (for [i (range n)] (->Temperature i "MCI")))
-        session (fire-rules session)]
-
-    (is (= n
-           (count (query session temp-query))))))
-
-(deftest test-query-for-many-added-tokens
-  (let [n 6000
-        cold-temp (dsl/parse-rule [[Temperature (< temperature 30) (= ?t temperature)]]
-                                  (insert! (->Cold ?t)))
-        cold-query (dsl/parse-query [] [[Cold (= ?t temperature)]])
-
-        ;; Do not batch insert to expose any StackOverflowError potential
-        ;; of stacking lazy evaluations in working memory.
-        session (reduce insert (mk-session [cold-temp cold-query])
-                        (for [i (range n)] (->Temperature (- i) "MCI")))
-
-        session (fire-rules session)]
-
-    (is (= n
-           (count (query session cold-query))))))
-
-(deftest test-many-retract-accumulated-for-same-accumulate-with-join-filter-node
-  (let [n 6000
-
-        count-cold-temps (dsl/parse-rule [[Cold (= ?cold-temp temperature)]
-                                          [?temp-count <- (acc/count) :from [Temperature (some? temperature) (<= temperature ?cold-temp)]]]
-                                         (insert! ^{:type :temp-counter} {:count ?temp-count}))
-        cold-temp-count-query (dsl/parse-query [] [[:temp-counter [{:keys [count]}] (= ?count count)]])
-
-
-        session  (reduce insert
-                         (mk-session [count-cold-temps
-                                      cold-temp-count-query])
-                         ;; Insert all temperatures one at a time to ensure the
-                         ;; accumulate node will continuously re-accumulate via
-                         ;; `right-activate-reduced` to expose any StackOverflowError
-                         ;; potential of stacking lazy evaluations in working memory.
-                         (for [t (range n)] (->Temperature (- t) "MCI")))
-        session (-> session
-                    (insert (->Cold 30))
-                    fire-rules)]
-
-    ;; All temperatures are under the Cold temperature threshold.
-    (is (= #{{:?count 6000}} (set (query session cold-temp-count-query))))))
-
 (def external-type :temperature)
 
 (def external-constant 20)
@@ -1804,43 +1751,8 @@
                       (fire-rules)
                       (query find-colder))))))
 
-(deftest
-  ^{:doc "Ensures that when 'sibling' nodes are sharing a common child
-          production node, that activations are effectively retracted in some
-          TMS control flows.
-          See https://github.com/cerner/clara-rules/pull/145 for more context."}
-  test-disjunctions-sharing-production-node
-  (let [r (dsl/parse-rule [[:or
-                            [First]
-                            [Second]]
-                           [?ts <- (acc/all) :from [Temperature]]]
-                          (insert! (with-meta {:ts ?ts}
-                                     {:type :holder})))
-        q (dsl/parse-query []
-                           [[?h <- :holder]])
-        s (mk-session [r q])
-        ;; Vary the insertion order to ensure that the outcomes are the same.
-        ;; This insertion order will cause retractions to need to be propagated
-        ;; to the RHS production node that is shared by the nested conditions
-        ;; of the disjunction.
-        qres1 (-> s
-                  (insert (->First))
-                  (insert (->Temperature 1 "MCI"))
-                  (insert (->Second))
-                  (insert (->Temperature 2 "MCI"))
-                  fire-rules
-                  (query q)
-                  set)
-        qres2 (-> s
-                  (insert (->First))
-                  (insert (->Temperature 1 "MCI"))
-                  (insert (->Temperature 2 "MCI"))
-                  (insert (->Second))
-                  fire-rules
-                  (query q)
-                  set)]
-    (is (= qres1 qres2))))
-
+;; TODO: Move this once it succeeds with def-rules-test.  The def-rules-test macro may
+;; be stripping the metadata somewhere.
 (deftest ^{:doc "Ensuring that ProductionNodes compilation is separate per node in network.
                  See https://github.com/cerner/clara-rules/pull/145 for more context."}
   test-multiple-equiv-rhs-different-metadata
@@ -2673,39 +2585,6 @@
 
     (is (= [:cold :hot] holder1))
     (is (= [:hot :cold] holder2))))
-
-(deftest test-force-multiple-transient-transitions-activation-memory
-  ;; The objective of this test is to verify that activation memory works
-  ;; properly after going through persistent/transient shifts, including shifts
-  ;; that empty it (i.e. firing the rules.)
-  (let [rule (dsl/parse-rule [[ColdAndWindy]]
-                             (insert! (->Cold 10)))
-        cold-query (dsl/parse-query [] [[Cold (= ?t temperature)]])
-
-        empty-session (mk-session [rule cold-query] :cache false)
-
-        windy-fact (->ColdAndWindy 20 20)]
-
-    (is (= (-> empty-session
-               (insert windy-fact)
-               (insert windy-fact)
-               fire-rules
-               (query cold-query))
-           [{:?t 10} {:?t 10}])
-        "Make two insert calls forcing the memory to go through a persistent/transient transition
-         in between insert calls.")
-
-    (is (= (-> empty-session
-               (insert windy-fact)
-               (insert windy-fact)
-               fire-rules
-               (insert windy-fact)
-               (insert windy-fact)
-               fire-rules
-               (query cold-query))
-           (repeat 4 {:?t 10}))
-        "Validate that we can still go through a persistent/transient transition in the memory
-         after firing rules causes the activation memory to be emptied.")))
 
 ;; TODO: Move this to test-dsl once a strategy for replicating assert-ex-data is determined and implemented.
 (deftest test-reused-var-in-constraints
