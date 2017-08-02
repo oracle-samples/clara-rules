@@ -194,23 +194,23 @@
   "Prints a human-readable explanation of the facts and conditions that created the Rete token."
   ([explanation] (explain-activation explanation ""))
   ([explanation prefix]
-     (doseq [[fact condition] (:matches explanation)]
-       (if (:from condition)
+   (doseq [{:keys [fact condition]} (:matches explanation)]
+     (if (:from condition)
          ;; Explain why the accumulator matched.
-         (let [{:keys [accumulator from]} condition]
-           (println prefix fact)
-           (println prefix "  accumulated with" accumulator)
-           (println prefix "  from" (:type from))
-           (println prefix "  where" (:constraints from)))
+       (let [{:keys [accumulator from]} condition]
+         (println prefix fact)
+         (println prefix "  accumulated with" accumulator)
+         (println prefix "  from" (:type from))
+         (println prefix "  where" (:constraints from)))
 
          ;; Explain why a condition matched.
-         (let [{:keys [type constraints]} condition]
-           (println prefix fact)
-           (println prefix "  is a" type)
-           (println prefix "  where" constraints))))))
+       (let [{:keys [type constraints]} condition]
+         (println prefix fact)
+         (println prefix "  is a" type)
+         (println prefix "  where" constraints))))))
 
 (defn explain-activations
-  "Prints a human-friend explanation of why rules and queries matched in the given session.
+  "Prints a human-friendly explanation of why rules and queries matched in the given session.
   A caller my optionally pass a :rule-filter-fn, which is a predicate
 
   (clara.tools.inspect/explain-activations session
