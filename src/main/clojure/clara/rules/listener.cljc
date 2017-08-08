@@ -21,7 +21,6 @@
   (remove-accum-reduced! [listener node join-bindings fact-bindings])
   (add-activations! [listener node activations])
   (remove-activations! [listener node activations])
-  (fire-rule! [listener node token])
   (fire-rules! [listener node])
   (to-persistent! [listener]))
 
@@ -55,8 +54,6 @@
   (add-activations! [listener node activations]
     listener)
   (remove-activations! [listener node activations]
-    listener)
-  (fire-rule! [listener node token]
     listener)
   (fire-rules! [listener node]
     listener)
@@ -127,10 +124,6 @@
   (remove-activations! [listener node activations]
     (doseq [child children]
       (remove-activations! child node activations)))
-
-  (fire-rule! [listener node token]
-    (doseq [child children]
-      (fire-rule! child node token)))
 
   (fire-rules! [listener node]
     (doseq [child children]

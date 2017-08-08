@@ -1793,7 +1793,7 @@
                                                              listener-exception
                                                              listener-exception))}
                                              e)))))
-                  (l/fire-rule! listener node token)
+
                   ;; Explicitly flush updates if we are in a no-loop rule, so the no-loop
                   ;; will be in context for child rules.
                   (when (some-> node :production :props :no-loop)
