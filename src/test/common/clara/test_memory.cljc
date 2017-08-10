@@ -7,14 +7,14 @@
                                     insert!
                                     retract
                                     query]]
-
-               [clara.rules.testfacts :refer [->Temperature ->Cold ->WindSpeed
+               [clara.rules.testfacts :refer [->Temperature ->Cold ->WindSpeed ->Hot
                                               ->ColdAndWindy ->First ->Second]]
                [clojure.test :refer [is deftest run-tests testing use-fixtures]]
                [clara.rules.accumulators :as acc]
                [schema.test :as st])
      (:import [clara.rules.testfacts
                Temperature
+               Hot
                Cold
                WindSpeed
                ColdAndWindy
@@ -31,11 +31,13 @@
                                     query]]
                [clara.rules.testfacts :refer [->Temperature Temperature
                                               ->Cold Cold
+                                              ->Hot Hot
                                               ->WindSpeed WindSpeed
                                               ->ColdAndWindy ColdAndWindy
                                               ->First First
                                               ->Second Second]]
                [clara.rules.accumulators :as acc]
+               [clara.tools.testing-utils :as tu]
                [cljs.test]
                [schema.test :as st])
      (:require-macros [clara.tools.testing-utils :refer [def-rules-test]]
@@ -47,8 +49,41 @@
 ;; the intent of these tests is to create patterns in the engine that cover edge cases and other paths
 ;; of concern in clara.rules.memory.
 
-(def-rules-test test-query-for-many-added-elements
+(def-rules-test test-negation-complex-join-with-numerous-non-matching-facts-inserted-after-descendant-negation
+  {:rules []
+   :queries [query1 [[]
+                     [[Hot (= ?t temperature)]
+                      [:not [Cold (tu/join-filter-equals ?t temperature)]]]]]
+   :sessions [empty-session [query1] {}]}
+  (let [lots-of-hot (doall (for [_ (range 100)]
+                             (->Hot 20)))]
+    (is (= (repeat 100 {:?t 20})
+           (-> empty-session
+               (insert (->Cold 10))
+               fire-rules
+               (insert-all lots-of-hot)
+               fire-rules
+               (query query1))))))
+;; These tests are here to verify https://github.com/cerner/clara-rules/issues/303
+(def-rules-test test-negation-complex-join-with-numerous-non-matching-facts-inserted-after-descendant-negation-with-equals
+  {:rules []
+   :queries [query1 [[]
+                     [[Hot (= ?t temperature)]
+                      [:not [Cold (= ?t temperature)]]]]]
+   :sessions [empty-session [query1] {}]}
+  (let [lots-of-hot (doall (for [_ (range 100)]
+                             (->Hot 20)))]
+    (is (= (repeat 100 {:?t 20})
+           (-> empty-session
+               (insert (->Cold 10))
+               fire-rules
+               (insert-all lots-of-hot)
+               fire-rules
+               (query query1))))))
 
+;; This is the same test as above except using `=` istead of `join-filter-equals`.
+;; The two tests are supposed to be in sync.
+(def-rules-test test-query-for-many-added-elements
   {:queries [temp-query [[] [[Temperature (= ?t temperature)]]]]
 
    :sessions [empty-session [temp-query] {}]}

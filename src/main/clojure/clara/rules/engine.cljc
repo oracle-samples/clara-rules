@@ -6,7 +6,8 @@
             [clojure.string :as string]
             [clara.rules.memory :as mem]
             [clara.rules.listener :as l]
-            [clara.rules.platform :as platform]
+            #?(:clj [clara.rules.platform :as platform]
+               :cljs [clara.rules.platform :as platform :include-macros true])
             [clara.rules.update-cache.core :as uc]
             #?(:clj [clara.rules.update-cache.cancelling :as ca])))
 
@@ -347,8 +348,8 @@
       ;; can perform retractions if they become false.
       (mem/add-tokens! memory node join-bindings tokens)
 
-      (let [activations (for [token tokens]
-                          (->Activation node token))]
+      (let [activations (platform/eager-for [token tokens]
+                                            (->Activation node token))]
 
         (l/add-activations! listener node activations)
 
@@ -363,8 +364,8 @@
     (mem/remove-tokens! memory node join-bindings tokens)
 
     ;; Remove pending activations triggered by the retracted tokens.
-    (let [activations (for [token tokens]
-                        (->Activation node token))
+    (let [activations (platform/eager-for [token tokens]
+                                          (->Activation node token))
 
           ;; We attempt to remove a pending activation for all tokens retracted, but our expectation
           ;; is that each token may remove a pending activation
@@ -509,15 +510,15 @@
 
 (defn- alpha-node-matches
   [facts env activation node]
-  (for [fact facts
-        :let [bindings (try (activation fact env)
-                            (catch #?(:clj Exception :cljs :default) e
-                                (throw-condition-exception {:cause e
-                                                            :node node
-                                                            :fact fact
-                                                            :env env})))]
-        :when bindings] ; FIXME: add env.
-    [fact bindings]))
+  (platform/eager-for [fact facts
+                       :let [bindings (try (activation fact env)
+                                           (catch #?(:clj Exception :cljs :default) e
+                                               (throw-condition-exception {:cause e
+                                                                           :node node
+                                                                           :fact fact
+                                                                           :env env})))]
+                       :when bindings]           ; FIXME: add env.
+                      [fact bindings]))
 
 ;; Record representing alpha nodes in the Rete network,
 ;; each of which evaluates a single condition and
@@ -533,8 +534,8 @@
        memory
        listener
        children
-       (for [[fact bindings] fact-binding-pairs]
-         (->Element fact bindings)))))
+       (platform/eager-for [[fact bindings] fact-binding-pairs]
+                           (->Element fact bindings)))))
 
   (alpha-retract [node facts memory transport listener]
     (let [fact-binding-pairs (alpha-node-matches facts env activation node)]
@@ -544,8 +545,8 @@
         memory
         listener
         children
-        (for [[fact bindings] fact-binding-pairs]
-          (->Element fact bindings))))))
+        (platform/eager-for [[fact bindings] fact-binding-pairs]
+                            (->Element fact bindings))))))
 
 (defrecord RootJoinNode [id condition children binding-keys]
   ILeftActivate
@@ -577,8 +578,8 @@
      memory
      listener
      children
-     (for [{:keys [fact bindings] :as element} elements]
-       (->Token [[fact (:id node)]] bindings))))
+     (platform/eager-for [{:keys [fact bindings] :as element} elements]
+                         (->Token [[fact (:id node)]] bindings))))
 
   (right-retract [node join-bindings elements memory transport listener]
 
@@ -590,8 +591,8 @@
      memory
      listener
      children
-     (for [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)]
-       (->Token [[fact (:id node)]] bindings))))
+     (platform/eager-for [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)]
+                         (->Token [[fact (:id node)]] bindings))))
 
   IConditionNode
   (get-condition-description [this]
@@ -612,11 +613,11 @@
      memory
      listener
      children
-     (for [element (mem/get-elements memory node join-bindings)
-           token tokens
-           :let [fact (:fact element)
-                 fact-binding (:bindings element)]]
-       (->Token (conj (:matches token) [fact id]) (conj fact-binding (:bindings token))))))
+     (platform/eager-for [element (mem/get-elements memory node join-bindings)
+                          token tokens
+                          :let [fact (:fact element)
+                                fact-binding (:bindings element)]]
+                         (->Token (conj (:matches token) [fact id]) (conj fact-binding (:bindings token))))))
 
   (left-retract [node join-bindings tokens memory transport listener]
     (l/left-retract! listener node tokens)
@@ -625,11 +626,11 @@
      memory
      listener
      children
-     (for [token (mem/remove-tokens! memory node join-bindings tokens)
-           element (mem/get-elements memory node join-bindings)
-           :let [fact (:fact element)
-                 fact-bindings (:bindings element)]]
-       (->Token (conj (:matches token) [fact id]) (conj fact-bindings (:bindings token))))))
+     (platform/eager-for [token (mem/remove-tokens! memory node join-bindings tokens)
+                          element (mem/get-elements memory node join-bindings)
+                          :let [fact (:fact element)
+                                fact-bindings (:bindings element)]]
+                         (->Token (conj (:matches token) [fact id]) (conj fact-bindings (:bindings token))))))
 
   (get-join-keys [node] binding-keys)
 
@@ -644,9 +645,9 @@
      memory
      listener
      children
-     (for [token (mem/get-tokens memory node join-bindings)
-           {:keys [fact bindings] :as element} elements]
-       (->Token (conj (:matches token) [fact id]) (conj (:bindings token) bindings)))))
+     (platform/eager-for [token (mem/get-tokens memory node join-bindings)
+                          {:keys [fact bindings] :as element} elements]
+                         (->Token (conj (:matches token) [fact id]) (conj (:bindings token) bindings)))))
 
   (right-retract [node join-bindings elements memory transport listener]
     (l/right-retract! listener node elements)
@@ -655,9 +656,9 @@
      memory
      listener
      children
-     (for [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)
-           token (mem/get-tokens memory node join-bindings)]
-       (->Token (conj (:matches token) [fact id]) (conj (:bindings token) bindings)))))
+     (platform/eager-for [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)
+                          token (mem/get-tokens memory node join-bindings)]
+                         (->Token (conj (:matches token) [fact id]) (conj (:bindings token) bindings)))))
 
   IConditionNode
   (get-condition-description [this]
@@ -687,14 +688,14 @@
      memory
      listener
      children
-     (for [element (mem/get-elements memory node join-bindings)
-           token tokens
-           :let [fact (:fact element)
-                 fact-binding (:bindings element)
-                 beta-bindings (join-node-matches node join-filter-fn token fact fact-binding {})]
-           :when beta-bindings]
-       (->Token (conj (:matches token) [fact id])
-                (conj fact-binding (:bindings token) beta-bindings)))))
+     (platform/eager-for [element (mem/get-elements memory node join-bindings)
+                          token tokens
+                          :let [fact (:fact element)
+                                fact-binding (:bindings element)
+                                beta-bindings (join-node-matches node join-filter-fn token fact fact-binding {})]
+                          :when beta-bindings]
+                         (->Token (conj (:matches token) [fact id])
+                                  (conj fact-binding (:bindings token) beta-bindings)))))
 
   (left-retract [node join-bindings tokens memory transport listener]
     (l/left-retract! listener node tokens)
@@ -703,14 +704,14 @@
      memory
      listener
      children
-     (for [token (mem/remove-tokens! memory node join-bindings tokens)
-           element (mem/get-elements memory node join-bindings)
-           :let [fact (:fact element)
-                 fact-bindings (:bindings element)
-                 beta-bindings (join-node-matches node join-filter-fn token fact fact-bindings {})]
-           :when beta-bindings]
-       (->Token (conj (:matches token) [fact id])
-                (conj fact-bindings (:bindings token) beta-bindings)))))
+     (platform/eager-for [token (mem/remove-tokens! memory node join-bindings tokens)
+                          element (mem/get-elements memory node join-bindings)
+                          :let [fact (:fact element)
+                                fact-bindings (:bindings element)
+                                beta-bindings (join-node-matches node join-filter-fn token fact fact-bindings {})]
+                          :when beta-bindings]
+                         (->Token (conj (:matches token) [fact id])
+                                  (conj fact-bindings (:bindings token) beta-bindings)))))
 
   (get-join-keys [node] binding-keys)
 
@@ -725,12 +726,12 @@
      memory
      listener
      children
-     (for [token (mem/get-tokens memory node join-bindings)
-           {:keys [fact bindings] :as element} elements
-           :let [beta-bindings (join-node-matches node join-filter-fn token fact bindings {})]
-           :when beta-bindings]
-       (->Token (conj (:matches token) [fact id])
-                (conj (:bindings token) bindings beta-bindings)))))
+     (platform/eager-for [token (mem/get-tokens memory node join-bindings)
+                          {:keys [fact bindings] :as element} elements
+                          :let [beta-bindings (join-node-matches node join-filter-fn token fact bindings {})]
+                          :when beta-bindings]
+                         (->Token (conj (:matches token) [fact id])
+                                  (conj (:bindings token) bindings beta-bindings)))))
 
   (right-retract [node join-bindings elements memory transport listener]
     (l/right-retract! listener node elements)
@@ -739,12 +740,12 @@
      memory
      listener
      children
-     (for [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)
-           token (mem/get-tokens memory node join-bindings)
-           :let [beta-bindings (join-node-matches node join-filter-fn token fact bindings {})]
-           :when beta-bindings]
-       (->Token (conj (:matches token) [fact id])
-                (conj (:bindings token) bindings beta-bindings)))))
+     (platform/eager-for [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)
+                          token (mem/get-tokens memory node join-bindings)
+                          :let [beta-bindings (join-node-matches node join-filter-fn token fact bindings {})]
+                          :when beta-bindings]
+                         (->Token (conj (:matches token) [fact id])
+                                  (conj (:bindings token) bindings beta-bindings)))))
 
   IConditionNode
   (get-condition-description [this]
@@ -823,13 +824,14 @@
                  memory
                  listener
                  children
-                 (for [token tokens
-                       :when (not (matches-some-facts? node
-                                                       token
-                                                       (mem/get-elements memory node join-bindings)
-                                                       join-filter-fn
-                                                       condition))]
-                   token)))
+                 (let [elements (mem/get-elements memory node join-bindings)]
+                   (platform/eager-for [token tokens
+                                        :when (not (matches-some-facts? node
+                                                                        token
+                                                                        elements
+                                                                        join-filter-fn
+                                                                        condition))]
+                                       token))))
 
   (left-retract [node join-bindings tokens memory transport listener]
     (l/left-retract! listener node tokens)
@@ -841,13 +843,14 @@
 
                     ;; Retract only if it previously had no matches in the negation node,
                     ;; and therefore had an activation.
-                    (for [token tokens
-                          :when (not (matches-some-facts? node
-                                                          token
-                                                          (mem/get-elements memory node join-bindings)
-                                                          join-filter-fn
-                                                          condition))]
-                      token)))
+                    (let [elements (mem/get-elements memory node join-bindings)]
+                      (platform/eager-for [token tokens                                  
+                                           :when (not (matches-some-facts? node
+                                                                           token
+                                                                           elements
+                                                                           join-filter-fn
+                                                                           condition))]
+                                          token))))
 
   (get-join-keys [node] binding-keys)
 
@@ -862,24 +865,24 @@
                       memory
                       listener
                       children
-                      (for [token (mem/get-tokens memory node join-bindings)
+                      (platform/eager-for [token (mem/get-tokens memory node join-bindings)
 
-                            ;; Retract downstream if the token now has matching elements and didn't before.
-                            ;; We check the new elements first in the expectation that the new elements will be
-                            ;; smaller than the previous elements most of the time
-                            ;; and that the time to check the elements will be proportional
-                            ;; to the number of elements.
-                            :when (and (matches-some-facts? node
-                                                            token
-                                                            elements
-                                                            join-filter-fn
-                                                            condition)
-                                       (not (matches-some-facts? node
-                                                                 token
-                                                                 previous-elements
-                                                                 join-filter-fn
-                                                                 condition)))]
-                        token))
+                                           ;; Retract downstream if the token now has matching elements and didn't before.
+                                           ;; We check the new elements first in the expectation that the new elements will be
+                                           ;; smaller than the previous elements most of the time
+                                           ;; and that the time to check the elements will be proportional
+                                           ;; to the number of elements.
+                                           :when (and (matches-some-facts? node
+                                                                           token
+                                                                           elements
+                                                                           join-filter-fn
+                                                                           condition)
+                                                      (not (matches-some-facts? node
+                                                                                token
+                                                                                previous-elements
+                                                                                join-filter-fn
+                                                                                condition)))]
+                                          token))
       ;; Adding the elements will mutate the previous-elements since, on the JVM, the LocalMemory
       ;; currently returns a mutable List from get-elements after changes in issue 184.  We need to use the
       ;; new and old elements in the logic above as separate collections.  Therefore we need to delay updating the
@@ -895,21 +898,22 @@
                  memory
                  listener
                  children
-                 (for [token (mem/get-tokens memory node join-bindings)
+                 (let [remaining-elements (mem/get-elements memory node join-bindings)]
+                   (platform/eager-for [token (mem/get-tokens memory node join-bindings)
 
-                       ;; Propagate tokens when some of the retracted facts joined
-                       ;; but none of the remaining facts do.
-                       :when (and (matches-some-facts? node
-                                                       token
-                                                       elements
-                                                       join-filter-fn
-                                                       condition)
-                                  (not (matches-some-facts? node
-                                                            token
-                                                            (mem/get-elements memory node join-bindings)
-                                                            join-filter-fn
-                                                            condition)))]
-                   token)))
+                                        ;; Propagate tokens when some of the retracted facts joined
+                                        ;; but none of the remaining facts do.
+                                        :when (and (matches-some-facts? node
+                                                                        token
+                                                                        elements
+                                                                        join-filter-fn
+                                                                        condition)
+                                                   (not (matches-some-facts? node
+                                                                             token
+                                                                             remaining-elements
+                                                                             join-filter-fn
+                                                                             condition)))]
+                                       token))))
 
   IConditionNode
   (get-condition-description [this]
@@ -1108,8 +1112,8 @@
   IAccumRightActivate
   (pre-reduce [node elements]
     ;; Return a seq tuples with the form [binding-group facts-from-group-elements].
-    (for [[bindings element-group] (platform/group-by-seq :bindings elements)]
-      [bindings (mapv :fact element-group)]))
+    (platform/eager-for [[bindings element-group] (platform/group-by-seq :bindings elements)]
+                        [bindings (mapv :fact element-group)]))
 
   (right-activate-reduced [node join-bindings fact-seq memory transport listener]
 
@@ -1480,8 +1484,8 @@
     ;; Return a map of bindings to the candidate facts that match them. This accumulator
     ;; depends on the values from parent facts, so we defer actually running the accumulator
     ;; until we have a token.
-    (for [[bindings element-group] (platform/group-by-seq :bindings elements)]
-      [bindings (map :fact element-group)]))
+    (platform/eager-for [[bindings element-group] (platform/group-by-seq :bindings elements)]
+                        [bindings (map :fact element-group)]))
 
   (right-activate-reduced [node join-bindings binding-candidates-seq memory transport listener]
 
@@ -1700,10 +1704,10 @@
 (defn variables-as-keywords
   "Returns symbols in the given s-expression that start with '?' as keywords"
   [expression]
-  (into #{} (for [item (tree-seq coll? seq expression)
-                  :when (and (symbol? item)
-                             (= \? (first (name item))))]
-              (keyword item))))
+  (into #{} (platform/eager-for [item (tree-seq coll? seq expression)
+                                 :when (and (symbol? item)
+                                            (= \? (first (name item))))]
+                                (keyword item))))
 
 (defn conj-rulebases
   "DEPRECATED. Simply concat sequences of rules and queries.
