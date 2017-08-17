@@ -13,18 +13,25 @@ page.onConsoleMessage = function (message) {
 var url = system.args[1];
 
 page.open(url, function (status) {
-  if (status !== "success") {
-    console.log('Failed to open ' + url);
+    if (status !== "success") {
+	console.log('Failed to open ' + url);
+	setTimeout(function() {
+	    phantom.exit(1);
+	}, 0);
+    }
+
+    // Note that we have to return a primitive value from this function
+    // rather than setting a closure variable.  The executed function is sandboxed
+    // by PhantomJS and can't set variables outside its scope.
+    var success = page.evaluate(function() {
+	return clara.test.run();
+    });
+
     setTimeout(function() {
-      phantom.exit(1);
+	if (success){
+	    phantom.exit(0);
+	} else {
+	    phantom.exit(1);
+	}
     }, 0);
-  }
-
-  page.evaluate(function() {
-    clara.test.run();
-  });
-
-  setTimeout(function() {
-    phantom.exit(0);
-  }, 0);
 });
