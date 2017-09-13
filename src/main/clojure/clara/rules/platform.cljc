@@ -76,3 +76,8 @@
            (finally
              ~@(for [[tl] binding-pairs]
                  `(.remove ~tl)))))))
+
+(defmacro eager-for
+  "A for wrapped with a doall to force realisation. Usage is the same as regular for."
+  [& body]
+  `(doall (for ~@body)))

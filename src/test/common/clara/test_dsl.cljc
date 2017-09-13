@@ -36,6 +36,7 @@
                                               ->WindSpeed WindSpeed
                                               ->ColdAndWindy ColdAndWindy]]
                [clara.rules.accumulators :as acc]
+               [clara.tools.testing-utils :as tu]
                [cljs.test]
                [schema.test :as st])
      (:require-macros [clara.tools.testing-utils :refer [def-rules-test]]
@@ -48,13 +49,6 @@
 (use-fixtures :once st/validate-schemas #?(:clj tu/opts-fixture))
 
 (def side-effect-holder (atom nil))
-
-;; TODO: Decide where to put this in a common file.
-(defn join-filter-equals
-  "Intended to be a test function that is the same as equals, but is not visible to Clara as such
-  and thus forces usage of join filters instead of hash joins"
-  [& args]
-  (apply = args))
 
 (def-rules-test test-simple-binding-variable-ordering
 
@@ -401,19 +395,19 @@
 
   {:queries [check-local-binding [[] [[WindSpeed (= ?w windspeed)]
                                       [Temperature (= ?t temperature)
-                                       (join-filter-equals ?w ?t 10)]]]
+                                       (tu/join-filter-equals ?w ?t 10)]]]
 
              check-local-binding-accum [[] [[WindSpeed (= ?w windspeed)]
                                             [?results <- (acc/all) :from [Temperature (= ?t temperature)
-                                                                          (join-filter-equals ?w ?t 10)]]]]
+                                                                          (tu/join-filter-equals ?w ?t 10)]]]]
 
              check-reuse-previous-binding [[] [[WindSpeed (= ?t windspeed) (= ?w windspeed)]
                                                [Temperature (= ?t temperature)
-                                                (join-filter-equals ?w ?t 10)]]]
+                                                (tu/join-filter-equals ?w ?t 10)]]]
 
              check-accum-result-previous-binding [[]
                                                   [[?t <- (acc/min :temperature) :from [Temperature]]
-                                                   [ColdAndWindy (= ?t temperature) (join-filter-equals ?t windspeed)]]]]
+                                                   [ColdAndWindy (= ?t temperature) (tu/join-filter-equals ?t windspeed)]]]]
 
    :sessions [check-local-binding-session [check-local-binding] {}
               check-local-binding-accum-session [check-local-binding-accum] {}

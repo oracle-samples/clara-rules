@@ -308,12 +308,6 @@
                                             nil
                                             (/ value count)))))
 
-(defn join-filter-equals
-  "Intended to be a test function that is the same as equals, but is not visible to Clara as such
-  and thus forces usage of join filters instead of hash joins"
-  [& args]
-  (apply = args))
-
 (deftest test-simple-negation
   (let [not-cold-query (dsl/parse-query [] [[:not [Temperature (< temperature 20)]]])
 
