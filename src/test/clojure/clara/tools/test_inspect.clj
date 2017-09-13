@@ -8,7 +8,9 @@
             [clojure.test :refer :all]
             [clara.test-rules :as tr]
             [clara.tools.testing-utils :as tu]
-            schema.test)
+            [clojure.walk :as w]
+            [schema.test])
+
   (:import [clara.rules.testfacts Temperature TemperatureHistory
             WindSpeed Cold Hot ColdAndWindy LousyWeather
             First Second Third Fourth]))
@@ -425,24 +427,129 @@
     (is (every? empty? query-matches))
     (is (every? empty? condition-matching-facts))))
 
+;; Remove the original-constraints vs constraints distinction for ease of testing.
+;; Note that this distinction is present in the FactCondition schema used by the compiler:
+;; https://github.com/cerner/clara-rules/blob/0.15.2/src/main/clojure/clara/rules/schema.clj#L28
+;; so the :original-constraints key that is added by the compiler and is absent
+;; from the original rule condition was present before the preliminary refactoring for issue 307.
+;;
+;; TODO: This is a separate conversation from the refactoring to avoid the compiler dependency,
+;; but there is an argument to be made that we should transform the :condition-matches in this
+;; way prior to their return to the user in the inspect function, not just in tests here.
+;; If we do so this transformation in the tests should be removed.
+(defn original-constraints->constraints
+  [condition-matches]
+  (let [rename-fn (fn [form]
+                    (if
+                        (and
+                         (map? form)
+                         (contains? form :original-constraints))
+                      (-> form
+                          (dissoc :original-constraints)
+                          (assoc :constraints (:original-constraints form)))
+                      form))]
+    (w/prewalk rename-fn condition-matches)))
+
 (deftest test-negation-condition-matches
-  (let [not-cold-rule (dsl/parse-rule [[:not [Temperature (< temperature 0)]]]
+  (let [not-cold-rule-join (dsl/parse-rule [[ColdAndWindy (= ?t temperature)]
+                                            ;; Note that it doesn't actually matter for the purpose of the
+                                            ;; :condition-matches if the join condition is satisfied; we're only
+                                            ;; looking at the constraints that are only on the Temperature and not
+                                            ;; part of a join.  However, adding a join condition forces the use of
+                                            ;; NegationWithJoinFilterNode so we test against that as well as
+                                            ;; NegationNode.
+                                            [:not [Temperature (tu/join-filter-equals temperature ?t)
+                                                   (< temperature 0)]]]
+                                           (insert! (->Hot :from-join)))
+        
+        not-cold-rule (dsl/parse-rule [[:not [Temperature (< temperature 0)]]]
                                       (insert! (->Hot :unknown)))
 
-        empty-session (mk-session [not-cold-rule] :cache false)
+        empty-session (mk-session [not-cold-rule not-cold-rule-join] :cache false)
 
         with-matching-fact-session (-> empty-session
-                                       (insert (->Temperature -10 "MCI"))
+                                       (insert (->Temperature -10 "MCI") (->ColdAndWindy 0 0))
                                        fire-rules)
 
         with-non-matching-fact-session (-> empty-session
-                                           (insert (->Temperature 10 "MCI"))
+                                           (insert (->Temperature 10 "MCI") (->ColdAndWindy 10 10))
                                            fire-rules)]
 
-    (is (= {(-> not-cold-rule :lhs first) []}
-           (-> empty-session inspect :condition-matches)
-           (-> with-non-matching-fact-session inspect :condition-matches)))
+    (is (= []
+           (-> empty-session inspect :condition-matches (get (-> not-cold-rule :lhs first)))
+           (-> with-non-matching-fact-session inspect :condition-matches (get (-> not-cold-rule :lhs first)))))
 
-    (is (= {(-> not-cold-rule :lhs first) [(->Temperature -10 "MCI")]}
-           (-> with-matching-fact-session inspect :condition-matches)))))
+    (is (= [(->Temperature -10 "MCI")]
+           (-> with-matching-fact-session inspect :condition-matches (get (-> not-cold-rule :lhs first)))))
 
+    (is (= []
+           (-> empty-session inspect :condition-matches original-constraints->constraints
+               (get (-> not-cold-rule-join :lhs second)))
+           (-> with-non-matching-fact-session inspect :condition-matches original-constraints->constraints
+               (get (-> not-cold-rule-join :lhs second)))))
+
+    (is (= [(->Temperature -10 "MCI")]
+           (-> with-matching-fact-session inspect :condition-matches original-constraints->constraints
+               (get (-> not-cold-rule-join :lhs second)))))))
+
+(tu/def-rules-test test-condition-matches-on-join-conditions
+
+  {:rules [simple-join [[[Temperature (= ?loc location) (= ?temp temperature)]
+                         [WindSpeed (= ?loc location) (= ?windspeed windspeed)]]
+                        (insert! (->ColdAndWindy ?temp ?windspeed))]
+
+           complex-join [[[Temperature (= ?loc location) (= ?temp temperature)]
+                          [WindSpeed (tu/join-filter-equals ?loc location) (= ?windspeed windspeed)]]
+                         (insert! (->ColdAndWindy ?temp ?windspeed))]]
+
+   :queries [cold-windy-query [[]
+                               [[ColdAndWindy (= ?t temperature) (= ?w windspeed)]]]]
+
+   :sessions [empty-simple-join [simple-join cold-windy-query] {}
+              empty-complex-join [complex-join cold-windy-query] {}]}
+
+  (let [simple-successful-join (-> empty-simple-join
+                                   (insert (->Temperature 0 "MCI") (->WindSpeed 50 "MCI"))
+                                   fire-rules)
+
+        complex-successful-join (-> empty-complex-join
+                                    (insert (->Temperature 0 "MCI") (->WindSpeed 50 "MCI"))
+                                    fire-rules)
+
+        simple-failed-join (-> empty-simple-join
+                               (insert (->Temperature 0 "ORD") (->WindSpeed 50 "MCI"))
+                               fire-rules)
+
+        complex-failed-join (-> empty-complex-join
+                                (insert (->Temperature 0 "ORD") (->WindSpeed 50 "MCI"))
+                                fire-rules)
+
+        get-condition-match (fn [session fact-type]
+                              (let [matching-entries (->> session
+                                                          inspect
+                                                          :condition-matches
+                                                          (filter (fn [[k v]] (= (:type k)
+                                                                                 fact-type))))]
+                                (if (> (count matching-entries) 1)
+                                  (throw (ex-info "Found multiple matches of type"
+                                                  {:session session
+                                                   :fact-type fact-type}))
+                                  (some-> matching-entries first val))))]
+    
+    (is (= (query simple-successful-join cold-windy-query)
+           (query complex-successful-join cold-windy-query)
+           [{:?t 0 :?w 50}]))
+
+    (is (= (get-condition-match simple-successful-join Temperature)
+           (get-condition-match complex-successful-join Temperature)
+           [(->Temperature 0 "MCI")]))
+
+    (is (= (get-condition-match simple-failed-join Temperature)
+           (get-condition-match complex-failed-join Temperature)
+           [(->Temperature 0 "ORD")]))
+
+    (is (= (get-condition-match simple-successful-join WindSpeed)
+           (get-condition-match complex-successful-join WindSpeed)
+           (get-condition-match simple-failed-join WindSpeed)
+           (get-condition-match complex-failed-join WindSpeed)
+           [(->WindSpeed 50 "MCI")]))))
