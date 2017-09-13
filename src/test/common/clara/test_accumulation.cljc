@@ -49,6 +49,7 @@
                                               ->Hot Hot
                                               ->LousyWeather LousyWeather]]
                [clara.rules.accumulators :as acc]
+               [clara.tools.testing-utils :as tu]
                [cljs.test]
                [schema.test :as st])
      (:require-macros [clara.tools.testing-utils :refer [def-rules-test]]
@@ -61,13 +62,6 @@
 (use-fixtures :once st/validate-schemas #?(:clj tu/opts-fixture))
 
 (def side-effect-holder (atom nil))
-
-;; TODO: Decide where to put this in a common file.
-(defn join-filter-equals
-  "Intended to be a test function that is the same as equals, but is not visible to Clara as such
-  and thus forces usage of join filters instead of hash joins"
-  [& args]
-  (apply = args))
 
 ;; In ClojureScript the type function does not use the :type key in metadata as in Clojure, but we had
 ;; tests in Clojure that were relying on this.  Creating a custom function for the fact type along these
@@ -257,7 +251,7 @@
                                                                        (< (:temperature item) (:temperature value) ))
                                                                  item
                                                                  value)))
-                                           :from (Temperature (join-filter-equals ?loc location))]]]]
+                                           :from (Temperature (tu/join-filter-equals ?loc location))]]]]
 
    :sessions [simple-join-session [coldest-query-simple-join] {}
               complex-join-session [coldest-query-complex-join] {}]}
@@ -747,7 +741,7 @@
              qfilter [[]
                       [[WindSpeed (= ?ws windspeed)]
                        [?ts <- (acc/all) :from [Temperature (= ?loc location)
-                                                (not (join-filter-equals temperature ?ws))]]]]]
+                                                (not (tu/join-filter-equals temperature ?ws))]]]]]
 
    :sessions [qhash-session [qhash] {}
               qfilter-session [qfilter] {}]}
@@ -1330,8 +1324,8 @@
                             [?t <- (assoc (acc/all) :convert-return-fn (constantly []))
                              ;; Note that only the binding that comes from a previous condition can use a filter function
                              ;; other than equality.  The = symbol is special-cased to potentially create a new binding;
-                             ;; if we used (join-filter-equals ?degrees temperature) here we would have an invalid rule constraint.
-                             :from [Temperature (join-filter-equals ?loc location) (= ?degrees temperature)]]]
+                             ;; if we used (tu/join-filter-equals ?degrees temperature) here we would have an invalid rule constraint.
+                             :from [Temperature (tu/join-filter-equals ?loc location) (= ?degrees temperature)]]]
                (insert! (->TemperatureHistory [?loc ?degrees]))]]
 
    :queries [q [[] [[TemperatureHistory (= ?ts temperatures)]]]]
@@ -1366,7 +1360,7 @@
                (insert! (->TemperatureHistory [?loc (map :temperature ?ts)]))]
 
            r2 [[[?w <- WindSpeed (= ?loc location)]
-                            [?ts <- (acc/all) :from [Temperature (join-filter-equals ?loc location)]]]
+                            [?ts <- (acc/all) :from [Temperature (tu/join-filter-equals ?loc location)]]]
                (insert! (->TemperatureHistory [?loc (map :temperature ?ts)]))]]
 
    :queries [q [[] [[TemperatureHistory (= ?ts temperatures)]]]]
@@ -1419,7 +1413,7 @@
                                 (insert! (->Temperature [?t []] "MCI"))]
 
            binding-from-parent-non-equals [[[Cold (= ?t temperature)]
-                                                        [?hot-facts <- (acc/all) :from [Hot (join-filter-equals ?t temperature)]]]
+                                                        [?hot-facts <- (acc/all) :from [Hot (tu/join-filter-equals ?t temperature)]]]
                                            (insert! (->Temperature [?t []] "MCI"))]]
 
    :queries [q [[] [[Temperature (= ?t temperature)]]]]
@@ -1613,7 +1607,7 @@
 
    :rules [r1 [[[Cold (= ?t temperature)]
                             [?ws <- (acc/all) :from [ColdAndWindy
-                                                     (and (join-filter-equals ?t temperature)
+                                                     (and (tu/join-filter-equals ?t temperature)
                                                           (even? windspeed))]]]
                (insert! (->TemperatureHistory (map :windspeed ?ws)))]
 
@@ -1728,7 +1722,7 @@
                            (insert! (->TemperatureHistory [?loc ?temp ?temp-count]))]
 
            filter-join-rule [[[WindSpeed (= ?loc location)]
-                              [?temp-count <- (acc/count) :from [Temperature (join-filter-equals ?loc location) (= ?temp temperature)]]]
+                              [?temp-count <- (acc/count) :from [Temperature (tu/join-filter-equals ?loc location) (= ?temp temperature)]]]
                              (insert! (->TemperatureHistory [?loc ?temp ?temp-count]))]]
 
    :sessions [empty-session-hash-join [q hash-join-rule] {}

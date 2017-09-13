@@ -7,6 +7,7 @@
             [clara.rules.accumulators :as acc]
             [clojure.test :refer :all]
             [clara.test-rules :as tr]
+            [clara.tools.testing-utils :as tu]
             schema.test)
   (:import [clara.rules.testfacts Temperature TemperatureHistory
             WindSpeed Cold Hot ColdAndWindy LousyWeather
@@ -304,20 +305,20 @@
 
         windspeed-with-temps-complex-join
         (dsl/parse-rule [[?w <- WindSpeed (= ?loc location)]
-                         [?temps <- (acc/all) from [Temperature (tr/join-filter-equals ?loc location)]]]
+                         [?temps <- (acc/all) from [Temperature (tu/join-filter-equals ?loc location)]]]
                         (insert! (->TemperatureHistory [?loc (->> ?temps
                                                                   (map :temperature)
                                                                   frequencies)])))
 
         windspeed-with-temps-complex-join-unused-previous-binding
         (dsl/parse-rule [[?w <- WindSpeed (= ?loc location) (= ?windspeed windspeed)]
-                         [?temps <- (acc/all) from [Temperature (tr/join-filter-equals ?loc location)]]]
+                         [?temps <- (acc/all) from [Temperature (tu/join-filter-equals ?loc location)]]]
                         (insert! (->TemperatureHistory [?loc (->> ?temps
                                                                   (map :temperature)
                                                                   frequencies)])))
 
         windspeed-with-temps-complex-join-subsequent-binding
-        (dsl/parse-rule [[?temps <- (acc/all) from [Temperature (tr/join-filter-equals ?loc location)]]
+        (dsl/parse-rule [[?temps <- (acc/all) from [Temperature (tu/join-filter-equals ?loc location)]]
                          [?w <- WindSpeed (= ?loc location) (= ?windspeed windspeed)]]
                         (insert! (->TemperatureHistory [?loc (->> ?temps
                                                                   (map :temperature)
