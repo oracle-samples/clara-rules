@@ -1,5 +1,8 @@
 This is a history of changes to clara-rules.
 
+### 0.16.0
+* Eliminate laziness that broke internal contracts around order of execution, causing an exception to be thrown when executing queries with negation conditions in some edge cases.  See [issue 303](https://github.com/cerner/clara-rules/issues/303) for details.
+
 ### 0.15.2
 * Fix a bug in the distinct accumulator.  See [issue 325](https://github.com/cerner/clara-rules/issues/325).
 
