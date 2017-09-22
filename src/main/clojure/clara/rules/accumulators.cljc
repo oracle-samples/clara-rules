@@ -39,8 +39,10 @@
   "Removes one instance of the given value from the sequence."
   [items value]
   (let [pred #(not= value %)]
-    (into (take-while pred items)
-          (rest (drop-while pred items)))))
+    (into (empty items)
+          cat
+          [(take-while pred items)
+           (rest (drop-while pred items))])))
 
 (defn reduce-to-accum
   "Creates an accumulator using a given reduce function with optional initial value and

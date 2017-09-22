@@ -515,3 +515,39 @@
     (testing "grouping-accum with custom convert-return-fn and retraction (max temp group)"
       (is (= [{:?t [(->Temperature 30 "MCI")]}]
              (query retracted-session grouping-convert-query))))))
+
+;; Validate that the inital vector will remain as a vector even after a retraction occurs
+;; See https://github.com/cerner/clara-rules/issues/338
+(def-rules-test test-data-structure-consistency-post-retraction
+  {:queries [cold-query [[] [[?all-cold <- (acc/all) :from [Cold]]]]
+
+             wind-query [[] [[?all-wind <- (assoc (acc/all) :initial-value '()) :from [WindSpeed]]]]]
+
+   :sessions [empty-session [cold-query wind-query] {}]}
+
+  (let [session (-> empty-session
+                    (insert-all [(->Cold -1)
+                                 (->Cold 0)
+                                 (->WindSpeed 10 "MCI")
+                                 (->WindSpeed 75 "KCI")])
+                    fire-rules
+                    (retract (->Cold -1) (->WindSpeed 10 "MCI"))
+                    fire-rules)
+
+        cold-facts (-> (query session cold-query)
+                       first
+                       :?all-cold)
+
+        wind-facts (-> (query session wind-query)
+                       first
+                       :?all-wind)]
+
+    (testing "Default initial value structure is maintained"
+      (is (and (= (count (query session cold-query)) 1)
+               (= [(->Cold 0)] cold-facts)
+               (vector? cold-facts))))
+
+    (testing "Custom initial value structure is maintained"
+      (is (and (= (count (query session wind-query)) 1)
+               (= [(->WindSpeed 75 "KCI")] wind-facts)
+               (seq? wind-facts))))))
