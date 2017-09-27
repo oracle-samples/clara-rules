@@ -87,73 +87,6 @@
                   "Non matches found: " \newline
                   res#))))))
 
-(deftest test-simple-rule
-  (let [rule-output (atom nil)
-        cold-rule (dsl/parse-rule [[Temperature (< temperature 20)]]
-                                  (reset! rule-output ?__token__))
-
-        session (-> (mk-session [cold-rule])
-                    (insert (->Temperature 10 "MCI"))
-                    (fire-rules))]
-
-    (is (has-fact? @rule-output (->Temperature 10 "MCI")))))
-
-(deftest test-multiple-condition-rule
-  (let [rule-output (atom nil)
-        cold-windy-rule (dsl/parse-rule [[Temperature (< temperature 20)]
-                                         [WindSpeed (> windspeed 25)]]
-                                        (reset! rule-output ?__token__))
-
-        session (-> (mk-session [cold-windy-rule])
-                    (insert (->WindSpeed 30 "MCI"))
-                    (insert (->Temperature 10 "MCI")))]
-
-    (fire-rules session)
-
-    (is (has-fact? @rule-output (->WindSpeed 30 "MCI")))
-    (is (has-fact? @rule-output (->Temperature 10 "MCI")))))
-
-(deftest test-multiple-simple-rules
-
-  (let [cold-rule-output (atom nil)
-        windy-rule-output (atom nil)
-
-        cold-rule (dsl/parse-rule [[Temperature (< temperature 20)]]
-                                  (reset! cold-rule-output ?__token__))
-
-        windy-rule (dsl/parse-rule [[WindSpeed (> windspeed 25)]]
-                                   (reset! windy-rule-output ?__token__))
-
-        session (-> (mk-session [cold-rule windy-rule])
-                    (insert (->WindSpeed 30 "MCI"))
-                    (insert (->Temperature 10 "MCI")))]
-
-    (fire-rules session)
-
-    ;; Check rule side effects contin the expected token.
-    (is (has-fact? @cold-rule-output (->Temperature 10 "MCI")))
-
-    (is (has-fact? @windy-rule-output (->WindSpeed 30 "MCI")))))
-
-(deftest test-multiple-rules-same-fact
-
-  (let [cold-rule-output (atom nil)
-        subzero-rule-output (atom nil)
-        cold-rule (dsl/parse-rule [[Temperature (< temperature 20)]]
-                                  (reset! cold-rule-output ?__token__))
-
-        subzero-rule (dsl/parse-rule [[Temperature (< temperature 0)]]
-                                     (reset! subzero-rule-output ?__token__))
-
-        session (-> (mk-session [cold-rule subzero-rule])
-                    (insert (->Temperature -10 "MCI")))]
-
-    (fire-rules session)
-
-    (is (has-fact? @cold-rule-output (->Temperature -10 "MCI") ))
-
-    (is (has-fact? @subzero-rule-output (->Temperature -10 "MCI")))))
-
 (deftest test-multiple-comparison-binding
   (let [rule-output (atom nil)
         cold-rule (dsl/parse-rule [[Temperature (= ?t temperature 10)]]
@@ -692,38 +625,6 @@
              "from an external operation that logical insertions from the rule are retracted, "
              "both direct insertions from the rule and ones from downstream rules."))))
 
-(deftest test-simple-retraction
-  (let [cold-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]])
-
-        temp (->Temperature 10 "MCI")
-
-        session (-> (mk-session [cold-query])
-                    (insert temp)
-                    fire-rules)
-
-        retracted-session (-> session
-                              (retract temp)
-                              fire-rules)]
-
-    ;; Ensure the item is there as expected.
-    (is (= #{{:?t 10}}
-           (set (query session cold-query))))
-
-    ;; Ensure the item is retracted as expected.
-    (is (= #{}
-           (set (query retracted-session cold-query))))))
-
-(deftest test-noop-retraction
-  (let [cold-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]])
-
-        session (-> (mk-session [cold-query])
-                    (insert (->Temperature 10 "MCI"))
-                    (retract (->Temperature 15 "MCI"))
-                    fire-rules)] ; Ensure retracting a nonexistent item has no ill effects.
-
-    (is (= #{{:?t 10}}
-           (set (query session cold-query))))))
-
 (deftest test-retraction-of-join
   (let [same-wind-and-temp (dsl/parse-query [] [[Temperature (= ?t temperature)]
                                                 (WindSpeed (= ?t windspeed))])
@@ -869,39 +770,6 @@
               :?loc "MCI"
               :?cw cold-and-windy}}
            res))))
-
-(deftest test-simple-insert
-
-  (let [rule-output (atom nil)
-        ;; Insert a new fact and ensure it exists.
-        cold-rule (dsl/parse-rule [[Temperature (< temperature 20) (= ?t temperature)]]
-                                  (insert! (->Cold ?t)) )
-
-        cold-query (dsl/parse-query [] [[Cold (= ?c temperature)]])
-
-        session (-> (mk-session [cold-rule cold-query])
-                    (insert (->Temperature 10 "MCI"))
-                    (fire-rules))]
-
-    (is (= #{{:?c 10}}
-           (set (query session cold-query))))))
-
-(deftest test-simple-insert-all
-
-  (let [rule-output (atom nil)
-        ;; Insert a new fact and ensure it exists.
-        cold-lousy-rule (dsl/parse-rule [[Temperature (< temperature 20) (= ?t temperature)]]
-                                  (insert-all! [(->Cold ?t) (->LousyWeather)]))
-
-        cold-lousy-query (dsl/parse-query [] [[Cold (= ?c temperature)]
-                                        [LousyWeather]])
-
-        session (-> (mk-session [cold-lousy-rule cold-lousy-query])
-                    (insert (->Temperature 10 "MCI"))
-                    (fire-rules))]
-
-    (is (= #{{:?c 10}}
-           (set (query session cold-lousy-query))))))
 
 (deftest test-expression-to-dnf
 
