@@ -12,7 +12,8 @@
             [clara.test-truth-maintenance]
             [clara.test-dsl]
             [clara.test-accumulation]
-            [clara.test-memory]))
+            [clara.test-memory]
+            [clara.test-simple-rules]))
 
 (enable-console-print!)
 
@@ -40,5 +41,6 @@
                     'clara.test-truth-maintenance
                     'clara.test-dsl
                     'clara.test-accumulation
-                    'clara.test-memory)
+                    'clara.test-memory
+                    'clara.test-simple-rules)
     @*successful?*))

@@ -87,3 +87,13 @@
   and thus forces usage of join filters instead of hash joins"
   [& args]
   (apply = args))
+
+(def side-effect-holder (atom nil))
+
+(defn side-effect-holder-fixture
+  "Fixture to reset the side effect holder to nil both before and after tests.
+   This should be used as a :each fixture."
+  [t]
+  (reset! side-effect-holder nil)
+  (t)
+  (reset! side-effect-holder nil))
