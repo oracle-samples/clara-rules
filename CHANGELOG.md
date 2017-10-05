@@ -1,5 +1,8 @@
 This is a history of changes to clara-rules.
 
+### 0.17.0-SNAPSHOT
+* Fix exception in explain-activations.
+
 ### 0.16.0
 * Eliminate laziness that broke internal contracts around order of execution, causing an exception to be thrown when executing queries with negation conditions in some edge cases.  See [issue 303](https://github.com/cerner/clara-rules/issues/303) for details.
 
@@ -107,7 +110,7 @@ Here are the specifics on what changed since 0.9.2:
 
 * Fix unification bugs when dealing with nested negations. See [issue 166](https://github.com/cerner/clara-rules/issues/166).
 * Properly handle tests nested in negation nodes. See [issue 165](https://github.com/cerner/clara-rules/issues/165).
-* Improve inspect function to explain the insertion of a given fact. See [issue 161](https://github.com/cerner/clara-rules/issues/161).  
+* Improve inspect function to explain the insertion of a given fact. See [issue 161](https://github.com/cerner/clara-rules/issues/161).
 * Remove duplicate rules and dependency on order of rules when creating sessions. See [issue 157](https://github.com/cerner/clara-rules/issues/157).
 * Significantly improve performance of building the Rete network when dealing with large disjunctions. See [issue 153](https://github.com/cerner/clara-rules/issues/153).
 * Allow multiple binding and equality checks in a single expression. See [issue 151](https://github.com/cerner/clara-rules/issues/151).
