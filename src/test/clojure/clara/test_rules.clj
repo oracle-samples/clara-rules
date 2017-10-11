@@ -1133,6 +1133,17 @@
                fire-rules
                (query not-different-temps))))))
 
+(deftest test-empty-test-condition
+
+  (is (thrown-with-msg?
+        clojure.lang.ExceptionInfo
+        #"line.*123.*column.*456"
+        (dsl/parse-query*
+          []
+          [[:test]]
+          {}
+          {:line 123 :column 456}))))
+
 (deftest test-multi-insert-retract
 
   (is (= #{{:?loc "MCI"} {:?loc "BOS"}}
