@@ -66,7 +66,7 @@
       (is (= [hot-rule-90-explanation]
              (get-in rule-dump [:rule-matches hot-rule]))
           "Rule matches test")
-      
+
       (is (= [{:explanation hot-rule-90-explanation
                :fact (map->Hot {:temperature 90})}]
              (get-in rule-dump [:insertions hot-rule]))
@@ -84,7 +84,7 @@
                                                      :rule cold-rule}]
               (map->Hot {:temperature 90}) [{:explanation hot-rule-90-explanation
                                              :rule hot-rule}]}
-             
+
              ;; Avoid dependence on the ordering of the cold explanations.
              (update (:fact->explanations rule-dump)
                      (map->Cold {:temperature :too-cold})
@@ -423,7 +423,7 @@
                           inspect
                           :query-matches
                           vals)]
-    
+
     (is (every? empty? query-matches))
     (is (every? empty? condition-matching-facts))))
 
@@ -461,7 +461,7 @@
                                             [:not [Temperature (tu/join-filter-equals temperature ?t)
                                                    (< temperature 0)]]]
                                            (insert! (->Hot :from-join)))
-        
+
         not-cold-rule (dsl/parse-rule [[:not [Temperature (< temperature 0)]]]
                                       (insert! (->Hot :unknown)))
 
@@ -535,7 +535,7 @@
                                                   {:session session
                                                    :fact-type fact-type}))
                                   (some-> matching-entries first val))))]
-    
+
     (is (= (query simple-successful-join cold-windy-query)
            (query complex-successful-join cold-windy-query)
            [{:?t 0 :?w 50}]))
@@ -553,3 +553,11 @@
            (get-condition-match simple-failed-join WindSpeed)
            (get-condition-match complex-failed-join WindSpeed)
            [(->WindSpeed 50 "MCI")]))))
+
+(deftest test-explain-activations-does-not-crash
+  (let [cold-rule (dsl/parse-rule [[Temperature (< temperature 20) (= ?t temperature)]]
+                                  (insert! (map->Cold {:temperature :too-cold})))
+        session   (-> (mk-session [cold-rule])
+                      (insert (->Temperature 15 "MCI"))
+                      (fire-rules))]
+   (is (with-out-str (explain-activations session)))))

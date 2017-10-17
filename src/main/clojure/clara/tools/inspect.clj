@@ -206,7 +206,7 @@
   "Prints a human-readable explanation of the facts and conditions that created the Rete token."
   ([explanation] (explain-activation explanation ""))
   ([explanation prefix]
-     (doseq [[fact condition] (:matches explanation)]
+     (doseq [{:keys [fact condition]} (:matches explanation)]
        (if (:from condition)
          ;; Explain why the accumulator matched.
          (let [{:keys [accumulator from]} condition]
