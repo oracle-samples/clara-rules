@@ -136,7 +136,7 @@
 
    (contains? #{'test :test} (first expression))
    (if (= 1 (count expression))
-     (throw-dsl-ex (str "Empty test conditions are not allowed.")
+     (throw-dsl-ex (str "Empty :test conditions are not allowed.")
                    {}
                    expr-meta)
      {:constraints (vec (rest expression))})

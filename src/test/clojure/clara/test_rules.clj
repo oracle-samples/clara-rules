@@ -1134,15 +1134,14 @@
                (query not-different-temps))))))
 
 (deftest test-empty-test-condition
-
-  (is (thrown-with-msg?
-        clojure.lang.ExceptionInfo
-        #"line.*123.*column.*456"
-        (dsl/parse-query*
-          []
-          [[:test]]
-          {}
-          {:line 123 :column 456}))))
+  (let [exception-data {:line 123 :column 456}]
+    (is (assert-ex-data
+          exception-data
+          (dsl/parse-query*
+            []
+            [[:test]]
+            {}
+            exception-data)))))
 
 (deftest test-multi-insert-retract
 
