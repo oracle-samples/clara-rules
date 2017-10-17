@@ -299,25 +299,25 @@
 #?(:clj
    (def-rules-test test-rhs-locals-shadowing-vars
 
-     {:rules [r1 [[[:test]]
+     {:rules [r1 [[[Temperature]]
                   (let [{:keys [locals-shadowing-tester]} {:locals-shadowing-tester :good}]
                     (insert! ^{:type :result}
                              {:r :r1
                               :v locals-shadowing-tester}))]
 
-              r2 [[[:test]]
+              r2 [[[Temperature]]
                   (let [locals-shadowing-tester :good]
                     (insert! ^{:type :result}
                              {:r :r2
                               :v locals-shadowing-tester}))]
 
-              r3 [[[:test]]
+              r3 [[[Temperature]]
                   (let [[locals-shadowing-tester] [:good]]
                     (insert! ^{:type :result}
                              {:r :r3
                               :v locals-shadowing-tester}))]
 
-              r4 [[[:test]]
+              r4 [[[Temperature]]
                   (insert-all! (for [_ (range 1)
                                      :let [locals-shadowing-tester :good]]
                                  ^{:type :result}
@@ -337,7 +337,7 @@
                           {:r :r4
                            :v :good}])
             (->> (-> empty-session
-                     (insert ^{:type :test} {})
+                     (insert (->Temperature 10 "MCI"))
                      fire-rules
                      (query q))
                  (map :?r)

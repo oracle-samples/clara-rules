@@ -1133,6 +1133,16 @@
                fire-rules
                (query not-different-temps))))))
 
+(deftest test-empty-test-condition
+  (let [exception-data {:line 123 :column 456}]
+    (is (assert-ex-data
+          exception-data
+          (dsl/parse-query*
+            []
+            [[:test]]
+            {}
+            exception-data)))))
+
 (deftest test-multi-insert-retract
 
   (is (= #{{:?loc "MCI"} {:?loc "BOS"}}

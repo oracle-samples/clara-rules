@@ -135,7 +135,12 @@
            (parse-expression nested-expr expr-meta)))
 
    (contains? #{'test :test} (first expression))
-   {:constraints (vec (rest expression))}
+   (if (= 1 (count expression))
+     (throw-dsl-ex (str "Empty :test conditions are not allowed.")
+                   {}
+                   expr-meta)
+     {:constraints (vec (rest expression))})
+
 
    :default
    (parse-condition-or-accum expression expr-meta)))
