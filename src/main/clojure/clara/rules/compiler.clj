@@ -259,8 +259,8 @@
          (throw (ex-info (str "Malformed variable binding for " variables ". No associated value.")
                          {:variables (map keyword variables)})))
 
-       (if binds-variables?
-
+       (cond
+         binds-variables?
          ;; Bind each variable with the first value we encounter.
          ;; The additional equality checks are handled below so which value
          ;; we bind to is not important. So an expression like (= ?x value-1 value-2) will
@@ -287,8 +287,14 @@
                compiled-rest)
             )
 
+         ;; A contraint that is empty doesn't need to be added as a check,
+         ;; simply move on to the rest
+         (empty? exp)
+         compiled-rest
+
          ;; No variables to unify, so simply check the expression and
          ;; move on to the rest.
+         :else
          `(if ~exp ~compiled-rest nil))))))
 
 

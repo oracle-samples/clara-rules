@@ -235,6 +235,23 @@
                 (read [_ rdr tag component-count]
                   (read-with-meta rdr #(apply list %))))}}
 
+   "clj/emptylist"
+   {:class clojure.lang.PersistentList$EmptyList
+    :writer (reify WriteHandler
+              (write [_ w o]
+                (let [m (meta o)]
+                  (do
+                    (.writeTag w "clj/emptylist" 1)
+                    (if m
+                      (.writeObject w m)
+                      (.writeNull w))))))
+    :readers {"clj/emptylist"
+              (reify ReadHandler
+                (read [_ rdr tag component-count]
+                  (let [m (read-meta rdr)]
+                    (cond-> '()
+                            m (with-meta m)))))}}
+
    "clj/aseq"
    {:class clojure.lang.ASeq
     :writer (reify WriteHandler
@@ -264,7 +281,7 @@
               (reify ReadHandler
                 (read [_ rdr tag component-count]
                   (read-with-meta rdr #(into {} %))))}}
-   
+
    "clj/treeset"
    {:class clojure.lang.PersistentTreeSet
     :writer (reify WriteHandler
@@ -289,7 +306,7 @@
                     (if m
                       (with-meta s m)
                       s))))}}
-   
+
    "clj/treemap"
    {:class clojure.lang.PersistentTreeMap
     :writer (reify WriteHandler
@@ -347,7 +364,7 @@
                   (let [s (symbol (.readObject rdr) (.readObject rdr))
                         m (read-meta rdr)]
                     (cond-> s
-                      m (with-meta m)))))}}
+                            m (with-meta m)))))}}
 
    "clj/record"
    {:class clojure.lang.IRecord
