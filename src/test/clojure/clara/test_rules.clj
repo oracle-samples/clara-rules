@@ -475,6 +475,21 @@
                           (fire-rules))]
       (is (= [{:?l "MCI"}]
              (query end-session nested-negation-with-prior-bindings)))
+      (is (no-system-types? end-session)))
+
+    ;; Match the nested negation for location ORD but not for MCI.
+    ;; See https://github.com/cerner/clara-rules/issues/304
+    (let [end-session (-> s-with-nested
+                          (insert
+                           (->WindSpeed 10 "MCI")
+                           (->Temperature 10 "MCI")
+                           (->Cold 20)
+                           (->WindSpeed 20 "ORD")
+                           (->Temperature 20 "ORD"))
+                          (fire-rules))]
+
+      (is (= [{:?l "ORD"}]
+             (query end-session nested-negation-with-prior-bindings)))
       (is (no-system-types? end-session)))))
 
 (deftest test-complex-negation-custom-type
@@ -2169,6 +2184,7 @@
                                            (insert (->Cold 10) (->Hot 10))
                                            (fire-rules)
                                            (query q)))]
+
     (is (= (session->results (mk-session [r q]))
            ;; Validate that equal salience is handled correctly by
            ;; the activation-group-sort-fn when the user provides

@@ -43,12 +43,12 @@
     (do
       ;; A marker interface to identify internal facts.
       (definterface ISystemFact)
-      (defrecord NegationResult [gen-rule-name]
+      (defrecord NegationResult [gen-rule-name ancestor-bindings]
         ISystemFact))
 
     :cljs
     (do
-      (defrecord NegationResult [gen-rule-name])
+      (defrecord NegationResult [gen-rule-name ancestor-bindings])
       ;; Make NegationResult a "system type" so that NegationResult
       ;; facts are special-cased when matching productions. This serves
       ;; the same purpose as implementing the ISystemFact Java interface
