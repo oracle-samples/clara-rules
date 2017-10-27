@@ -10,7 +10,8 @@
                                     query]]
                [clara.rules.accumulators :as acc]
                [clara.rules.testfacts :refer [->Temperature ->Cold ->WindSpeed
-                                              ->ColdAndWindy map->FlexibleFields]]
+                                              ->ColdAndWindy map->FlexibleFields
+                                              ->First ->Second ->Third ->Fourth]]
                [clojure.test :refer [is deftest run-tests testing use-fixtures]]
                [clara.rules.accumulators]
                [schema.test :as st])
@@ -19,7 +20,11 @@
                Cold
                WindSpeed
                ColdAndWindy
-               FlexibleFields]))
+               FlexibleFields
+               First
+               Second
+               Third
+               Fourth]))
 
    :cljs
    (ns clara.test-dsl
@@ -34,7 +39,11 @@
                                               ->Temperature Temperature
                                               ->Cold Cold
                                               ->WindSpeed WindSpeed
-                                              ->ColdAndWindy ColdAndWindy]]
+                                              ->ColdAndWindy ColdAndWindy
+                                              ->First First
+                                              ->Second Second
+                                              ->Third Third
+                                              ->Fourth Fourth]]
                [clara.rules.accumulators :as acc]
                [clara.tools.testing-utils :as tu]
                [cljs.test]
@@ -440,3 +449,36 @@
       "Validate that the ?t binding from the previous accumulator result is used, rather
          than the binding in the ColdAndWindy condition that would create a ?t binding if one were
          not already present"))
+
+;; Test for https://github.com/cerner/clara-rules/issues/352
+;; A test to validate the construction of rules containing empty constraints
+(def-rules-test test-condition-with-empty-constraint
+  {:rules [rule-without-constraint [[[First]]
+                                    (swap! side-effect-holder conj :no-constraints)]
+           rule-with-an-empty [[[Second ()]]
+                               (swap! side-effect-holder conj :one-empty-constraint)]
+           rule-with-two-empty [[[Third () ()]]
+                                (swap! side-effect-holder conj :two-empty-constraint)]
+           rule-with-empty-and-non-empty [[[Fourth () (not= this ())]]
+                                          (swap! side-effect-holder conj :one-empty-one-populated)]
+           rule-with-non-empty-and-empty [[[Cold (not= this ()) ()]]
+                                          (swap! side-effect-holder conj :one-populated-one-empty)]]
+   :sessions [empty-session [rule-without-constraint
+                             rule-with-an-empty
+                             rule-with-two-empty
+                             rule-with-empty-and-non-empty
+                             rule-with-non-empty-and-empty] {}]}
+  (reset! side-effect-holder [])
+  (let [session (-> empty-session
+                    (insert (->First)
+                            (->Second)
+                            (->Third)
+                            (->Fourth)
+                            (->Cold -10))
+                    fire-rules)]
+    (is (= (frequencies @side-effect-holder)
+           (frequencies [:no-constraints
+                         :one-empty-constraint
+                         :two-empty-constraint
+                         :one-empty-one-populated
+                         :one-populated-one-empty])))))
