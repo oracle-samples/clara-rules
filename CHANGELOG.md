@@ -1,7 +1,12 @@
 This is a history of changes to clara-rules.
 
-### 0.17.0-SNAPSHOT
-* Fix exception in explain-activations.
+### 0.16.1
+* Fix deserialization failure when the rulebase contains a clojure.lang.PersistentList$EmptyList. See [issue 352](https://github.com/cerner/clara-rules/issues/352) for details.
+* Fix bug in which bindings from previous conditions could be ignored in negations of compound boolean expressions.  See [issue 304](https://github.com/cerner/clara-rules/issues/304) for details.
+* Fail at compile time when :test conditions are empty.  See [PR 349](https://github.com/cerner/clara-rules/pull/349) for details.
+* Fix exception in clara.tools.inspect/explain-activations.  See [PR 346](https://github.com/cerner/clara-rules/pull/346) for details.
+* Always return a vector from the all accumulator. See [issue 338](https://github.com/cerner/clara-rules/issues/338) for details.
+* Refactored session inspection in [PR 339](https://github.com/cerner/clara-rules/pull/339), which is also expected to improve the performance of session inspection.
 
 ### 0.16.0
 * Eliminate laziness that broke internal contracts around order of execution, causing an exception to be thrown when executing queries with negation conditions in some edge cases.  See [issue 303](https://github.com/cerner/clara-rules/issues/303) for details.
