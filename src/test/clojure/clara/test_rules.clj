@@ -1194,27 +1194,6 @@
            (set
             (query session sample/find-cold-and-windy))))))
 
-(deftest test-retract!
-  (let [not-cold-rule (dsl/parse-rule [[Temperature (> temperature 50)]]
-                               (retract! (->Cold 20)))
-
-        cold-query (dsl/parse-query [] [[Cold (= ?t temperature)]])
-
-        session (-> (mk-session [not-cold-rule cold-query])
-                    (insert (->Cold 20))
-                    (fire-rules))]
-
-    ;; The session should contain our initial cold reading.
-    (is (= #{{:?t 20}}
-           (set (query session cold-query))))
-
-    ;; Insert a higher temperature and ensure the cold fact was retracted.
-    (is (= #{}
-           (set (query (-> session
-                           (insert (->Temperature 80 "MCI"))
-                           (fire-rules))
-                       cold-query))))))
-
 (deftest test-no-loop
   (let [reduce-temp (dsl/parse-rule [[?t <- Temperature (> temperature 0) (= ?v temperature)]]
                              (do
