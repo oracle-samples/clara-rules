@@ -13,7 +13,8 @@
             [clara.test-dsl]
             [clara.test-accumulation]
             [clara.test-memory]
-            [clara.test-simple-rules]))
+            [clara.test-simple-rules]
+            [clara.test-rhs-retract]))
 
 (enable-console-print!)
 
@@ -42,5 +43,6 @@
                     'clara.test-dsl
                     'clara.test-accumulation
                     'clara.test-memory
-                    'clara.test-simple-rules)
+                    'clara.test-simple-rules
+                    'clara.test-rhs-retract)
     @*successful?*))
