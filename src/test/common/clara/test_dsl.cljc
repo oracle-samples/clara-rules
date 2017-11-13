@@ -395,61 +395,6 @@
               :?bang! :bang!}}
            res))))
 
-;; Test for https://github.com/cerner/clara-rules/issues/267
-;; This test has a counterpart of the same name in test-rules for
-;; and error-checking case; once we land on a strategy for error-checking
-;; test cases in ClojureScript we can move that test case here and eliminate the
-;; test there.
-(def-rules-test test-local-scope-visible-in-join-filter
-
-  {:queries [check-local-binding [[] [[WindSpeed (= ?w windspeed)]
-                                      [Temperature (= ?t temperature)
-                                       (tu/join-filter-equals ?w ?t 10)]]]
-
-             check-local-binding-accum [[] [[WindSpeed (= ?w windspeed)]
-                                            [?results <- (acc/all) :from [Temperature (= ?t temperature)
-                                                                          (tu/join-filter-equals ?w ?t 10)]]]]
-
-             check-reuse-previous-binding [[] [[WindSpeed (= ?t windspeed) (= ?w windspeed)]
-                                               [Temperature (= ?t temperature)
-                                                (tu/join-filter-equals ?w ?t 10)]]]
-
-             check-accum-result-previous-binding [[]
-                                                  [[?t <- (acc/min :temperature) :from [Temperature]]
-                                                   [ColdAndWindy (= ?t temperature) (tu/join-filter-equals ?t windspeed)]]]]
-
-   :sessions [check-local-binding-session [check-local-binding] {}
-              check-local-binding-accum-session [check-local-binding-accum] {}
-              check-reuse-previous-binding-session [check-reuse-previous-binding] {}
-              check-accum-result-previous-binding-session [check-accum-result-previous-binding] {}]}
-
-  (is (= [{:?w 10 :?t 10}]
-         (-> check-local-binding-session
-             (insert (->WindSpeed 10 "MCI") (->Temperature 10 "MCI"))
-             (fire-rules)
-             (query check-local-binding))))
-
-  (is (= [{:?w 10 :?t 10 :?results [(->Temperature 10 "MCI")]}]
-         (-> check-local-binding-accum-session
-             (insert (->WindSpeed 10 "MCI") (->Temperature 10 "MCI"))
-             (fire-rules)
-             (query check-local-binding-accum))))
-
-  (is (= [{:?w 10 :?t 10}]
-         (-> check-reuse-previous-binding-session
-             (insert (->WindSpeed 10 "MCI") (->Temperature 10 "MCI"))
-             (fire-rules)
-             (query check-reuse-previous-binding))))
-
-  (is (empty? (-> check-accum-result-previous-binding-session
-                  (insert (->Temperature -10 "MCI"))
-                  (insert (->ColdAndWindy -20 -20))
-                  fire-rules
-                  (query check-accum-result-previous-binding)))
-      "Validate that the ?t binding from the previous accumulator result is used, rather
-         than the binding in the ColdAndWindy condition that would create a ?t binding if one were
-         not already present"))
-
 ;; Test for https://github.com/cerner/clara-rules/issues/352
 ;; A test to validate the construction of rules containing empty constraints
 (def-rules-test test-condition-with-empty-constraint

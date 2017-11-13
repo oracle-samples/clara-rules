@@ -14,7 +14,8 @@
             [clara.test-accumulation]
             [clara.test-memory]
             [clara.test-simple-rules]
-            [clara.test-rhs-retract]))
+            [clara.test-rhs-retract]
+            [clara.test-bindings]))
 
 (enable-console-print!)
 
@@ -44,5 +45,6 @@
                     'clara.test-accumulation
                     'clara.test-memory
                     'clara.test-simple-rules
-                    'clara.test-rhs-retract)
+                    'clara.test-rhs-retract
+                    'clara.test-bindings)
     @*successful?*))
