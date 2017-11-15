@@ -87,18 +87,6 @@
                   "Non matches found: " \newline
                   res#))))))
 
-(deftest test-multiple-comparison-binding
-  (let [rule-output (atom nil)
-        cold-rule (dsl/parse-rule [[Temperature (= ?t temperature 10)]]
-                                  (reset! rule-output ?t))
-
-        session (-> (mk-session [cold-rule])
-                    (insert (->Temperature 10 "MCI")))]
-
-
-    (fire-rules session)
-    (is (= 10 @rule-output))))
-
 (deftest test-malformed-binding
   ;; Test binding with no value.
   (try
@@ -106,59 +94,6 @@
                                  (println "Placeholder."))])
     (catch Exception e
       (is (= [:?t] (:variables (ex-data e)))))))
-
-(deftest test-simple-join-binding
-  (let [rule-output (atom nil)
-        same-wind-and-temp (dsl/parse-rule [[Temperature (= ?t temperature)]
-                                            [WindSpeed (= ?t windspeed)]]
-                                           (reset! rule-output ?t))
-
-        session (-> (mk-session [same-wind-and-temp])
-                    (insert (->Temperature 10  "MCI"))
-                    (insert (->WindSpeed 10  "MCI")))]
-
-    (fire-rules session)
-    (is (= 10 @rule-output))))
-
-(deftest test-simple-join-binding-nomatch
-  (let [rule-output (atom nil)
-        same-wind-and-temp (dsl/parse-rule [[Temperature (= ?t temperature)]
-                                            [WindSpeed (= ?t windspeed)]]
-                                           (reset! rule-output ?t) )
-
-        session (-> (mk-session [same-wind-and-temp])
-                    (insert (->Temperature 10 "MCI"))
-                    (insert (->WindSpeed 20 "MCI")))]
-
-    (fire-rules session)
-    (is (= nil @rule-output))))
-
-(deftest test-join-with-fact-binding
-  (let [rule-output (atom nil)
-        same-wind-and-temp (dsl/parse-rule [[?t <- Temperature]
-                                            [?w <- WindSpeed (= ?t windspeed)]]
-                                           (reset! rule-output ?w))
-
-        session (mk-session [same-wind-and-temp])]
-
-    ;; The bound item in windspeed does not match the temperature,
-    ;; so this should have no result.
-    (-> session
-        (insert (->Temperature 10  "MCI"))
-        (insert (->WindSpeed (->Temperature 20 "MCI") "MCI"))
-        (fire-rules))
-
-    (is (= nil @rule-output))
-
-    (reset! rule-output nil)
-
-    (-> session
-        (insert (->Temperature 10  "MCI"))
-        (insert (->WindSpeed (->Temperature 10 "MCI") "MCI"))
-        (fire-rules))
-
-    (is (= (->WindSpeed (->Temperature 10 "MCI") "MCI")
-           @rule-output))))
 
 (deftest test-simple-query
   (let [cold-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]])
@@ -196,31 +131,6 @@
 
     (is (= #{{:?l "ORD" :?t 10}}
            (set (query session cold-query :?l "ORD"))))))
-
-(deftest test-simple-condition-binding
-  (let [cold-query (dsl/parse-query [] [[?t <- Temperature (< temperature 20)]])
-
-        session (-> (mk-session [cold-query])
-                    (insert (->Temperature 15 "MCI"))
-                    (insert (->Temperature 10 "MCI"))
-                    fire-rules)]
-
-    (is (= #{{:?t (->Temperature 15 "MCI")}
-             {:?t (->Temperature 10 "MCI")}}
-           (set (query session cold-query))))))
-
-(deftest test-condition-and-value-binding
-  (let [cold-query (dsl/parse-query [] [[?t <- Temperature (< temperature 20) (= ?v temperature)]])
-
-        session (-> (mk-session [cold-query])
-                    (insert (->Temperature 15 "MCI"))
-                    (insert (->Temperature 10 "MCI"))
-                    fire-rules)]
-
-    ;; Ensure the condition's fact and values are all bound.
-    (is (= #{{:?v 10, :?t (->Temperature 10 "MCI")}
-             {:?v 15, :?t (->Temperature 15 "MCI")}}
-           (set (query session cold-query))))))
 
 (defn identity-retract
   "Retract function that does nothing for testing purposes."
@@ -1879,43 +1789,6 @@
            qlist-result
            qcons-result))))
 
-;; Test for https://github.com/cerner/clara-rules/issues/142
-(deftest test-beta-binding
-  "Tests bind operation that must happen on the beta side of the network"
-  (let [beta-bind-query (dsl/parse-query []
-                                         [[Temperature (= ?x temperature)]
-                                          [ColdAndWindy (= ?t (+ temperature ?x))]])
-
-        increment-query (dsl/parse-query []
-                                         [[Temperature (= ?x temperature)]
-                                          [ColdAndWindy (= ?t (inc ?x))]])]
-
-    (is (= [{:?x 10 :?t 15}]
-           (-> (mk-session [beta-bind-query])
-               (insert (->Temperature 10 "MCI")
-                       (->ColdAndWindy 5 50))
-               (fire-rules)
-               fire-rules
-               (query beta-bind-query))))
-
-    ;; Test retraction
-    (is (empty?
-         (-> (mk-session [beta-bind-query])
-             (insert (->Temperature 10 "MCI")
-                     (->ColdAndWindy 5 50))
-             (fire-rules)
-             (retract (->Temperature 10 "MCI"))
-             fire-rules
-             (query beta-bind-query))))
-
-    ;; Test version that didn't compile with issue 142.
-    (is (= [{:?x 10 :?t 11}]
-           (-> (mk-session [increment-query])
-               (insert (->Temperature 10 "MCI")
-                       (->ColdAndWindy 5 50))
-               fire-rules
-               (query increment-query))))))
-
 (deftest test-invalid-binding
   (is (thrown-with-msg?
        clojure.lang.ExceptionInfo
@@ -2005,81 +1878,6 @@
                 first)]
     (is (= {:?t temp}
            res))))
-
-(deftest test-non-binding-equality
-  (let [temps-with-addition (dsl/parse-query [] [[Temperature (= ?t1 temperature)
-                                                              (= "MCI" location )]
-                                                 [Temperature (= ?t2 temperature)
-                                                              (= ?foo (+ 20 ?t1))
-                                                              (= "SFO" location)]
-                                                 [Temperature (= ?t3 temperature)
-                                                              (= ?foo (+ 10 ?t2))
-                                                              (= "ORD" location)]])
-
-        temps-with-negation (dsl/parse-query [] [[Temperature (= ?t1 temperature)
-                                                              (= "MCI" location )]
-                                                 [Temperature (= ?t2 temperature)
-                                                              (= ?foo (+ 20 ?t1))
-                                                              (= "SFO" location)]
-                                                 [:not [Temperature (= ?foo (+ 10 ?t2))
-                                                                    (= "ORD" location)]]])
-
-        session  (-> (mk-session [temps-with-addition temps-with-negation] :cache false)
-                     (fire-rules))]
-
-    ;; Test a match.
-    (is (= [{:?t3 30, :?t2 20, :?t1 10, :?foo 30}]
-           (-> session
-               (insert (->Temperature 10 "MCI")
-                       (->Temperature 20 "SFO")
-                       (->Temperature 30 "ORD"))
-               (fire-rules)
-               (query temps-with-addition))))
-
-    ;; Test if not all conditions are satisfied.
-    (is (empty? (-> session
-                    (insert (->Temperature 10 "MCI")
-                            (->Temperature 21 "SFO")
-                            (->Temperature 30 "ORD"))
-                    (fire-rules)
-                    (query temps-with-addition))))
-
-    ;; Test if there is a negated element.
-    (is (empty? (-> session
-                    (insert (->Temperature 10 "MCI")
-                            (->Temperature 20 "SFO")
-                            (->Temperature 30 "ORD"))
-                    (fire-rules)
-                    (query temps-with-negation))))
-
-    ;; Test there is a match when the negated element does not exist.
-    (is (= [{:?t2 20, :?t1 10, :?foo 30}]
-           (-> session
-               (insert (->Temperature 10 "MCI")
-                       (->Temperature 20 "SFO"))
-               (fire-rules)
-               (query temps-with-negation))))))
-
-(deftest test-join-on-fact-binding
-  (let [join-on-binding (dsl/parse-query []
-                                         [[WindSpeed (= ?t location)]
-                                          [?t <- Temperature]])
-
-        session (mk-session [join-on-binding] :cache false)]
-
-    ;; The bound variable did not match, so we should see nothing.
-    (is (empty? (-> session
-                    (insert (->WindSpeed 10 "MCI")
-                            (->Temperature 10 "MCI"))
-                    (fire-rules)
-                    (query join-on-binding))))
-
-    (is (= [{:?t (->Temperature 10 "MCI")}]
-           (-> session
-               (insert (->WindSpeed 10 (->Temperature 10 "MCI")) ; Hack to force match for testing.
-                       (->Temperature 10 "MCI"))
-               (fire-rules)
-               (query join-on-binding))))))
 
 (deftest test-duplicate-rules
   (let [r (dsl/parse-rule [[Temperature (= ?t temperature)]]
@@ -2859,7 +2657,7 @@
                     (query cold-query))))))
 
 ;; Partial test for https://github.com/cerner/clara-rules/issues/267
-;; This test has a counterpart of the same name in clara.test-dsl.  Once
+;; This test has a counterpart of the same name in clara.test-bindings.  Once
 ;; we land on a strategy for error checking tests in ClojureScript we can move this
 ;; test case there.
 (deftest test-local-scope-visible-in-join-filter
