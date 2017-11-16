@@ -25,7 +25,8 @@
   []
   [:temperature [{temperature :temperature}] (< temperature 20) (= ?t temperature)])
 
-(defsession my-session [test-rule cold-query] :fact-type-fn :type)
+(defsession my-session [test-rule
+                        cold-query] :fact-type-fn :type)
 
 (deftest test-simple-defrule
   (let [t {:type :temperature

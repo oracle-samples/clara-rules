@@ -3,7 +3,8 @@ lein: 2.7.1
 script:
   - lein test
   - lein test :generative
+  - lein with-profile dev,recent-clj test
 # Workaround for https://github.com/travis-ci/travis-ci/issues/4691
 sudo: required
 jdk:
-  - openjdk7
+  - openjdk8

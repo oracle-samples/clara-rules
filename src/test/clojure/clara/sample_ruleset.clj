@@ -4,7 +4,12 @@
         clojure.pprint
         clara.rules.dsl)
   (:refer-clojure :exclude [==])
-  (import [clara.rules.testfacts Temperature WindSpeed Cold ColdAndWindy LousyWeather]))
+  (:import [clara.rules.testfacts
+            Temperature
+            WindSpeed
+            Cold
+            ColdAndWindy
+            LousyWeather]))
 
 
 ;;; These rules are used for unit testing loading from a namespace.
