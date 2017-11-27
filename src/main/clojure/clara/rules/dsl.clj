@@ -245,13 +245,13 @@
    (let [conditions (into [] (for [expr lhs]
                                (parse-expression expr rule-meta)))
 
-         rule {:ns-name (list 'quote (ns-name *ns*))
-               :lhs (list 'quote
-                          (mapv #(resolve-vars % (destructure-syms %))
-                                conditions))
-               :rhs (list 'quote
-                          (vary-meta rhs
-                                     assoc :file *file*))}
+         rule {:ns-name (list 'quote (ns-name (if (com/compiling-cljs?) (com/cljs-ns) *ns*)))
+               :lhs     (list 'quote
+                              (mapv #(resolve-vars % (destructure-syms %))
+                                    conditions))
+               :rhs     (list 'quote
+                              (vary-meta rhs
+                                         assoc :file *file*))}
 
          symbols (set (filter symbol? (com/flatten-expression (concat lhs rhs))))
          matching-env (into {} (for [sym (keys env)
