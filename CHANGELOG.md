@@ -1,5 +1,8 @@
 This is a history of changes to clara-rules.
 
+### 0.17.0
+* Fix issue when compiling CLJS and session, rules, and fact-types are not in the same namespace or explicitly referred. See [issue 359](https://github.com/cerner/clara-rules/issues/359).
+
 ### 0.16.1
 * Fix deserialization failure when the rulebase contains a clojure.lang.PersistentList$EmptyList. See [issue 352](https://github.com/cerner/clara-rules/issues/352) for details.
 * Fix bug in which bindings from previous conditions could be ignored in negations of compound boolean expressions.  See [issue 304](https://github.com/cerner/clara-rules/issues/304) for details.
