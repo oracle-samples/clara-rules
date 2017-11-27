@@ -180,7 +180,8 @@
               (com/compile-action all-bindings
                                   ;; Using private function for now as a workaround.
                                   (if (:ns-name production)
-                                    (binding [*ns* (the-ns (:ns-name production))]
+                                    (binding [*ns* (the-ns (:ns-name production))
+                                              cljs.analyzer/*cljs-ns* (:ns-name production)]
                                       (resolve-vars))
                                     (resolve-vars))
                                   (:env production))))
