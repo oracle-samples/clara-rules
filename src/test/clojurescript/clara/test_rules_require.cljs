@@ -1,24 +1,19 @@
 (ns clara.test-rules-require
-  (:require-macros [cljs.test :refer (is deftest run-tests testing)]
-                   [clara.test-rules-data])
+  (:require-macros [cljs.test :refer (is deftest run-tests testing)])
   (:require [cljs.test :as t]
-            [clara.rules.engine :as eng]
-            [clara.rules.accumulators :as acc]
-            [clara.rules :refer [insert retract fire-rules query insert!]
-             :refer-macros [defrule defsession defquery]]
+            [clara.rules :refer [insert fire-rules query]
+             :refer-macros [defsession]]
             [clara.rule-defs :as rd]
             [clara.rules.testfacts :as facts]))
 
-(comment
-  ;; Launch browser repl.
-  (cemerick.piggieback/cljs-repl :repl-env (cemerick.austin/exec-env))
-  )
+;; Tests the case where rules/facts are required from a different namespace where the session is defined,
+;; without an explicit :refer.
+;; See https://github.com/cerner/clara-rules/issues/359
 
 (defn- has-fact? [token fact]
        (some #{fact} (map first (:matches token))))
 
 (defsession my-session 'clara.rule-defs)
-(defsession my-session-map 'clara.rule-defs :fact-type-fn :type)
 
 (deftest test-simple-defrule
          (let [session (insert my-session (facts/->Temperature 10 "MCI"))]

@@ -1,12 +1,9 @@
 (ns clara.rule-defs
-  (:require-macros [cljs.test :refer (is deftest run-tests testing)]
-                   [clara.test-rules-data])
-  (:require [cljs.test :as t]
-            [clara.rules.engine :as eng]
-            [clara.rules.accumulators :as acc]
-            [clara.rules :refer [insert retract fire-rules query insert!]
-             :refer-macros [defrule defsession defquery]]
+  (:require [clara.rules.accumulators :as acc]
+            [clara.rules :refer-macros [defrule defquery] :refer [insert!]]
             [clara.rules.testfacts :as tf]))
+
+;; Rule definitions used for tests in clara.test-rules-require.
 
 (def simple-defrule-side-effect (atom nil))
 (def other-defrule-side-effect (atom nil))
