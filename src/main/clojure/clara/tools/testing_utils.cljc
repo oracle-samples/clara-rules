@@ -49,8 +49,6 @@
                                                      (get sym->query s)))
                                                p-syms))
 
-           production-syms->production-forms (flatten (concat sym->rule sym->query))
-
            session-syms->session-forms (->> params
                                             :sessions
                                             (partition 3)
@@ -69,9 +67,9 @@
                           'cljs.test/deftest
                           'clojure.test/deftest)
                         ~name
-                        (let [~@production-syms->production-forms
-                              ~@session-syms->session-forms
-                              ~@(sequence cat sym->query)]
+                        (let [~@session-syms->session-forms
+                              ~@(sequence cat sym->query)
+                              ~@(sequence cat sym->rule)]
                           ~@forms))]
        test-form)))
 

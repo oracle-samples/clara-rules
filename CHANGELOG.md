@@ -1,6 +1,6 @@
 This is a history of changes to clara-rules.
 
-### 0.17.0
+### 0.17.0-SNAPSHOT
 * Support session inspection and fact-graph in ClojureScript. See [issue 307](https://github.com/cerner/clara-rules/issues/307) for details.
 
 ### 0.16.1
