@@ -19,7 +19,9 @@
               HashJoinNode
               ExpressionJoinNode
               NegationNode
-              NegationWithJoinFilterNode])))
+              NegationWithJoinFilterNode]))
+  #?(:cljs
+     (:import goog.string)))
 
 (s/defschema ConditionMatch
   "A structure associating a condition with the facts that matched them.  The fields are:
@@ -129,7 +131,10 @@
             :condition condition}))
 
        ;; Remove generated bindings from user-facing explanation.
-       (into {} (remove (fn [[k v]] (.startsWith (name k) "?__gen__")) bindings))))))
+       (into {} (remove (fn [[k v]]
+                          #?(:clj (.startsWith (name k) "?__gen__"))
+                          #?(:cljs (goog.string/startsWith (name k) "?__gen__")))
+                        bindings))))))
 
 (defn ^:private gen-fact->explanations
   [session]

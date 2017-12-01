@@ -190,7 +190,8 @@
             constraints (map (comp :constraints :condition) matches)
             term (flatten constraints)]
       (is (not (and (symbol? term)
-                    (.startsWith (name term) "?__gen")))))))
+                    #?(:clj (.startsWith (name term) "?__gen"))
+                    #?(:cljs (goog.string/startsWith (name term) "?__gen"))))))))
 
 (defn session->accumulated-facts-map
   "Given a session, return a map of logically inserted facts to any accumulated-over facts
@@ -528,18 +529,18 @@
            (query complex-successful-join cold-windy-query)
            [{:?t 0 :?w 50}]))
 
-    (is (= (get-condition-match simple-successful-join Temperature)
-           (get-condition-match complex-successful-join Temperature)
+    (is (= (get-condition-match simple-successful-join #?(:clj Temperature :cljs `Temperature))
+           (get-condition-match complex-successful-join #?(:clj Temperature :cljs `Temperature))
            [(->Temperature 0 "MCI")]))
 
-    (is (= (get-condition-match simple-failed-join Temperature)
-           (get-condition-match complex-failed-join Temperature)
+    (is (= (get-condition-match simple-failed-join #?(:clj Temperature :cljs `Temperature))
+           (get-condition-match complex-failed-join #?(:clj Temperature :cljs `Temperature))
            [(->Temperature 0 "ORD")]))
 
-    (is (= (get-condition-match simple-successful-join WindSpeed)
-           (get-condition-match complex-successful-join WindSpeed)
-           (get-condition-match simple-failed-join WindSpeed)
-           (get-condition-match complex-failed-join WindSpeed)
+    (is (= (get-condition-match simple-successful-join #?(:clj WindSpeed :cljs `WindSpeed))
+           (get-condition-match complex-successful-join #?(:clj WindSpeed :cljs `WindSpeed))
+           (get-condition-match simple-failed-join #?(:clj WindSpeed :cljs `WindSpeed))
+           (get-condition-match complex-failed-join #?(:clj WindSpeed :cljs `WindSpeed))
            [(->WindSpeed 50 "MCI")]))))
 
 (def-rules-test test-explain-activations-does-not-crash

@@ -9,6 +9,8 @@
             [clara.test-accumulators]
             [clara.test-exists]
             [clara.tools.test-tracing]
+            [clara.tools.test-fact-graph]
+            [clara.tools.test-inspect]
             [clara.test-truth-maintenance]
             [clara.test-dsl]
             [clara.test-accumulation]
@@ -40,6 +42,8 @@
                     'clara.test-accumulators
                     'clara.test-exists
                     'clara.tools.test-tracing
+                    'clara.tools.test-fact-graph
+                    'clara.tools.test-inspect
                     'clara.test-truth-maintenance
                     'clara.test-dsl
                     'clara.test-accumulation
