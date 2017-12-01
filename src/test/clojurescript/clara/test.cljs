@@ -34,7 +34,7 @@
 (defn ^:export run []
   (binding [*successful?* (atom nil)]
     (test/run-tests 'clara.test-rules
-                    #clara.test-rules-require
+                    'clara.test-rules-require
                     'clara.test-common
                     'clara.test-salience
                     'clara.test-testing-utils
