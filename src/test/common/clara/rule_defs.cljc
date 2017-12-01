@@ -1,7 +1,8 @@
 (ns clara.rule-defs
   (:require [clara.rules.accumulators :as acc]
-            [clara.rules :refer-macros [defrule defquery] :refer [insert!]]
-            [clara.rules.testfacts :as tf]))
+            [clara.rules.testfacts :as tf]
+    #?(:clj [clara.rules :refer [defrule defquery insert!]])
+    #?(:cljs [clara.rules :refer-macros [defrule defquery] :refer [insert!]])))
 
 ;; Rule definitions used for tests in clara.test-rules-require.
 
