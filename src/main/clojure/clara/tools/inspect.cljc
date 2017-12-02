@@ -12,6 +12,7 @@
                                                          NegationWithJoinFilterNode]])
             [clara.rules.schema :as schema]
             [clara.rules.memory :as mem]
+            #?(:cljs [goog.string :as gstr])
             [schema.core :as s])
   #?(:clj
     (:import [clara.rules.engine
@@ -19,9 +20,7 @@
               HashJoinNode
               ExpressionJoinNode
               NegationNode
-              NegationWithJoinFilterNode]))
-  #?(:cljs
-     (:import goog.string)))
+              NegationWithJoinFilterNode])))
 
 (s/defschema ConditionMatch
   "A structure associating a condition with the facts that matched them.  The fields are:
@@ -133,7 +132,7 @@
        ;; Remove generated bindings from user-facing explanation.
        (into {} (remove (fn [[k v]]
                           #?(:clj (.startsWith (name k) "?__gen__"))
-                          #?(:cljs (goog.string/startsWith (name k) "?__gen__")))
+                          #?(:cljs (gstr/startsWith (name k) "?__gen__")))
                         bindings))))))
 
 (defn ^:private gen-fact->explanations

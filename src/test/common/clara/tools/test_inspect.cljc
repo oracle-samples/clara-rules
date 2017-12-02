@@ -9,6 +9,7 @@
             [schema.test :as st]
             [clara.rules :refer [insert fire-rules insert! retract query]]
             [clojure.walk :as w]
+    #?(:cljs [goog.string :as gstr])
     #?(:clj
             [clojure.test :refer [is deftest run-tests testing use-fixtures]])
     #?(:cljs [cljs.test :refer-macros [is deftest run-tests testing use-fixtures]])
@@ -191,7 +192,7 @@
             term (flatten constraints)]
       (is (not (and (symbol? term)
                     #?(:clj (.startsWith (name term) "?__gen"))
-                    #?(:cljs (goog.string/startsWith (name term) "?__gen"))))))))
+                    #?(:cljs (gstr/startsWith (name term) "?__gen"))))))))
 
 (defn session->accumulated-facts-map
   "Given a session, return a map of logically inserted facts to any accumulated-over facts
