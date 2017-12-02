@@ -18,7 +18,7 @@
             [clojure.set :as s]))
 
 ;;; Clear productions stored in cljs.env/*compiler* for current namespace.
-;;; Only exists for it's side-effect, hence returns nil.
+;;; Only exists for its side-effect, hence returns nil.
 (defmacro clear-ns-productions!
   []
   (swap! env/*compiler* assoc-in [::productions (com/cljs-ns)] {})

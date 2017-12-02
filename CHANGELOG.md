@@ -1,7 +1,7 @@
 This is a history of changes to clara-rules.
 
 ### 0.17.0-SNAPSHOT
-* Add clear-ns-productions! functionality to support clean reloading of rule and query defintitions. See [issue 316](https://github.com/cerner/clara-rules/issues/316) for details.
+* Add clear-ns-productions! functionality to support clean reloading of rule and query definitions. See [issue 316](https://github.com/cerner/clara-rules/issues/316) for details.
 
 ### 0.16.1
 * Fix deserialization failure when the rulebase contains a clojure.lang.PersistentList$EmptyList. See [issue 352](https://github.com/cerner/clara-rules/issues/352) for details.
