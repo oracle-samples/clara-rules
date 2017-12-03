@@ -11,7 +11,8 @@
                [clara.rules.dsl :as dsl]))
    :cljs
    (ns clara.tools.testing-utils
-     (:require [clara.rules.update-cache.core :as uc])))
+     (:require [clara.rules.update-cache.core :as uc])
+     (:require-macros clara.tools.testing-utils)))
 
 #?(:clj
    (defmacro def-rules-test

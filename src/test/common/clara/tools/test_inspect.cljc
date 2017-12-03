@@ -1,20 +1,15 @@
 (ns clara.tools.test-inspect
-  (:require
-    #?(:clj [clara.tools.testing-utils :refer [def-rules-test
-                                               side-effect-holder] :as tu])
-    #?(:cljs [clara.tools.testing-utils :refer [side-effect-holder]
-              :refer-macros [def-rules-test] :as tu])
+  (:require [clara.tools.testing-utils :as tu]
             [clara.tools.inspect :refer [inspect map->Explanation explain-activations]]
+            [clara.rules :refer [insert fire-rules insert! retract query]]
             [clara.rules.accumulators :as acc]
             [schema.test :as st]
-            [clara.rules :refer [insert fire-rules insert! retract query]]
             [clojure.walk :as w]
     #?(:cljs [goog.string :as gstr])
-    #?(:clj
-            [clojure.test :refer [is deftest run-tests testing use-fixtures]])
-    #?(:cljs [cljs.test :refer-macros [is deftest run-tests testing use-fixtures]])
-    #?(:clj [clara.rules.testfacts :refer :all])
-    #?(:cljs [clara.rules.testfacts :refer [Temperature TemperatureHistory
+    #?(:clj [clojure.test :refer [is deftest run-tests testing use-fixtures]]
+       :cljs [cljs.test :refer-macros [is deftest run-tests testing use-fixtures]])
+    #?(:clj [clara.rules.testfacts :refer :all]
+       :cljs [clara.rules.testfacts :refer [Temperature TemperatureHistory
                                             WindSpeed Cold Hot ColdAndWindy LousyWeather
                                             First Second Third Fourth
                                             map->Cold map->Hot
@@ -28,7 +23,7 @@
 
 (use-fixtures :once schema.test/validate-schemas)
 
-(def-rules-test test-simple-inspect
+(tu/def-rules-test test-simple-inspect
   {:rules    [cold-rule [[[Temperature (< temperature 20) (= ?t temperature)]]
                          (insert! (map->Cold {:temperature :too-cold}))]
               hot-rule [[[Temperature (> temperature 80) (= ?t temperature)]]
@@ -125,7 +120,7 @@
 
 (def lowest-temp (acc/min :temperature :returns-fact true))
 
-(def-rules-test test-accum-inspect
+(tu/def-rules-test test-accum-inspect
   {:queries  [coldest-query [[] [[?t <- lowest-temp from [Temperature]]]]]
    :sessions [empty-session [coldest-query] {}]}
   (let [session (-> empty-session
@@ -145,7 +140,7 @@
                                  :bindings {:?t (->Temperature 10 "MCI")}})]
              query-explanations)))))
 
-(def-rules-test test-accum-join-inspect
+(tu/def-rules-test test-accum-join-inspect
   ;; Get the coldest temperature at MCI that is warmer than the temperature in STL.
   {:queries  [colder-query [[] [[Temperature (= "STL" location) (= ?stl-temperature temperature)]
                                 [?t <- lowest-temp from [Temperature (> temperature ?stl-temperature)
@@ -172,7 +167,7 @@
         (when (:accumulator condition)
           (is (= 2 (-> condition :from :constraints (count)))))))))
 
-(def-rules-test test-extract-test-inspect
+(tu/def-rules-test test-extract-test-inspect
   {:queries  [distinct-temps-query [[] [[Temperature (< temperature 20)
                                          (= ?t1 temperature)]
 
@@ -241,7 +236,7 @@
                                frequencies)]))
                 x))))
 
-(def-rules-test test-get-matching-accum-facts-with-no-previous-conditions-and-new-binding
+(tu/def-rules-test test-get-matching-accum-facts-with-no-previous-conditions-and-new-binding
   {:rules    [min-freezing-at-loc-rule [[[?min <- (acc/min :temperature) from [Temperature (< temperature 0) (= ?loc location)]]]
                                         (insert! (->Cold ?min))]]
    :queries  [cold-query [[] [[Cold (= ?t temperature)]]]]
@@ -261,7 +256,7 @@
            {(->Cold -20) {(->Temperature -20 "MCI") 1}
             (->Cold -5)  {(->Temperature -5 "ORD") 1}}))))
 
-(def-rules-test test-get-matching-accum-facts-with-no-previous-conditions
+(tu/def-rules-test test-get-matching-accum-facts-with-no-previous-conditions
   {:rules    [min-freezing-at-loc-rule [[[?min <- (acc/min :temperature) from [Temperature (< temperature 0)]]]
                                         (insert! (->Cold ?min))]]
    :queries  [cold-query [[] [[Cold (= ?t temperature)]]]]
@@ -280,7 +275,7 @@
            {(->Cold -20) {(->Temperature -20 "MCI") 1
                           (->Temperature -5 "ORD")  1}}))))
 
-(def-rules-test test-get-matching-accum-facts-join-with-previous-no-new-bindings
+(tu/def-rules-test test-get-matching-accum-facts-join-with-previous-no-new-bindings
   {:rules [windspeed-with-temps-simple-join
            [[[?w <- WindSpeed (= ?loc location)]
              [?temps <- (acc/all) from [Temperature (= ?loc location)]]]
@@ -400,7 +395,7 @@
              " and subsequent binding: "
              subsequent-binding))))
 
-(def-rules-test test-inspect-retracted-fact
+(tu/def-rules-test test-inspect-retracted-fact
   {:queries [temp-query [[] [[Temperature (= ?t temperature)]]]]
    :sessions [empty-session [temp-query] {:cache false}]}
   (let [session (-> empty-session
@@ -444,7 +439,7 @@
                       form))]
     (w/prewalk rename-fn condition-matches)))
 
-(def-rules-test test-negation-condition-matches
+(tu/def-rules-test test-negation-condition-matches
   {:rules [not-cold-rule-join [[[ColdAndWindy (= ?t temperature)]
                                 ;; Note that it doesn't actually matter for the purpose of the
                                 ;; :condition-matches if the join condition is satisfied; we're only
@@ -483,7 +478,7 @@
            (-> with-matching-fact-session inspect :condition-matches original-constraints->constraints
                (get (-> not-cold-rule-join :lhs second)))))))
 
-(def-rules-test test-condition-matches-on-join-conditions
+(tu/def-rules-test test-condition-matches-on-join-conditions
 
   {:rules    [simple-join [[[Temperature (= ?loc location) (= ?temp temperature)]
                             [WindSpeed (= ?loc location) (= ?windspeed windspeed)]]
@@ -544,7 +539,7 @@
            (get-condition-match complex-failed-join #?(:clj WindSpeed :cljs `WindSpeed))
            [(->WindSpeed 50 "MCI")]))))
 
-(def-rules-test test-explain-activations-does-not-crash
+(tu/def-rules-test test-explain-activations-does-not-crash
   {:rules [cold-rule [[[Temperature (< temperature 20) (= ?t temperature)]]
                       (insert! (map->Cold {:temperature :too-cold}))]]
    :sessions [empty-session [cold-rule] {}]}

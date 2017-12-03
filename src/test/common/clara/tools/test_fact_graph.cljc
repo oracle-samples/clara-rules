@@ -1,28 +1,19 @@
 (ns clara.tools.test-fact-graph
-  (:require
-    #?(:clj [clara.tools.testing-utils :refer [def-rules-test
-                                               side-effect-holder] :as tu])
-    #?(:cljs [clara.tools.testing-utils :refer [side-effect-holder]
-              :refer-macros [def-rules-test] :as tu])
+  (:require [clara.tools.testing-utils :as tu]
             [clara.tools.fact-graph :as g]
-            [clara.rules.testfacts :as tf]
             [clara.rules :as cr]
-    #?(:clj
-            [clojure.test :refer [is deftest run-tests testing use-fixtures]])
-    #?(:cljs [cljs.test :refer-macros [is deftest run-tests testing use-fixtures]])
             [clara.rules.accumulators :as acc]
-    #?(:cljs [clara.rules.testfacts :refer [Cold
-                                            WindSpeed
-                                            ColdAndWindy]])
-            [schema.test :as st])
+            [schema.test :as st]
+    #?(:clj [clojure.test :refer [is deftest run-tests testing use-fixtures]]
+       :cljs [cljs.test :refer-macros [is deftest run-tests testing use-fixtures]])
+    #?(:clj [clara.rules.testfacts :as tf]
+       :cljs [clara.rules.testfacts :refer [Cold WindSpeed ColdAndWindy] :as tf]))
   #?(:clj
-     (:import [clara.rules.testfacts Cold
-                                     WindSpeed
-                                     ColdAndWindy])))
+     (:import [clara.rules.testfacts Cold WindSpeed ColdAndWindy])))
 
 (use-fixtures :once st/validate-schemas)
 
-(def-rules-test test-basic-fact-graph
+(tu/def-rules-test test-basic-fact-graph
   {:rules    [cold-windy-rule [[[Cold (= ?t temperature) (< ?t 0)]
                                 [WindSpeed (= ?w windspeed) (> ?w 30)]]
                                (cr/insert! (tf/->ColdAndWindy ?t ?w))]]
@@ -46,7 +37,7 @@
 
     (is (= expected-graph actual-graph))))
 
-(def-rules-test test-accum-rule-fact-graph
+(tu/def-rules-test test-accum-rule-fact-graph
   {:rules    [cold-windy-rule [[[?t <- (acc/min :temperature) :from [Cold]]
                                 [WindSpeed (= ?w windspeed) (> ?w 30)]]
                                (cr/insert! (tf/->ColdAndWindy ?t ?w))]]
@@ -79,7 +70,7 @@
 
     (is (= expected-graph actual-graph))))
 
-(def-rules-test test-fact-duplicates
+(tu/def-rules-test test-fact-duplicates
   {:rules    [b-rule [[[?a <- "a"]]
                       (cr/insert! "b")]
               c-rule [[[?b <- "b"]]
@@ -113,7 +104,7 @@
 
     (is (= actual-graph expected-graph))))
 
-(def-rules-test test-duplicate-fact-from-different-rules
+(tu/def-rules-test test-duplicate-fact-from-different-rules
   {:rules    [a-rule [[[?a <- "a"]]
                       (cr/insert! "c")
                       {:salience 1}]
