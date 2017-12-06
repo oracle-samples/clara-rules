@@ -1,5 +1,8 @@
 This is a history of changes to clara-rules.
 
+### 0.17.0-SNAPSHOT
+* Support session inspection and fact-graph in ClojureScript. See [issue 307](https://github.com/cerner/clara-rules/issues/307) for details.
+
 ### 0.16.1
 * Fix deserialization failure when the rulebase contains a clojure.lang.PersistentList$EmptyList. See [issue 352](https://github.com/cerner/clara-rules/issues/352) for details.
 * Fix bug in which bindings from previous conditions could be ignored in negations of compound boolean expressions.  See [issue 304](https://github.com/cerner/clara-rules/issues/304) for details.

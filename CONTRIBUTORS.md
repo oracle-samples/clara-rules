@@ -9,6 +9,7 @@ Cerner Corporation
 Community
 
 - David Goeke [@dgoeke]
+- Dave Dixon [@sparkofreason]
 
 [@rbrush]: https://github.com/rbrush
 [@mrrodriguez]: https://github.com/mrrodriguez
@@ -16,3 +17,4 @@ Community
 [@EthanEChristian]: https://github.com/EthanEChristian
 [@kulkarnipushkar]: https://github.com/kulkarnipushkar
 [@dgoeke]: https://github.com/dgoeke
+[@sparkofreason]: https://github.com/sparkofreason

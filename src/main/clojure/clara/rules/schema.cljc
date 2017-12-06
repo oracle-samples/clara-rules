@@ -1,8 +1,7 @@
 (ns clara.rules.schema
   "Schema definition of Clara data structures using Prismatic's Schema library. This includes structures for rules and queries, as well as the schema
    for the underlying Rete network itself. This can be used by tools or other libraries working with rules."
-  (:require [schema.core :as s]
-            [schema.macros :as sm]))
+  (:require [schema.core :as s]))
 
 
 (s/defn condition-type :- (s/enum :or :not :and :exists :fact :accumulator :test)

@@ -4,16 +4,23 @@
    * inspect, which returns a data structure describing the session that can be used by tooling.
    * explain-activations, which uses inspect and prints a human-readable description covering
      why each rule activation or query match occurred."
-  (:require [clara.rules.engine :as eng]
+  (:require #?(:clj [clara.rules.engine :as eng])
+            #?(:cljs [clara.rules.engine :as eng :refer [RootJoinNode
+                                                         HashJoinNode
+                                                         ExpressionJoinNode
+                                                         NegationNode
+                                                         NegationWithJoinFilterNode]])
             [clara.rules.schema :as schema]
             [clara.rules.memory :as mem]
+            #?(:cljs [goog.string :as gstr])
             [schema.core :as s])
-  (:import [clara.rules.engine
-            RootJoinNode
-            HashJoinNode
-            ExpressionJoinNode
-            NegationNode
-            NegationWithJoinFilterNode]))
+  #?(:clj
+    (:import [clara.rules.engine
+              RootJoinNode
+              HashJoinNode
+              ExpressionJoinNode
+              NegationNode
+              NegationWithJoinFilterNode])))
 
 (s/defschema ConditionMatch
   "A structure associating a condition with the facts that matched them.  The fields are:
@@ -123,7 +130,10 @@
             :condition condition}))
 
        ;; Remove generated bindings from user-facing explanation.
-       (into {} (remove (fn [[k v]] (.startsWith (name k) "?__gen__")) bindings))))))
+       (into {} (remove (fn [[k v]]
+                          #?(:clj (.startsWith (name k) "?__gen__"))
+                          #?(:cljs (gstr/startsWith (name k) "?__gen__")))
+                        bindings))))))
 
 (defn ^:private gen-fact->explanations
   [session]
