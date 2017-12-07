@@ -17,7 +17,8 @@
             [clara.test-memory]
             [clara.test-simple-rules]
             [clara.test-rhs-retract]
-            [clara.test-bindings]))
+            [clara.test-bindings]
+            [clara.test-clear-ns-productions]))
 
 (enable-console-print!)
 
@@ -50,5 +51,6 @@
                     'clara.test-memory
                     'clara.test-simple-rules
                     'clara.test-rhs-retract
-                    'clara.test-bindings)
+                    'clara.test-bindings
+                    'clara.test-clear-ns-productions)
     @*successful?*))
