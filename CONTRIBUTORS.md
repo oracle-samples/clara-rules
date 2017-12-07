@@ -17,4 +17,4 @@ Community
 [@EthanEChristian]: https://github.com/EthanEChristian
 [@kulkarnipushkar]: https://github.com/kulkarnipushkar
 [@dgoeke]: https://github.com/dgoeke
-[@sparkofreason]: http://github.com/sparkofreason
+[@sparkofreason]: https://github.com/sparkofreason
