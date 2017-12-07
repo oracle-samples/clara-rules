@@ -31,7 +31,7 @@
                     (insert (facts/->Temperature 80 "MCI"))
                     fire-rules)]
 
-    ;; The query should identify all items that wer einserted and matchd the
+    ;; The query should identify all items that were inserted and matched the
     ;; expected criteria.
     (is (= #{{:?t 15} {:?t 10}}
            (set (query session rd/cold-query))))))
