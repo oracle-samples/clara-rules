@@ -10,13 +10,16 @@
             [clara.test-accumulators]
             [clara.test-exists]
             [clara.tools.test-tracing]
+            [clara.tools.test-fact-graph]
+            [clara.tools.test-inspect]
             [clara.test-truth-maintenance]
             [clara.test-dsl]
             [clara.test-accumulation]
             [clara.test-memory]
             [clara.test-simple-rules]
             [clara.test-rhs-retract]
-            [clara.test-bindings]))
+            [clara.test-bindings]
+            [clara.test-clear-ns-productions]))
 
 (enable-console-print!)
 
@@ -42,11 +45,14 @@
                     'clara.test-accumulators
                     'clara.test-exists
                     'clara.tools.test-tracing
+                    'clara.tools.test-fact-graph
+                    'clara.tools.test-inspect
                     'clara.test-truth-maintenance
                     'clara.test-dsl
                     'clara.test-accumulation
                     'clara.test-memory
                     'clara.test-simple-rules
                     'clara.test-rhs-retract
-                    'clara.test-bindings)
+                    'clara.test-bindings
+                    'clara.test-clear-ns-productions)
     @*successful?*))

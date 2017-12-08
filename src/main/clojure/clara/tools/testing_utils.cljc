@@ -11,7 +11,8 @@
                [clara.rules.dsl :as dsl]))
    :cljs
    (ns clara.tools.testing-utils
-     (:require [clara.rules.update-cache.core :as uc])))
+     (:require [clara.rules.update-cache.core :as uc])
+     (:require-macros clara.tools.testing-utils)))
 
 #?(:clj
    (defmacro def-rules-test
@@ -27,28 +28,28 @@
       Unfortunately, at this time we can't add inline requires for these namespace with the macroexpanded code in
       ClojureScript; see https://anmonteiro.com/2016/10/clojurescript-require-outside-ns/ for some discussion on the 
       subject.  However, the test namespaces consuming this will in all likelihood have these dependencies anyway
-      so this probably isn't a significant shortcoming of this macro." 
+      so this probably isn't a significant shortcoming of this macro."
      [name params & forms]
      (let [sym->rule (->> params
                           :rules
                           (partition 2)
                           (into {}
                                 (map (fn [[rule-name [lhs rhs props]]]
-                                       [rule-name (dsl/parse-rule* lhs rhs props {})]))))
+                                       [rule-name (assoc (dsl/parse-rule* lhs rhs props {}) :name (str rule-name))]))))
 
            sym->query (->> params
                            :queries
                            (partition 2)
                            (into {}
                                  (map (fn [[query-name [params lhs]]]
-                                        [query-name (dsl/parse-query* params lhs {})]))))
-           
+                                        [query-name (assoc (dsl/parse-query* params lhs {}) :name (str query-name))]))))
+
            production-syms->productions (fn [p-syms]
                                           (map (fn [s]
                                                  (or (get sym->rule s)
                                                      (get sym->query s)))
                                                p-syms))
-           
+
            session-syms->session-forms (->> params
                                             :sessions
                                             (partition 3)
@@ -62,14 +63,15 @@
                                                                                                        cat
                                                                                                        session-opts)))]))
                                                         cat)))
-           
+
            test-form `(~(if (com/compiling-cljs?)
                           'cljs.test/deftest
                           'clojure.test/deftest)
-                       ~name
-                       (let [~@session-syms->session-forms
-                             ~@(sequence cat sym->query)]
-                         ~@forms))]
+                        ~name
+                        (let [~@session-syms->session-forms
+                              ~@(sequence cat sym->query)
+                              ~@(sequence cat sym->rule)]
+                          ~@forms))]
        test-form)))
 
 #?(:clj
