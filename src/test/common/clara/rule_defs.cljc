@@ -1,6 +1,7 @@
 (ns clara.rule-defs
   (:require [clara.rules.accumulators :as acc]
             [clara.rules.testfacts :as tf]
+            [clara.tools.testing-utils :as tu]
     #?(:clj [clara.rules :refer [defrule defquery insert!]])
     #?(:cljs [clara.rules :refer-macros [defrule defquery] :refer [insert!]]))
   #?(:clj
@@ -8,14 +9,10 @@
 
 ;; Rule definitions used for tests in clara.test-rules-require.
 
-(def simple-defrule-side-effect (atom nil))
-(def other-defrule-side-effect (atom nil))
-
 (defrule test-rule
-           [#?(:clj Temperature :cljs tf/Temperature) (< temperature 20)]
+           [?t <- #?(:clj Temperature :cljs tf/Temperature) (< temperature 20)]
            =>
-           (reset! other-defrule-side-effect ?__token__)
-           (reset! simple-defrule-side-effect ?__token__))
+           (reset! tu/side-effect-holder ?t))
 
 (defquery cold-query
           []
