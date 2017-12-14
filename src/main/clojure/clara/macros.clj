@@ -186,8 +186,11 @@
               (com/compile-action all-bindings
                                   ;; Using private function for now as a workaround.
                                   (if (:ns-name production)
-                                    (binding [*ns* (the-ns (:ns-name production))]
-                                      (resolve-vars))
+                                    (if (com/compiling-cljs?)
+                                      (binding [cljs.analyzer/*cljs-ns* (:ns-name production)]
+                                        (resolve-vars))
+                                      (binding [*ns* (the-ns (:ns-name production))]
+                                        (resolve-vars)))
                                     (resolve-vars))
                                   (:env production))))
 

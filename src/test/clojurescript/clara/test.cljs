@@ -1,6 +1,7 @@
 (ns clara.test
   (:require-macros [cljs.test :as test])
   (:require [clara.test-rules]
+            [clara.test-rules-require]
             [cljs.test]
             [clara.test-salience]
             [clara.test-complex-negation]
@@ -36,6 +37,7 @@
 (defn ^:export run []
   (binding [*successful?* (atom nil)]
     (test/run-tests 'clara.test-rules
+                    'clara.test-rules-require
                     'clara.test-common
                     'clara.test-salience
                     'clara.test-testing-utils
