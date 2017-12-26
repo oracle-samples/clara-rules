@@ -1,4 +1,4 @@
-(defproject com.cerner/clara-rules "0.16.0-SNAPSHOT"
+(defproject com.cerner/clara-rules "0.17.0-SNAPSHOT"
   :description "Clara Rules Engine"
   :url "https://github.com/cerner/clara-rules"
   :license {:name "Apache License Version 2.0"
@@ -53,6 +53,10 @@
                               "phantom-advanced" ["phantomjs"
                                                   "src/test/js/runner.js"
                                                   "src/test/html/advanced.html"]}}
+
+  :repl-options {;; The large number of ClojureScript tests is causing long compilation times
+                 ;; to start the REPL.
+                 :timeout 120000}
   
   ;; Factoring out the duplication of this test selector function causes an error,
   ;; perhaps because Leiningen is using this as uneval'ed code.

@@ -29,7 +29,12 @@
 
 (defrule find-wind-speeds-without-temp
   "Rule using NegationNode"
-  [?w <- WindSpeed (= ?loc location)]
+  [?w <- WindSpeed
+   ;; Empty constraint and a constraint containing an empty list to test serializing an EmptyList,
+   ;; see Issue 352 for more information
+   ()
+   (not= this ())
+   (= ?loc location)]
   [:not [Temperature (= ?loc location)]]
   =>
   (insert! (->UnpairedWindSpeed ?w)))

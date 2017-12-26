@@ -259,8 +259,8 @@
          (throw (ex-info (str "Malformed variable binding for " variables ". No associated value.")
                          {:variables (map keyword variables)})))
 
-       (if binds-variables?
-
+       (cond
+         binds-variables?
          ;; Bind each variable with the first value we encounter.
          ;; The additional equality checks are handled below so which value
          ;; we bind to is not important. So an expression like (= ?x value-1 value-2) will
@@ -287,8 +287,14 @@
                compiled-rest)
             )
 
+         ;; A contraint that is empty doesn't need to be added as a check,
+         ;; simply move on to the rest
+         (empty? exp)
+         compiled-rest
+
          ;; No variables to unify, so simply check the expression and
          ;; move on to the rest.
+         :else
          `(if ~exp ~compiled-rest nil))))))
 
 
@@ -983,16 +989,38 @@
                              "__"
                              (gensym))
 
+          ;; Insert the bindings from ancestors that are used in the negation
+          ;; in the NegationResult fact so that the [:not [NegationResult...]]
+          ;; condition can assert that the facts matching the negation
+          ;; have the necessary bindings. 
+          ;; See https://github.com/cerner/clara-rules/issues/304 for more details
+          ;; and a case that behaves incorrectly without this check.
+          ancestor-bindings-in-negation-expr (set/intersection
+                                              (variables-as-keywords negation-expr)
+                                              ancestor-bindings)
+
+          ancestor-bindings-insertion-form (into {}
+                                                 (map (fn [binding]
+                                                        [binding (-> binding
+                                                                     name
+                                                                     symbol)]))
+                                                 ancestor-bindings-in-negation-expr)
+
+          ancestor-binding->restriction-form (fn [b]
+                                               (list '= (-> b name symbol)
+                                                     (list b 'ancestor-bindings)))
+
           modified-expression `[:not {:type ~(if (compiling-cljs?)
                                                'clara.rules.engine/NegationResult
                                                'clara.rules.engine.NegationResult)
-                                      :constraints [(~'= ~gen-rule-name ~'gen-rule-name)]}]
-
-
+                                      :constraints [(~'= ~gen-rule-name ~'gen-rule-name)
+                                                    ~@(map ancestor-binding->restriction-form
+                                                           ancestor-bindings-in-negation-expr)]}]
 
           generated-rule (cond-> {:name gen-rule-name
                                   :lhs (concat previous-expressions [negation-expr])
-                                  :rhs `(clara.rules/insert! (eng/->NegationResult ~gen-rule-name))}
+                                  :rhs `(clara.rules/insert! (eng/->NegationResult ~gen-rule-name
+                                                                                   ~ancestor-bindings-insertion-form))}
 
                            ;; Propagate properties like salience to the generated production.
                            (:props production) (assoc :props (:props production))

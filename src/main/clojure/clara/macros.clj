@@ -17,6 +17,12 @@
             [clara.rules.schema :as schema]
             [clojure.set :as s]))
 
+;;; Clear productions stored in cljs.env/*compiler* for current namespace.
+;;; Only exists for its side-effect, hence returns nil.
+(defmacro clear-ns-productions!
+  []
+  (swap! env/*compiler* assoc-in [::productions (com/cljs-ns)] {})
+  nil)
 
 ;; Store production in cljs.env/*compiler* under ::productions seq?
 (defn- add-production [name production]
@@ -180,8 +186,11 @@
               (com/compile-action all-bindings
                                   ;; Using private function for now as a workaround.
                                   (if (:ns-name production)
-                                    (binding [*ns* (the-ns (:ns-name production))]
-                                      (resolve-vars))
+                                    (if (com/compiling-cljs?)
+                                      (binding [cljs.analyzer/*cljs-ns* (:ns-name production)]
+                                        (resolve-vars))
+                                      (binding [*ns* (the-ns (:ns-name production))]
+                                        (resolve-vars)))
                                     (resolve-vars))
                                   (:env production))))
 

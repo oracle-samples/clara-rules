@@ -135,7 +135,12 @@
            (parse-expression nested-expr expr-meta)))
 
    (contains? #{'test :test} (first expression))
-   {:constraints (vec (rest expression))}
+   (if (= 1 (count expression))
+     (throw-dsl-ex (str "Empty :test conditions are not allowed.")
+                   {}
+                   expr-meta)
+     {:constraints (vec (rest expression))})
+
 
    :default
    (parse-condition-or-accum expression expr-meta)))
@@ -240,13 +245,13 @@
    (let [conditions (into [] (for [expr lhs]
                                (parse-expression expr rule-meta)))
 
-         rule {:ns-name (list 'quote (ns-name *ns*))
-               :lhs (list 'quote
-                          (mapv #(resolve-vars % (destructure-syms %))
-                                conditions))
-               :rhs (list 'quote
-                          (vary-meta rhs
-                                     assoc :file *file*))}
+         rule {:ns-name (list 'quote (ns-name (if (com/compiling-cljs?) (com/cljs-ns) *ns*)))
+               :lhs     (list 'quote
+                              (mapv #(resolve-vars % (destructure-syms %))
+                                    conditions))
+               :rhs     (list 'quote
+                              (vary-meta rhs
+                                         assoc :file *file*))}
 
          symbols (set (filter symbol? (com/flatten-expression (concat lhs rhs))))
          matching-env (into {} (for [sym (keys env)

@@ -49,6 +49,7 @@
                                               ->Hot Hot
                                               ->LousyWeather LousyWeather]]
                [clara.rules.accumulators :as acc]
+               [clara.tools.testing-utils :as tu]
                [cljs.test]
                [schema.test :as st])
      (:require-macros [clara.tools.testing-utils :refer [def-rules-test]]
@@ -62,12 +63,15 @@
 
 (def side-effect-holder (atom nil))
 
-;; TODO: Decide where to put this in a common file.
-(defn join-filter-equals
-  "Intended to be a test function that is the same as equals, but is not visible to Clara as such
-  and thus forces usage of join filters instead of hash joins"
-  [& args]
-  (apply = args))
+;; In ClojureScript the type function does not use the :type key in metadata as in Clojure, but we had
+;; tests in Clojure that were relying on this.  Creating a custom function for the fact type along these
+;; lines was the easiest way to get the tests relying on this behavior to pass in ClojureScript.  I used
+;; data on the actual fact rather than metadata and updated the tests accordingly.  This is desirable since
+;; Clara's value-based semantics won't consider the metadata part of the fact for the purpose of memory operations.
+(defn type-or-class
+  [fact]
+  (or (:type fact)
+      (type fact)))
 
 (def-rules-test test-simple-binding-variable-ordering
 
@@ -247,7 +251,7 @@
                                                                        (< (:temperature item) (:temperature value) ))
                                                                  item
                                                                  value)))
-                                           :from (Temperature (join-filter-equals ?loc location))]]]]
+                                           :from (Temperature (tu/join-filter-equals ?loc location))]]]]
 
    :sessions [simple-join-session [coldest-query-simple-join] {}
               complex-join-session [coldest-query-complex-join] {}]}
@@ -406,175 +410,175 @@
                       (insert (->Temperature 15 "MCI"))
                       (fire-rules)))))
 
-;; FIXME: This fails in ClojureScript but shouldn't.
-#?(:clj
-   ;; Testing that a join filter accumulate node with no initial value will
-   ;; only propagate results when candidate facts pass the join filter.
-   (def-rules-test test-accumulator-with-test-join-multi-type
+;; Testing that a join filter accumulate node with no initial value will
+;; only propagate results when candidate facts pass the join filter.
+(def-rules-test test-accumulator-with-test-join-multi-type
 
-     {:queries [get-cold-temp [[] [[?cold <- Cold]]]]
+  {:queries [get-cold-temp [[] [[?cold <- Cold]]]]
 
-      :rules [get-min-temp-under-threshhold [[[?threshold <- :temp-threshold]
+   :rules [get-min-temp-under-threshhold [[[?threshold <- :temp-threshold]
 
-                                              [?min-temp <- (acc/min :temperature)
-                                               :from
-                                               [Temperature
-                                                (< temperature (:temperature ?threshold))]]]
-                                             (insert! (->Cold ?min-temp))]]
+                                           [?min-temp <- (acc/min :temperature)
+                                            :from
+                                            [Temperature
+                                             (< temperature (:temperature ?threshold))]]]
+                                          (insert! (->Cold ?min-temp))]]
 
-      :sessions [session [get-cold-temp get-min-temp-under-threshhold] {}
-                 simple-session [get-min-temp-under-threshhold] {}]}
+   :sessions [session [get-cold-temp get-min-temp-under-threshhold] {:fact-type-fn type-or-class}
+              simple-session [get-min-temp-under-threshhold] {:fact-type-fn type-or-class}]}
 
-     (let [;; Test assertion helper.
-           assert-query-results (fn [test-name session & expected-results]
+  (let [;; Test assertion helper.
+        assert-query-results (fn [test-name session & expected-results]
 
-                                  (is (= (count expected-results)
-                                         (count (query session get-cold-temp)))
-                                      (str test-name (seq (query session get-cold-temp))))
+                               (is (= (count expected-results)
+                                      (count (query session get-cold-temp)))
+                                   (str test-name (seq (query session get-cold-temp))))
 
-                                  (is (= (set expected-results)
-                                         (set (query session get-cold-temp)))
-                                      (str test-name)))
+                               (is (= (set expected-results)
+                                      (set (query session get-cold-temp)))
+                                   (str test-name)))
 
-           thresh-10 ^{:type :temp-threshold} {:temperature 10}
-           thresh-20 ^{:type :temp-threshold} {:temperature 20}
+        thresh-10 {:temperature 10
+                   :type :temp-threshold}
 
-           temp-5-mci (->Temperature 5 "MCI")
-           temp-10-lax (->Temperature 10 "LAX")
-           temp-20-mci (->Temperature 20 "MCI")]
+        thresh-20 {:temperature 20
+                   :type :temp-threshold}
 
-       ;; No temp tests - no firing
+        temp-5-mci (->Temperature 5 "MCI")
+        temp-10-lax (->Temperature 10 "LAX")
+        temp-20-mci (->Temperature 20 "MCI")]
 
-       (assert-query-results 'no-thresh-no-temps
-                             session)
+    ;; No temp tests - no firing
 
-       (assert-query-results 'one-thresh-no-temps
-                             (-> session
-                                 (insert thresh-10)
-                                 fire-rules))
+    (assert-query-results 'no-thresh-no-temps
+                          session)
 
-       (assert-query-results 'retract-thresh-no-temps
-                             (-> session
-                                 (insert thresh-10)
-                                 fire-rules
-                                 (retract thresh-10)
-                                 fire-rules))
+    (assert-query-results 'one-thresh-no-temps
+                          (-> session
+                              (insert thresh-10)
+                              fire-rules))
 
-       (assert-query-results 'two-thresh-no-temps
-                             (-> session
-                                 (insert thresh-10)
-                                 (insert thresh-20)
-                                 fire-rules))
+    (assert-query-results 'retract-thresh-no-temps
+                          (-> session
+                              (insert thresh-10)
+                              fire-rules
+                              (retract thresh-10)
+                              fire-rules))
 
-       ;; With temps tests.
+    (assert-query-results 'two-thresh-no-temps
+                          (-> session
+                              (insert thresh-10)
+                              (insert thresh-20)
+                              fire-rules))
 
-       (assert-query-results 'one-thresh-one-temp-no-match
-                             (-> session
-                                 (insert thresh-10)
-                                 (insert temp-10-lax)
-                                 fire-rules))
+    ;; With temps tests.
 
-       (assert-query-results 'one-thresh-one-temp-no-match-retracted
-                             (-> session
-                                 (insert thresh-10)
-                                 (insert temp-10-lax)
-                                 fire-rules
-                                 (retract temp-10-lax)
-                                 fire-rules))
+    (assert-query-results 'one-thresh-one-temp-no-match
+                          (-> session
+                              (insert thresh-10)
+                              (insert temp-10-lax)
+                              fire-rules))
 
-       (assert-query-results 'two-thresh-one-temp-no-match
-                             (-> session
-                                 (insert thresh-10)
-                                 (insert thresh-20)
-                                 (insert temp-20-mci)
-                                 fire-rules))
+    (assert-query-results 'one-thresh-one-temp-no-match-retracted
+                          (-> session
+                              (insert thresh-10)
+                              (insert temp-10-lax)
+                              fire-rules
+                              (retract temp-10-lax)
+                              fire-rules))
 
-       (assert-query-results 'two-thresh-one-temp-two-match
-                             (-> session
-                                 (insert thresh-10)
-                                 (insert thresh-20)
-                                 (insert temp-5-mci)
-                                 fire-rules)
+    (assert-query-results 'two-thresh-one-temp-no-match
+                          (-> session
+                              (insert thresh-10)
+                              (insert thresh-20)
+                              (insert temp-20-mci)
+                              fire-rules))
 
-                             {:?cold (->Cold 5)}
-                             {:?cold (->Cold 5)})
+    (assert-query-results 'two-thresh-one-temp-two-match
+                          (-> session
+                              (insert thresh-10)
+                              (insert thresh-20)
+                              (insert temp-5-mci)
+                              fire-rules)
 
-       (assert-query-results 'one-thresh-one-temp-one-match
-                             (-> session
-                                 (insert thresh-20)
-                                 (insert temp-5-mci)
-                                 fire-rules)
+                          {:?cold (->Cold 5)}
+                          {:?cold (->Cold 5)})
 
-                             {:?cold (->Cold 5)})
+    (assert-query-results 'one-thresh-one-temp-one-match
+                          (-> session
+                              (insert thresh-20)
+                              (insert temp-5-mci)
+                              fire-rules)
 
-       (assert-query-results 'retract-thresh-one-temp-one-match
-                             (-> session
-                                 (insert thresh-20)
-                                 (insert temp-5-mci)
-                                 fire-rules
-                                 (retract thresh-20)
-                                 fire-rules))
+                          {:?cold (->Cold 5)})
 
-       (assert-query-results 'one-thresh-two-temp-one-match
-                             (-> session
-                                 (insert thresh-20)
-                                 (insert temp-5-mci)
-                                 (insert temp-20-mci)
-                                 fire-rules)
+    (assert-query-results 'retract-thresh-one-temp-one-match
+                          (-> session
+                              (insert thresh-20)
+                              (insert temp-5-mci)
+                              fire-rules
+                              (retract thresh-20)
+                              fire-rules))
 
-                             {:?cold (->Cold 5)})
+    (assert-query-results 'one-thresh-two-temp-one-match
+                          (-> session
+                              (insert thresh-20)
+                              (insert temp-5-mci)
+                              (insert temp-20-mci)
+                              fire-rules)
 
-       (assert-query-results 'one-thresh-one-temp-one-match-retracted
-                             (-> session
-                                 (insert thresh-20)
-                                 (insert temp-5-mci)
-                                 fire-rules
-                                 (retract temp-5-mci)
-                                 fire-rules))
+                          {:?cold (->Cold 5)})
 
-       (assert-query-results 'one-thresh-two-temp-two-match
-                             (-> session
-                                 (insert thresh-20)
-                                 (insert temp-5-mci)
-                                 (insert temp-10-lax)
-                                 fire-rules)
+    (assert-query-results 'one-thresh-one-temp-one-match-retracted
+                          (-> session
+                              (insert thresh-20)
+                              (insert temp-5-mci)
+                              fire-rules
+                              (retract temp-5-mci)
+                              fire-rules))
 
-                             {:?cold (->Cold 5)}))))
+    (assert-query-results 'one-thresh-two-temp-two-match
+                          (-> session
+                              (insert thresh-20)
+                              (insert temp-5-mci)
+                              (insert temp-10-lax)
+                              fire-rules)
 
-;; FIXME: This fails in ClojureScript; it should pass.
-#?(:clj
+                          {:?cold (->Cold 5)})))
+
    ;; A test to make sure the appropriate data is held in the memory
    ;; of accumulate node with join filter is correct upon right-retract.
-   (def-rules-test test-accumulator-with-test-join-retract-accumulated-use-new-result
+(def-rules-test test-accumulator-with-test-join-retract-accumulated-use-new-result
 
-     {:rules [coldest-temp [[[?thresh <- :temp-threshold]
-                             [?temp <- (acc/max :temperature)
-                              :from [Temperature (< temperature (:temperature ?thresh))]]]
+  {:rules [coldest-temp [[[?thresh <- :temp-threshold]
+                          [?temp <- (acc/max :temperature)
+                           :from [Temperature (< temperature (:temperature ?thresh))]]]
 
-                            (insert! (->Cold ?temp))]]
+                         (insert! (->Cold ?temp))]]
 
-      :queries [find-cold [[] [[?c <- Cold]]]]
+   :queries [find-cold [[] [[?c <- Cold]]]]
 
-      :sessions [empty-session [coldest-temp find-cold] {}]}
+   :sessions [empty-session [coldest-temp find-cold] {:fact-type-fn type-or-class}]}
 
-     (let [thresh-20 ^{:type :temp-threshold} {:temperature 20}
+  (let [thresh-20 {:temperature 20
+                   :type :temp-threshold}
 
-           temp-10-mci (->Temperature 10 "MCI")
-           temp-15-lax (->Temperature 15 "LAX")
+        temp-10-mci (->Temperature 10 "MCI")
+        temp-15-lax (->Temperature 15 "LAX")
 
-           cold-results (-> empty-session
-                            (insert thresh-20
-                                    temp-10-mci)
-                            ;; Retract it and add it back so that an
-                            ;; accumulate happens on the intermediate
-                            ;; node memory state.
-                            (retract temp-10-mci)
-                            (insert temp-10-mci)
-                            fire-rules
-                            (query find-cold))]
+        cold-results (-> empty-session
+                         (insert thresh-20
+                                 temp-10-mci)
+                         ;; Retract it and add it back so that an
+                         ;; accumulate happens on the intermediate
+                         ;; node memory state.
+                         (retract temp-10-mci)
+                         (insert temp-10-mci)
+                         fire-rules
+                         (query find-cold))]
 
-       (is (= [{:?c (->Cold 10)}]
-              cold-results)))))
+    (is (= [{:?c (->Cold 10)}]
+           cold-results))))
 
 (def-rules-test test-accumulator-right-retract-before-matching-tokens-exist
 
@@ -641,91 +645,92 @@
     (is (= (frequencies [{:?s 10 :?t 9}])
            (frequencies res)))))
 
-;; FIXME: This fails in ClojureScript; it should pass.
-#?(:clj
-   (def-rules-test test-accumulator-with-init-and-binding-groups
+(def-rules-test test-accumulator-with-init-and-binding-groups
 
-     {:queries [get-temp-history [[] [[?his <- TemperatureHistory]]]]
+  {:queries [get-temp-history [[] [[?his <- TemperatureHistory]]]]
 
-      :rules [get-temps-under-threshhold [[[?threshold <- :temp-threshold]
+   :rules [get-temps-under-threshhold [[[?threshold <- :temp-threshold]
 
-                                           [?temps <- (acc/all) :from [Temperature (= ?loc location)
-                                                                       (< temperature (:temperature ?threshold))]]]
+                                        [?temps <- (acc/all) :from [Temperature (= ?loc location)
+                                                                    (< temperature (:temperature ?threshold))]]]
 
-                                          (insert! (->TemperatureHistory ?temps))]]
+                                       (insert! (->TemperatureHistory ?temps))]]
 
-      :sessions [session [get-temp-history get-temps-under-threshhold] {}]}
+   :sessions [session [get-temp-history get-temps-under-threshhold] {:fact-type-fn type-or-class}]}
 
-     (let [thresh-11 ^{:type :temp-threshold} {:temperature 11}
-           thresh-20 ^{:type :temp-threshold} {:temperature 20}
+  (let [thresh-11 {:temperature 11
+                   :type :temp-threshold}
+        thresh-20  {:temperature 20
+                    :type :temp-threshold}
 
-           temp-10-mci (->Temperature 10 "MCI")
-           temp-15-lax (->Temperature 15 "LAX")
-           temp-20-mci (->Temperature 20 "MCI")
+        temp-10-mci (->Temperature 10 "MCI")
+        temp-15-lax (->Temperature 15 "LAX")
+        temp-20-mci (->Temperature 20 "MCI")
 
-           two-groups-one-init (-> session
-                                   (insert thresh-11
-                                           temp-10-mci
-                                           temp-15-lax
-                                           temp-20-mci)
-                                   fire-rules
-                                   (query get-temp-history))
+        two-groups-one-init (-> session
+                                (insert thresh-11
+                                        temp-10-mci
+                                        temp-15-lax
+                                        temp-20-mci)
+                                fire-rules
+                                (query get-temp-history))
 
-           two-groups-no-init (-> session
-                                  (insert thresh-20
-                                          temp-10-mci
-                                          temp-15-lax
-                                          temp-20-mci)
-                                  fire-rules
-                                  (query get-temp-history))]
+        two-groups-no-init (-> session
+                               (insert thresh-20
+                                       temp-10-mci
+                                       temp-15-lax
+                                       temp-20-mci)
+                               fire-rules
+                               (query get-temp-history))]
 
-       (is (empty?
-            (-> session
-                (insert thresh-11)
-                fire-rules
-                (query get-temp-history))))
+    (is (empty?
+         (-> session
+             (insert thresh-11)
+             fire-rules
+             (query get-temp-history))))
 
-       (is (= (frequencies [{:?his (->TemperatureHistory [temp-10-mci])}])
-              (frequencies two-groups-one-init)))
+    (is (= (frequencies [{:?his (->TemperatureHistory [temp-10-mci])}])
+           (frequencies two-groups-one-init)))
 
-       (is (= 2 (count two-groups-no-init)))
-       (is (= #{{:?his (->TemperatureHistory [temp-15-lax])}
-                {:?his (->TemperatureHistory [temp-10-mci])}}
+    (is (= 2 (count two-groups-no-init)))
+    (is (= #{{:?his (->TemperatureHistory [temp-15-lax])}
+             {:?his (->TemperatureHistory [temp-10-mci])}}
 
-              (set two-groups-no-init))))))
+           (set two-groups-no-init)))))
 
-;; FIXME: This fails in ClojureScript; it should pass.
-#?(:clj
-   (def-rules-test test-multi-accumulators-together-with-initial-value
+(def-rules-test test-multi-accumulators-together-with-initial-value
 
-     {:rules [r [[[?f <- (acc/all) :from [First]]
-                  [?s <- (acc/all) :from [Second]]]
-                 (insert! ^{:type :test} {:f ?f :s ?s})]]
+  {:rules [r [[[?f <- (acc/all) :from [First]]
+               [?s <- (acc/all) :from [Second]]]
+              (insert! {:f ?f
+                        :s ?s
+                        :type :test})]]
 
-      :queries [q [[]
-                   [[?test <- :test]]]]
+   :queries [q [[]
+                [[?test <- :test]]]]
 
-      :sessions [s [r q] {}]}
+   :sessions [s [r q] {:fact-type-fn type-or-class}]}
 
-     (let [batch-inserts (-> s
-                             (insert (->First) (->Second))
-                             fire-rules
-                             (query q))
+  (let [batch-inserts (-> s
+                          (insert (->First) (->Second))
+                          fire-rules
+                          (query q))
 
-           single-inserts (-> s
-                              (insert (->First))
-                              (insert (->Second))
-                              fire-rules
-                              (query q))]
+        single-inserts (-> s
+                           (insert (->First))
+                           (insert (->Second))
+                           fire-rules
+                           (query q))]
 
-       (is (= 1
-              (count batch-inserts)
-              (count single-inserts)))
+    (is (= 1
+           (count batch-inserts)
+           (count single-inserts)))
 
-       (is (= #{{:?test {:f [(->First)]
-                         :s [(->Second)]}}}
-              (set batch-inserts)
-              (set single-inserts))))))
+    (is (= #{{:?test {:f [(->First)]
+                      :s [(->Second)]
+                      :type :test}}}
+           (set batch-inserts)
+           (set single-inserts)))))
 
 (def-rules-test test-accum-needing-token-partitions-correctly-on-fact-binding
 
@@ -736,7 +741,7 @@
              qfilter [[]
                       [[WindSpeed (= ?ws windspeed)]
                        [?ts <- (acc/all) :from [Temperature (= ?loc location)
-                                                (not (join-filter-equals temperature ?ws))]]]]]
+                                                (not (tu/join-filter-equals temperature ?ws))]]]]]
 
    :sessions [qhash-session [qhash] {}
               qfilter-session [qfilter] {}]}
@@ -807,44 +812,44 @@
     (is (= [{:?his (->TemperatureHistory [temp-10-mci])}]
            temp-history))))
 
-;; FIXME: This fails in ClojureScript; it should pass.
-#?(:clj
-   (def-rules-test test-retract-initial-value-filtered
-     {:queries [get-temp-history [[] [[?his <- TemperatureHistory]]]]
 
-      :rules [get-temps-under-threshold [[[?threshold <- :temp-threshold]
+(def-rules-test test-retract-initial-value-filtered
+  {:queries [get-temp-history [[] [[?his <- TemperatureHistory]]]]
 
-                                          [?temps <- (acc/all) :from [Temperature (= ?loc location)
-                                                                      (< temperature (:temperature ?threshold))]]]
+   :rules [get-temps-under-threshold [[[?threshold <- :temp-threshold]
 
-                                         (insert! (->TemperatureHistory ?temps))]]
+                                       [?temps <- (acc/all) :from [Temperature (= ?loc location)
+                                                                   (< temperature (:temperature ?threshold))]]]
 
-      :sessions [empty-session [get-temp-history get-temps-under-threshold] {}]}
+                                      (insert! (->TemperatureHistory ?temps))]]
 
-     (let [thresh-11 ^{:type :temp-threshold} {:temperature 11}
+   :sessions [empty-session [get-temp-history get-temps-under-threshold] {:fact-type-fn type-or-class}]}
 
-           temp-10-mci (->Temperature 10 "MCI")
-           temp-15-lax (->Temperature 15 "LAX")
-           temp-20-mci (->Temperature 20 "MCI")
+  (let [thresh-11 {:temperature 11
+                   :type :temp-threshold}
 
-           temp-history (-> empty-session
-                            (insert thresh-11) ;; Explicitly insert this first to expose condition.
-                            (insert temp-10-mci
-                                    temp-15-lax
-                                    temp-20-mci)
+        temp-10-mci (->Temperature 10 "MCI")
+        temp-15-lax (->Temperature 15 "LAX")
+        temp-20-mci (->Temperature 20 "MCI")
 
-                            (fire-rules)
-                            (query get-temp-history))
+        temp-history (-> empty-session
+                         (insert thresh-11) ;; Explicitly insert this first to expose condition.
+                         (insert temp-10-mci
+                                 temp-15-lax
+                                 temp-20-mci)
 
-           empty-history (-> empty-session
-                             (insert thresh-11)
-                             (fire-rules)
-                             (query get-temp-history))]
+                         (fire-rules)
+                         (query get-temp-history))
 
-       (is (empty? empty-history))
+        empty-history (-> empty-session
+                          (insert thresh-11)
+                          (fire-rules)
+                          (query get-temp-history))]
 
-       (is (= (frequencies [{:?his (->TemperatureHistory [temp-10-mci])}])
-              (frequencies temp-history))))))
+    (is (empty? empty-history))
+
+    (is (= (frequencies [{:?his (->TemperatureHistory [temp-10-mci])}])
+           (frequencies temp-history)))))
 
 (def-rules-test test-join-to-result-binding
 
@@ -880,71 +885,71 @@
                                           item
                                           value)))))
 
-;; FIXME: This fails in ClojureScript; it should pass.
-#?(:clj 
-   (def-rules-test test-nil-accum-reduced-has-tokens-retracted-when-new-item-inserted
-     
-     {:rules [coldest-temp-rule-no-join [[[?coldest <- maybe-nil-min-temp :from [Temperature]]]
+(def-rules-test test-nil-accum-reduced-has-tokens-retracted-when-new-item-inserted
+  
+  {:rules [coldest-temp-rule-no-join [[[?coldest <- maybe-nil-min-temp :from [Temperature]]]
 
-                                         (insert! (->Cold (:temperature ?coldest)))]
+                                      (insert! (->Cold (:temperature ?coldest)))]
 
-              coldest-temp-rule-join [[[:max-threshold [{:keys [temperature]}]
-                                        (= ?max-temp temperature)]
+           coldest-temp-rule-join [[[:max-threshold [{:keys [temperature]}]
+                                     (= ?max-temp temperature)]
 
-                                       ;; Note a non-equality based unification.
-                                       ;; Gets max temp under a given max threshold.
-                                       [?coldest <- maybe-nil-min-temp :from [Temperature
-                                                                              ;; Gracefully handle nil.
-                                                                              (< (or temperature 0)
-                                                                                 ?max-temp)]]]
+                                    ;; Note a non-equality based unification.
+                                    ;; Gets max temp under a given max threshold.
+                                    [?coldest <- maybe-nil-min-temp :from [Temperature
+                                                                           ;; Gracefully handle nil.
+                                                                           (< (or temperature 0)
+                                                                              ?max-temp)]]]
 
-                                      (insert! (->Cold (:temperature ?coldest)))]]
+                                   (insert! (->Cold (:temperature ?coldest)))]]
 
-      :queries [coldest-temp-query [[] [[?cold <- Cold]]]]
+   :queries [coldest-temp-query [[] [[?cold <- Cold]]]]
 
-      :sessions [session-no-join [coldest-temp-rule-no-join coldest-temp-query] {}
-                 session-join [coldest-temp-rule-join coldest-temp-query] {}]}
+   :sessions [session-no-join [coldest-temp-rule-no-join coldest-temp-query] {:fact-type-fn type-or-class}
+              session-join [coldest-temp-rule-join coldest-temp-query] {:fact-type-fn type-or-class}]}
 
-     (let [temp-nil (->Temperature nil "MCI")
-           temp-10 (->Temperature 10 "MCI")
+  (let [temp-nil (->Temperature nil "MCI")
+        temp-10 (->Temperature 10 "MCI")
 
-           insert-nil-first-session-no-join (-> session-no-join
-                                                (insert temp-nil)
-                                                (insert temp-10)
-                                                fire-rules)
-           insert-nil-second-session-no-join (-> session-no-join
-                                                 (insert temp-10)
-                                                 (insert temp-nil)
-                                                 fire-rules)
-
-           insert-nil-first-session-join (-> session-join
-                                             (insert (with-meta {:temperature 15} {:type :max-threshold}))
+        insert-nil-first-session-no-join (-> session-no-join
                                              (insert temp-nil)
                                              (insert temp-10)
                                              fire-rules)
-           insert-nil-second-session-join (-> session-join
-                                              (insert (with-meta {:temperature 15} {:type :max-threshold}))
+        insert-nil-second-session-no-join (-> session-no-join
                                               (insert temp-10)
                                               (insert temp-nil)
-                                              fire-rules)]
+                                              fire-rules)
 
-       (is (= (count (query insert-nil-first-session-no-join coldest-temp-query))
-              (count (query insert-nil-second-session-no-join coldest-temp-query)))
-           "Failed expected counts when flipping insertion order for AccumulateNode.")
+        insert-nil-first-session-join (-> session-join
+                                          (insert {:temperature 15
+                                                   :type :max-threshold})
+                                          (insert temp-nil)
+                                          (insert temp-10)
+                                          fire-rules)
+        insert-nil-second-session-join (-> session-join
+                                           (insert {:temperature 15
+                                                    :type :max-threshold})
+                                           (insert temp-10)
+                                           (insert temp-nil)
+                                           fire-rules)]
 
-       (is (= #{{:?cold (->Cold 10)}}
-              (set (query insert-nil-first-session-no-join coldest-temp-query))
-              (set (query insert-nil-second-session-no-join coldest-temp-query)))
-           "Failed expected query results when flipping insertion order for AccumulateNode.")
+    (is (= (count (query insert-nil-first-session-no-join coldest-temp-query))
+           (count (query insert-nil-second-session-no-join coldest-temp-query)))
+        "Failed expected counts when flipping insertion order for AccumulateNode.")
 
-       (is (= (count (query insert-nil-first-session-join coldest-temp-query))
-              (count (query insert-nil-second-session-join coldest-temp-query)))
-           "Failed expected counts when flipping insertion order for AccumulateWithJoinNode.")
+    (is (= #{{:?cold (->Cold 10)}}
+           (set (query insert-nil-first-session-no-join coldest-temp-query))
+           (set (query insert-nil-second-session-no-join coldest-temp-query)))
+        "Failed expected query results when flipping insertion order for AccumulateNode.")
 
-       (is (= #{{:?cold (->Cold 10)}}
-              (set (query insert-nil-first-session-join coldest-temp-query))
-              (set (query insert-nil-second-session-join coldest-temp-query)))
-           "Failed expected query results when flipping insertion order for AccumulateWithJoinNode."))))
+    (is (= (count (query insert-nil-first-session-join coldest-temp-query))
+           (count (query insert-nil-second-session-join coldest-temp-query)))
+        "Failed expected counts when flipping insertion order for AccumulateWithJoinNode.")
+
+    (is (= #{{:?cold (->Cold 10)}}
+           (set (query insert-nil-first-session-join coldest-temp-query))
+           (set (query insert-nil-second-session-join coldest-temp-query)))
+        "Failed expected query results when flipping insertion order for AccumulateWithJoinNode.")))
 
 (def-rules-test test-nil-accum-reduced-has-tokens-retracted-when-item-retracted
 
@@ -1319,8 +1324,8 @@
                             [?t <- (assoc (acc/all) :convert-return-fn (constantly []))
                              ;; Note that only the binding that comes from a previous condition can use a filter function
                              ;; other than equality.  The = symbol is special-cased to potentially create a new binding;
-                             ;; if we used (join-filter-equals ?degrees temperature) here we would have an invalid rule constraint.
-                             :from [Temperature (join-filter-equals ?loc location) (= ?degrees temperature)]]]
+                             ;; if we used (tu/join-filter-equals ?degrees temperature) here we would have an invalid rule constraint.
+                             :from [Temperature (tu/join-filter-equals ?loc location) (= ?degrees temperature)]]]
                (insert! (->TemperatureHistory [?loc ?degrees]))]]
 
    :queries [q [[] [[TemperatureHistory (= ?ts temperatures)]]]]
@@ -1355,7 +1360,7 @@
                (insert! (->TemperatureHistory [?loc (map :temperature ?ts)]))]
 
            r2 [[[?w <- WindSpeed (= ?loc location)]
-                            [?ts <- (acc/all) :from [Temperature (join-filter-equals ?loc location)]]]
+                            [?ts <- (acc/all) :from [Temperature (tu/join-filter-equals ?loc location)]]]
                (insert! (->TemperatureHistory [?loc (map :temperature ?ts)]))]]
 
    :queries [q [[] [[TemperatureHistory (= ?ts temperatures)]]]]
@@ -1408,7 +1413,7 @@
                                 (insert! (->Temperature [?t []] "MCI"))]
 
            binding-from-parent-non-equals [[[Cold (= ?t temperature)]
-                                                        [?hot-facts <- (acc/all) :from [Hot (join-filter-equals ?t temperature)]]]
+                                                        [?hot-facts <- (acc/all) :from [Hot (tu/join-filter-equals ?t temperature)]]]
                                            (insert! (->Temperature [?t []] "MCI"))]]
 
    :queries [q [[] [[Temperature (= ?t temperature)]]]]
@@ -1540,9 +1545,10 @@
                             (cond (false? a) false
                                   (false? b) true
                                   :else (throw
-                                         (IllegalStateException. (str "This test should only compare false and numeric values, "
-                                                                      \newline not
-                                                                      "a numeric value to another numeric value")))))
+                                         (ex-info (str "This test should only compare false and numeric values, "
+                                                       \newline not
+                                                       "a numeric value to another numeric value")
+                                                  {:a a :b b}))))
                           false))
 
 (def-rules-test test-false-field-in-accum
@@ -1601,7 +1607,7 @@
 
    :rules [r1 [[[Cold (= ?t temperature)]
                             [?ws <- (acc/all) :from [ColdAndWindy
-                                                     (and (join-filter-equals ?t temperature)
+                                                     (and (tu/join-filter-equals ?t temperature)
                                                           (even? windspeed))]]]
                (insert! (->TemperatureHistory (map :windspeed ?ws)))]
 
@@ -1716,7 +1722,7 @@
                            (insert! (->TemperatureHistory [?loc ?temp ?temp-count]))]
 
            filter-join-rule [[[WindSpeed (= ?loc location)]
-                              [?temp-count <- (acc/count) :from [Temperature (join-filter-equals ?loc location) (= ?temp temperature)]]]
+                              [?temp-count <- (acc/count) :from [Temperature (tu/join-filter-equals ?loc location) (= ?temp temperature)]]]
                              (insert! (->TemperatureHistory [?loc ?temp ?temp-count]))]]
 
    :sessions [empty-session-hash-join [q hash-join-rule] {}

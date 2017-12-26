@@ -1,5 +1,21 @@
 This is a history of changes to clara-rules.
 
+### 0.17.0-SNAPSHOT
+* Add clear-ns-productions! functionality to support clean reloading of rule and query definitions. See [issue 316](https://github.com/cerner/clara-rules/issues/316) for details.
+* Support session inspection and fact-graph in ClojureScript. See [issue 307](https://github.com/cerner/clara-rules/issues/307) for details.
+* Fix issue when compiling CLJS and session, rules, and fact-types are not in the same namespace or explicitly referred. See [issue 359](https://github.com/cerner/clara-rules/issues/359).
+
+### 0.16.1
+* Fix deserialization failure when the rulebase contains a clojure.lang.PersistentList$EmptyList. See [issue 352](https://github.com/cerner/clara-rules/issues/352) for details.
+* Fix bug in which bindings from previous conditions could be ignored in negations of compound boolean expressions.  See [issue 304](https://github.com/cerner/clara-rules/issues/304) for details.
+* Fail at compile time when :test conditions are empty.  See [PR 349](https://github.com/cerner/clara-rules/pull/349) for details.
+* Fix exception in clara.tools.inspect/explain-activations.  See [PR 346](https://github.com/cerner/clara-rules/pull/346) for details.
+* Always return a vector from the all accumulator. See [issue 338](https://github.com/cerner/clara-rules/issues/338) for details.
+* Refactored session inspection in [PR 339](https://github.com/cerner/clara-rules/pull/339), which is also expected to improve the performance of session inspection.
+
+### 0.16.0
+* Eliminate laziness that broke internal contracts around order of execution, causing an exception to be thrown when executing queries with negation conditions in some edge cases.  See [issue 303](https://github.com/cerner/clara-rules/issues/303) for details.
+
 ### 0.15.2
 * Fix a bug in the distinct accumulator.  See [issue 325](https://github.com/cerner/clara-rules/issues/325).
 
@@ -104,7 +120,7 @@ Here are the specifics on what changed since 0.9.2:
 
 * Fix unification bugs when dealing with nested negations. See [issue 166](https://github.com/cerner/clara-rules/issues/166).
 * Properly handle tests nested in negation nodes. See [issue 165](https://github.com/cerner/clara-rules/issues/165).
-* Improve inspect function to explain the insertion of a given fact. See [issue 161](https://github.com/cerner/clara-rules/issues/161).  
+* Improve inspect function to explain the insertion of a given fact. See [issue 161](https://github.com/cerner/clara-rules/issues/161).
 * Remove duplicate rules and dependency on order of rules when creating sessions. See [issue 157](https://github.com/cerner/clara-rules/issues/157).
 * Significantly improve performance of building the Rete network when dealing with large disjunctions. See [issue 153](https://github.com/cerner/clara-rules/issues/153).
 * Allow multiple binding and equality checks in a single expression. See [issue 151](https://github.com/cerner/clara-rules/issues/151).

@@ -4,12 +4,23 @@
    * inspect, which returns a data structure describing the session that can be used by tooling.
    * explain-activations, which uses inspect and prints a human-readable description covering
      why each rule activation or query match occurred."
-  (:require [clara.rules.compiler :as com]
-            [clara.rules.engine :as eng]
+  (:require #?(:clj [clara.rules.engine :as eng])
+            #?(:cljs [clara.rules.engine :as eng :refer [RootJoinNode
+                                                         HashJoinNode
+                                                         ExpressionJoinNode
+                                                         NegationNode
+                                                         NegationWithJoinFilterNode]])
             [clara.rules.schema :as schema]
             [clara.rules.memory :as mem]
-            [schema.core :as s]
-            [schema.macros :as sm]))
+            #?(:cljs [goog.string :as gstr])
+            [schema.core :as s])
+  #?(:clj
+    (:import [clara.rules.engine
+              RootJoinNode
+              HashJoinNode
+              ExpressionJoinNode
+              NegationNode
+              NegationWithJoinFilterNode])))
 
 (s/defschema ConditionMatch
   "A structure associating a condition with the facts that matched them.  The fields are:
@@ -55,19 +66,29 @@
 
 (defn- get-condition-matches
   "Returns facts matching each condition"
-  [beta-graph memory]
-  (let [join-node-ids (for [[node-id beta-node] (:id-to-condition-node beta-graph)
-                            :let [node-type (:node-type beta-node)]
+  [nodes memory]
+  (let [node-class->node-type (fn [node]
+                                (get {ExpressionJoinNode :join
+                                      HashJoinNode :join
+                                      RootJoinNode :join
+                                      NegationNode :negation
+                                      NegationWithJoinFilterNode :negation} (type node)))
+
+        join-node-ids (for [beta-node nodes
+                            :let [node-type (node-class->node-type beta-node)]
+                            ;; Unsupported and irrelevant node types will have a node-type of nil
+                            ;; since the map in node-class->node-type won't contain an entry
+                            ;; for them, so this check will remove them.
                             :when (contains? #{:join :negation}
                                              node-type)]
-                        [node-id beta-node node-type])]
+                        [(:id beta-node) (:condition beta-node) node-type])]
     (reduce
-     (fn [matches [node-id beta-node node-type]]
+     (fn [matches [node-id condition node-type]]
        (update-in matches
                   (condp = node-type
 
                     :join
-                    [(:condition beta-node)]
+                    [condition]
 
                     ;; Negation nodes store the fact that they are a negation
                     ;; in their :node-type and strip the information out of the
@@ -75,7 +96,7 @@
                     ;; that is contained in rule and query data structures created by defrule
                     ;; and that conforms to the Condition schema.
                     :negation
-                    [[:not (:condition beta-node)]]) 
+                    [[:not condition]])
                   concat (map :fact (mem/get-elements-all memory {:id node-id}))))
      {}
      join-node-ids)))
@@ -109,7 +130,10 @@
             :condition condition}))
 
        ;; Remove generated bindings from user-facing explanation.
-       (into {} (remove (fn [[k v]] (.startsWith (name k) "?__gen__")) bindings))))))
+       (into {} (remove (fn [[k v]]
+                          #?(:clj (.startsWith (name k) "?__gen__"))
+                          #?(:cljs (gstr/startsWith (name k) "?__gen__")))
+                        bindings))))))
 
 (defn ^:private gen-fact->explanations
   [session]
@@ -156,9 +180,7 @@
    The above segment will return matches for the rule in question."
   [session] :- InspectionSchema
   (let [{:keys [memory rulebase]} (eng/components session)
-        {:keys [productions production-nodes query-nodes]} rulebase
-
-        beta-graph (com/to-beta-graph productions)
+        {:keys [productions production-nodes query-nodes id-to-node]} rulebase
 
         ;; Map of queries to their nodes in the network.
         query-to-nodes (into {} (for [[query-name query-node] query-nodes]
@@ -178,7 +200,7 @@
                             [query (to-explanations session
                                                     (mem/get-tokens-all memory query-node))]))
 
-     :condition-matches (get-condition-matches beta-graph memory)
+     :condition-matches (get-condition-matches (vals id-to-node) memory)
 
      :insertions (into {}
                        (for [[rule rule-node] rule-to-nodes]
@@ -194,20 +216,20 @@
   "Prints a human-readable explanation of the facts and conditions that created the Rete token."
   ([explanation] (explain-activation explanation ""))
   ([explanation prefix]
-   (doseq [{:keys [fact condition]} (:matches explanation)]
-     (if (:from condition)
+     (doseq [{:keys [fact condition]} (:matches explanation)]
+       (if (:from condition)
          ;; Explain why the accumulator matched.
-       (let [{:keys [accumulator from]} condition]
-         (println prefix fact)
-         (println prefix "  accumulated with" accumulator)
-         (println prefix "  from" (:type from))
-         (println prefix "  where" (:constraints from)))
+         (let [{:keys [accumulator from]} condition]
+           (println prefix fact)
+           (println prefix "  accumulated with" accumulator)
+           (println prefix "  from" (:type from))
+           (println prefix "  where" (:constraints from)))
 
          ;; Explain why a condition matched.
-       (let [{:keys [type constraints]} condition]
-         (println prefix fact)
-         (println prefix "  is a" type)
-         (println prefix "  where" constraints))))))
+         (let [{:keys [type constraints]} condition]
+           (println prefix fact)
+           (println prefix "  is a" type)
+           (println prefix "  where" constraints))))))
 
 (defn explain-activations
   "Prints a human-friendly explanation of why rules and queries matched in the given session.
