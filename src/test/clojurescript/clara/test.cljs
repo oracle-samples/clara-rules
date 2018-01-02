@@ -1,6 +1,7 @@
 (ns clara.test
   (:require-macros [cljs.test :as test])
   (:require [clara.test-rules]
+            [clara.test-rules-require]
             [cljs.test]
             [clara.test-salience]
             [clara.test-complex-negation]
@@ -9,13 +10,16 @@
             [clara.test-accumulators]
             [clara.test-exists]
             [clara.tools.test-tracing]
+            [clara.tools.test-fact-graph]
+            [clara.tools.test-inspect]
             [clara.test-truth-maintenance]
             [clara.test-dsl]
             [clara.test-accumulation]
             [clara.test-memory]
             [clara.test-simple-rules]
             [clara.test-rhs-retract]
-            [clara.test-bindings]))
+            [clara.test-bindings]
+            [clara.test-clear-ns-productions]))
 
 (enable-console-print!)
 
@@ -33,6 +37,7 @@
 (defn ^:export run []
   (binding [*successful?* (atom nil)]
     (test/run-tests 'clara.test-rules
+                    'clara.test-rules-require
                     'clara.test-common
                     'clara.test-salience
                     'clara.test-testing-utils
@@ -40,11 +45,14 @@
                     'clara.test-accumulators
                     'clara.test-exists
                     'clara.tools.test-tracing
+                    'clara.tools.test-fact-graph
+                    'clara.tools.test-inspect
                     'clara.test-truth-maintenance
                     'clara.test-dsl
                     'clara.test-accumulation
                     'clara.test-memory
                     'clara.test-simple-rules
                     'clara.test-rhs-retract
-                    'clara.test-bindings)
+                    'clara.test-bindings
+                    'clara.test-clear-ns-productions)
     @*successful?*))

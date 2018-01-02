@@ -410,3 +410,21 @@ See the [query authoring documentation](http://www.clara-rules.org/docs/queries/
            (cond-> ~(dsl/parse-query* binding definition {} (meta &form))
              ~name (assoc :name ~(str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name)))
              ~doc (assoc :doc ~doc)))))))
+
+#?(:clj
+   (defmacro clear-ns-productions!
+     "Ensures that any rule/query definitions which have been cached will be cleared from the associated namespace.
+      Rule and query definitions can be cached such that if their definitions are not explicitly overwritten with the same
+      name (i.e. deleted or renamed), the stale definitions can be loaded into a session using that namespace on
+      reload via the REPL or mechanism such as figwheel. Place (clear-ns-productions!) at the top of any namespace
+      defining rules/queries to ensure the cache is cleared properly."
+     []
+     (if (com/compiling-cljs?)
+       `(clara.macros/clear-ns-productions!)
+       (let [production-syms (->> (ns-interns *ns*)
+                                  (filter (comp var? second))
+                                  (filter (comp (some-fn :rule :query :production-seq) meta second)) ; Filter down to rules, queries, and seqs of both.
+                                  (map first)               ; Take the symbols for the rule/query vars
+                                  )]
+         (doseq [psym production-syms]
+           (ns-unmap *ns* psym))))))
