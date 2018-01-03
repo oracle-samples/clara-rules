@@ -6,8 +6,12 @@
             [clara.rules.dsl :as dsl]
             [schema.test]
             [clara.generative.generators :as gen])
-  (import [clara.rules.testfacts Temperature WindSpeed Cold TemperatureHistory
-           ColdAndWindy]))
+  (:import [clara.rules.testfacts
+            Temperature
+            WindSpeed
+            Cold
+            TemperatureHistory
+            ColdAndWindy]))
 
 (use-fixtures :once schema.test/validate-schemas)
 
