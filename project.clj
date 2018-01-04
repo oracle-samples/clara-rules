@@ -7,11 +7,17 @@
                  [prismatic/schema "1.1.6"]]
   :profiles {:dev {:dependencies [[org.clojure/math.combinatorics "0.1.3"]
                                   [org.clojure/data.fressian "0.2.1"]]}
-             :provided {:dependencies [[org.clojure/clojurescript "1.7.170"]]}}
-  :plugins [[lein-codox "0.9.0" :exclusions [org.clojure/clojure]]
-            [lein-javadoc "0.2.0" :exclusions [org.clojure/clojure]]
-            [lein-cljsbuild "1.1.3" :exclusions [org.clojure/clojure]]
-            [lein-figwheel "0.5.2" :exclusions [org.clojure/clojure]]]
+             :provided {:dependencies [[org.clojure/clojurescript "1.7.170"]]}
+             :recent-clj {:dependencies [^:replace [org.clojure/clojure "1.9.0"]
+                                         ^:replace [org.clojure/clojurescript "1.9.946"]]}}
+  :plugins [[lein-codox "0.10.3" :exclusions [org.clojure/clojure
+                                              org.clojure/clojurescript]]
+            [lein-javadoc "0.3.0" :exclusions [org.clojure/clojure
+                                               org.clojure/clojurescript]]
+            [lein-cljsbuild "1.1.7" :exclusions [org.clojure/clojure
+                                                 org.clojure/clojurescript]]
+            [lein-figwheel "0.5.14" :exclusions [org.clojure/clojure
+                                                 org.clojure/clojurescript]]]
   :codox {:namespaces [clara.rules clara.rules.dsl clara.rules.accumulators
                        clara.rules.listener clara.rules.durability
                        clara.tools.inspect clara.tools.tracing

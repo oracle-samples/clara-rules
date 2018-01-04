@@ -2,7 +2,12 @@
   (:use clara.rules
         clara.rules.testfacts)
   (:refer-clojure :exclude [==])
-  (import [clara.rules.testfacts Temperature WindSpeed Cold ColdAndWindy LousyWeather]))
+  (:import [clara.rules.testfacts
+            Temperature
+            WindSpeed
+            Cold
+            ColdAndWindy
+            LousyWeather]))
 
 (def ^:dynamic *rule-order-atom* nil)
 
