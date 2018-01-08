@@ -73,8 +73,8 @@
                                       RootJoinNode :join
                                       NegationNode :negation
                                       NegationWithJoinFilterNode :negation} (type node)))
-        
-        join-node-ids (for [beta-node nodes 
+
+        join-node-ids (for [beta-node nodes
                             :let [node-type (node-class->node-type beta-node)]
                             ;; Unsupported and irrelevant node types will have a node-type of nil
                             ;; since the map in node-class->node-type won't contain an entry
@@ -96,7 +96,7 @@
                     ;; that is contained in rule and query data structures created by defrule
                     ;; and that conforms to the Condition schema.
                     :negation
-                    [[:not condition]]) 
+                    [[:not condition]])
                   concat (map :fact (mem/get-elements-all memory {:id node-id}))))
      {}
      join-node-ids)))
@@ -232,7 +232,7 @@
            (println prefix "  where" constraints))))))
 
 (defn explain-activations
-  "Prints a human-friend explanation of why rules and queries matched in the given session.
+  "Prints a human-friendly explanation of why rules and queries matched in the given session.
   A caller my optionally pass a :rule-filter-fn, which is a predicate
 
   (clara.tools.inspect/explain-activations session
