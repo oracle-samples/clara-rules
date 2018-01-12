@@ -43,13 +43,13 @@
    (coll? source) (seq source)
    :else (throw (IllegalArgumentException. "Unknown source value type passed to defsession"))))
 
-;;; ident functions added to clojure.core in 1.9
+;;; added to clojure.core in 1.9
 (defn ident?
   "Return true if x is a symbol or keyword"
   [x] (or (keyword? x) (symbol? x)))
 
 (defn qualified-keyword?
-  "Return true if x is a symbol or keyword with a namespace"
+  "Return true if x is a keyword with a namespace"
   [x] (and (keyword? x) (namespace x) true))
 
 (defn build-rule
