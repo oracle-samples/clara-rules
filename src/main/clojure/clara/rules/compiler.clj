@@ -1077,28 +1077,31 @@
                            result-binding (conj result-binding)
                            fact-binding (conj fact-binding))
 
-            ;; Find children that all parent nodes have.
-            common-children-ids (into
-                                 ;; Since we require that id-to-condition-nodes have an equal value to "node" under the ID
-                                 ;; for this to be used, the order of this set probably doesn't matter in most cases.  However, in any possible edge
-                                 ;; cases where there are equal nodes under different IDs, sorting the set will add determinism.
-                                 ;; Having different nodes under the same
-                                 ;; ID would be a bug, but having an equivalent node under multiple IDs wouldn't necessarily be one.
-                                 (sorted-set)
-                                 (apply s/union (-> (:forward-edges beta-graph)
-                                                    (select-keys parent-ids)
-                                                    (vals))))
-
+            ; Find children that all parent nodes have.
+            forward-edges (apply s/union (-> (:forward-edges beta-graph)
+                                                (select-keys parent-ids)
+                                                (vals)))
 
             id-to-condition-nodes (:id-to-condition-node beta-graph)
 
-            ;; Find an id for an equivalent node.
-            existing-id (first (for [child-id common-children-ids
-                                     :when (= node (get id-to-condition-nodes child-id))]
-                                 child-id))
+            ;; Since we require that id-to-condition-nodes have an equal value to "node" under the ID
+            ;; for this to be used, the order of this set probably doesn't matter in most cases.  However, in any possible edge
+            ;; cases where there are equal nodes under different IDs, sorting the set will add determinism.
+            ;; Having different nodes under the same
+            ;; ID would be a bug, but having an equivalent node under multiple IDs wouldn't necessarily be one.
+            update-node->id (fn [m id]
+                              (let [node (get id-to-condition-nodes id)
+                                    prev (get m node)]
+                                (if prev
+                                  (assoc! m node (min prev id))
+                                  (assoc! m node id))))
 
-            ;; Use the existing id or create a new one.
-            node-id (or existing-id
+            node->id (reduce update-node->id
+                             (transient {})
+                             forward-edges)
+
+            ; Use the existing id or create a new one.
+            node-id (or (get node->id node)
                         (create-id-fn))
 
             graph-with-node (add-node beta-graph parent-ids node-id node)]
