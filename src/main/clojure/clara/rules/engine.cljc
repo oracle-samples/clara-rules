@@ -295,13 +295,13 @@
   This should only be used for facts explicitly retracted in a RHS.
   It should not be used for retractions that occur as part of automatic truth maintenance."
   [facts]
-  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} *current-session*]
-
+  (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} *current-session*
+        {:keys [node token]} *rule-context*]
     ;; Update the count so the rule engine will know when we have normalized.
     (swap! insertions + (count facts))
 
     (when listener
-      (l/retract-facts! listener facts))
+      (l/retract-facts! listener node token facts))
 
     (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
             root alpha-roots]
@@ -320,7 +320,7 @@
 
     ;; Track this insertion in our transient memory so logical retractions will remove it.
     (if unconditional
-      (l/insert-facts! listener facts)
+      (l/insert-facts! listener node token facts)
       (do
         (mem/add-insertions! transient-memory node token facts)
         (l/insert-facts-logical! listener node token facts)))
@@ -1873,7 +1873,7 @@
 
               :insertion
               (do
-                (l/insert-facts! transient-listener facts)
+                (l/insert-facts! transient-listener nil nil facts)
 
                 (binding [*pending-external-retractions* (atom [])]
                   ;; Bind the external retractions cache so that any logical retractions as a result
@@ -1887,7 +1887,7 @@
 
               :retraction
               (do
-                (l/retract-facts! transient-listener facts)
+                (l/retract-facts! transient-listener nil nil facts)
 
                 (binding [*pending-external-retractions* (atom facts)]
                   (external-retract-loop get-alphas-fn transient-memory transport transient-listener)))))
@@ -1967,7 +1967,7 @@
            (map (fn [{bindings :bindings}]
 
                   ;; Filter generated symbols. We check first since this is an uncommon flow.
-                  (if (some #(re-find #"__gen" (name %)) (keys bindings) )
+                  (if (some #(re-find #"__gen" (name %)) (keys bindings))
 
                     (into {} (remove (fn [[k v]] (re-find #"__gen"  (name k)))
                                      bindings))

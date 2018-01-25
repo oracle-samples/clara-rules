@@ -16,18 +16,18 @@
             [clara.order-ruleset :as order-rules]
             [schema.test]
             [clara.tools.testing-utils :as tu])
-  (import [clara.rules.testfacts Temperature WindSpeed Cold Hot TemperatureHistory
-           ColdAndWindy LousyWeather First Second Third Fourth FlexibleFields]
-          [clara.rules.engine
-           ISession
-           ISystemFact]
-          [java.util TimeZone]
-          [clara.tools.tracing
-           PersistentTracingListener]
-          [java.util
-           List
-           LinkedList
-           ArrayList]))
+  (:import [clara.rules.testfacts Temperature WindSpeed Cold Hot TemperatureHistory
+            ColdAndWindy LousyWeather First Second Third Fourth FlexibleFields]
+           [clara.rules.engine
+            ISession
+            ISystemFact]
+           [java.util TimeZone]
+           [clara.tools.tracing
+            PersistentTracingListener]
+           [java.util
+            List
+            LinkedList
+            ArrayList]))
 
 (use-fixtures :once schema.test/validate-schemas tu/opts-fixture)
 
