@@ -294,7 +294,34 @@
   ([lhs rhs properties]
      (parse-rule* lhs rhs properties &env)))
 
+;;; added to clojure.core in 1.9
+(defn qualified-keyword?
+  "Return true if x is a keyword with a namespace"
+  [x] (and (keyword? x) (namespace x) true))
+
+(defn build-rule
+  [name & body]
+  (let [doc (if (string? (first body)) (first body) nil)
+        body (if doc (rest body) body)
+        properties (if (map? (first body)) (first body) nil)
+        definition (if properties (rest body) body)
+        {:keys [lhs rhs]} (split-lhs-rhs definition)
+        name (if (qualified-keyword? name) name (str (clojure.core/name (com/cljs-ns)) "/" (clojure.core/name name)))]
+    (cond-> (parse-rule* lhs rhs properties {})
+            name (assoc :name name)
+            doc (assoc :doc doc))))
+
 (defmacro parse-query
   "Macro used to dynamically create a new rule using the DSL syntax."
   [params lhs]
   (parse-query* params lhs &env))
+
+(defn build-query
+  [name & body]
+  (let [doc (if (string? (first body)) (first body) nil)
+        binding (if doc (second body) (first body))
+        definition (if doc (drop 2 body) (rest body))
+        name (if (qualified-keyword? name) name (str (clojure.core/name (com/cljs-ns)) "/" (clojure.core/name name)))]
+    (cond-> (parse-query* binding definition {})
+            name (assoc :name name)
+            doc (assoc :doc doc))))

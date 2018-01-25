@@ -43,29 +43,6 @@
    (coll? source) (seq source)
    :else (throw (IllegalArgumentException. "Unknown source value type passed to defsession"))))
 
-;;; added to clojure.core in 1.9
-(defn ident?
-  "Return true if x is a symbol or keyword"
-  [x] (or (keyword? x) (symbol? x)))
-
-(defn qualified-keyword?
-  "Return true if x is a keyword with a namespace"
-  [x] (and (keyword? x) (namespace x) true))
-
-(defn build-rule
-  [name & body]
-  (let [doc (if (string? (first body)) (first body) nil)
-        body (if doc (rest body) body)
-        properties (if (map? (first body)) (first body) nil)
-        definition (if properties (rest body) body)
-        {:keys [lhs rhs]} (dsl/split-lhs-rhs definition)
-        name (if (qualified-keyword? name) name (str (clojure.core/name (com/cljs-ns)) "/" (clojure.core/name name)))
-
-        production (cond-> (dsl/parse-rule* lhs rhs properties {})
-                           name (assoc :name name)
-                           doc (assoc :doc doc))]
-    production))
-
 (defn defrule!
   [name production]
   (add-production name production)
@@ -75,18 +52,6 @@
 (defmacro defrule
   [name & body]
   (defrule! name (apply build-rule name body)))
-
-(defn build-query
-  [name & body]
-  (let [doc (if (string? (first body)) (first body) nil)
-        binding (if doc (second body) (first body))
-        definition (if doc (drop 2 body) (rest body))
-        name (if (qualified-keyword? name) name (str (clojure.core/name (com/cljs-ns)) "/" (clojure.core/name name)))
-
-        query (cond-> (dsl/parse-query* binding definition {})
-                      name (assoc :name name)
-                      doc (assoc :doc doc))]
-    query))
 
 (defn defquery!
   [name query]
