@@ -300,16 +300,20 @@
   [x] (and (keyword? x) (namespace x) true))
 
 (defn build-rule
-  [name & body]
-  (let [doc (if (string? (first body)) (first body) nil)
-        body (if doc (rest body) body)
-        properties (if (map? (first body)) (first body) nil)
-        definition (if properties (rest body) body)
-        {:keys [lhs rhs]} (split-lhs-rhs definition)
-        name (if (qualified-keyword? name) name (str (clojure.core/name (com/cljs-ns)) "/" (clojure.core/name name)))]
-    (cond-> (parse-rule* lhs rhs properties {})
-            name (assoc :name name)
-            doc (assoc :doc doc))))
+  "Function used to parse and build a rule using the DSL syntax."
+  ([name body] (build-rule name body {}))
+  ([name body form-meta]
+   (let [doc (if (string? (first body)) (first body) nil)
+         body (if doc (rest body) body)
+         properties (if (map? (first body)) (first body) nil)
+         definition (if properties (rest body) body)
+         {:keys [lhs rhs]} (split-lhs-rhs definition)
+         name (if (qualified-keyword? name) name (str (clojure.core/name (com/cljs-ns)) "/" (clojure.core/name name)))]
+     (cond-> (parse-rule* lhs rhs properties {} form-meta)
+             name (assoc :name (if (com/compiling-cljs?)
+                                 (str (clojure.core/name (com/cljs-ns)) "/" (clojure.core/name name))
+                                 (str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name))))
+             doc (assoc :doc doc)))))
 
 (defmacro parse-query
   "Macro used to dynamically create a new rule using the DSL syntax."
@@ -317,11 +321,15 @@
   (parse-query* params lhs &env))
 
 (defn build-query
-  [name & body]
-  (let [doc (if (string? (first body)) (first body) nil)
-        binding (if doc (second body) (first body))
-        definition (if doc (drop 2 body) (rest body))
-        name (if (qualified-keyword? name) name (str (clojure.core/name (com/cljs-ns)) "/" (clojure.core/name name)))]
-    (cond-> (parse-query* binding definition {})
-            name (assoc :name name)
-            doc (assoc :doc doc))))
+  "Function used to parse and build a query using the DSL syntax."
+  ([name body] (build-query name body {}))
+  ([name body form-meta]
+   (let [doc (if (string? (first body)) (first body) nil)
+         binding (if doc (second body) (first body))
+         definition (if doc (drop 2 body) (rest body))
+         name (if (qualified-keyword? name) name (str (clojure.core/name (com/cljs-ns)) "/" (clojure.core/name name)))]
+     (cond-> (parse-query* binding definition {} form-meta)
+             name (assoc :name (if (com/compiling-cljs?)
+                                 (str (clojure.core/name (com/cljs-ns)) "/" (clojure.core/name name))
+                                 (str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name))))
+             doc (assoc :doc doc)))))

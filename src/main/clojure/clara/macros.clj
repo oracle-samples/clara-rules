@@ -51,7 +51,7 @@
 
 (defmacro defrule
   [name & body]
-  (defrule! name (apply build-rule name body)))
+  (defrule! name (dsl/build-rule name body)))
 
 (defn defquery!
   [name query]
@@ -61,7 +61,7 @@
 
 (defmacro defquery
   [name & body]
-  (defquery! name (apply build-query name body)))
+  (defquery! name (dsl/build-query name body)))
 
 (sc/defn gen-beta-network :- [sc/Any] ; Returns a sequence of compiled nodes.
   "Generates the beta network from the beta tree. "
