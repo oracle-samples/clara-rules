@@ -376,18 +376,9 @@ See the [rule authoring documentation](http://www.clara-rules.org/docs/rules/) f
     [name & body]
     (if (com/compiling-cljs?)
       `(clara.macros/defrule ~name ~@body)
-      (let [doc (if (string? (first body)) (first body) nil)
-            body (if doc (rest body) body)
-            properties (if (map? (first body)) (first body) nil)
-            definition (if properties (rest body) body)
-            {:keys [lhs rhs]} (dsl/split-lhs-rhs definition)]
-        (when-not rhs
-          (throw (ex-info (str "Invalid rule " name ". No RHS (missing =>?).")
-                          {})))
+      (let [doc (if (string? (first body)) (first body) nil)]
         `(def ~(vary-meta name assoc :rule true :doc doc)
-           (cond-> ~(dsl/parse-rule* lhs rhs properties {} (meta &form))
-             ~name (assoc :name ~(str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name)))
-             ~doc (assoc :doc ~doc)))))))
+           ~(dsl/build-rule name body (meta &form)))))))
 
 #?(:clj
   (defmacro defquery
@@ -407,9 +398,7 @@ See the [query authoring documentation](http://www.clara-rules.org/docs/queries/
             binding (if doc (second body) (first body))
             definition (if doc (drop 2 body) (rest body) )]
         `(def ~(vary-meta name assoc :query true :doc doc)
-           (cond-> ~(dsl/parse-query* binding definition {} (meta &form))
-             ~name (assoc :name ~(str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name)))
-             ~doc (assoc :doc ~doc)))))))
+           ~(dsl/build-query name body (meta &form)))))))
 
 #?(:clj
    (defmacro clear-ns-productions!

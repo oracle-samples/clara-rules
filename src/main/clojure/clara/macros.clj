@@ -43,19 +43,6 @@
    (coll? source) (seq source)
    :else (throw (IllegalArgumentException. "Unknown source value type passed to defsession"))))
 
-(defn build-rule
-  [name & body]
-  (let [doc (if (string? (first body)) (first body) nil)
-        body (if doc (rest body) body)
-        properties (if (map? (first body)) (first body) nil)
-        definition (if properties (rest body) body)
-        {:keys [lhs rhs]} (dsl/split-lhs-rhs definition)
-
-        production (cond-> (dsl/parse-rule* lhs rhs properties {})
-                           name (assoc :name (str (clojure.core/name (com/cljs-ns)) "/" (clojure.core/name name)))
-                           doc (assoc :doc doc))]
-    production))
-
 (defn defrule!
   [name production]
   (add-production name production)
@@ -64,18 +51,7 @@
 
 (defmacro defrule
   [name & body]
-  (defrule! name (apply build-rule name body)))
-
-(defn build-query
-  [name & body]
-  (let [doc (if (string? (first body)) (first body) nil)
-        binding (if doc (second body) (first body))
-        definition (if doc (drop 2 body) (rest body))
-
-        query (cond-> (dsl/parse-query* binding definition {})
-                      name (assoc :name (str (clojure.core/name (com/cljs-ns)) "/" (clojure.core/name name)))
-                      doc (assoc :doc doc))]
-    query))
+  (defrule! name (dsl/build-rule name body)))
 
 (defn defquery!
   [name query]
@@ -85,7 +61,7 @@
 
 (defmacro defquery
   [name & body]
-  (defquery! name (apply build-query name body)))
+  (defquery! name (dsl/build-query name body)))
 
 (sc/defn gen-beta-network :- [sc/Any] ; Returns a sequence of compiled nodes.
   "Generates the beta network from the beta tree. "
