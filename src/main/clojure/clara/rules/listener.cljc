@@ -11,10 +11,10 @@
   (left-retract! [listener node tokens])
   (right-activate! [listener node elements])
   (right-retract! [listener node elements])
-  (insert-facts! [listener facts])
+  (insert-facts! [listener node token facts])
   (alpha-activate! [listener node facts])
   (insert-facts-logical! [listener node token facts])
-  (retract-facts! [listener facts])
+  (retract-facts! [listener node token facts])
   (alpha-retract! [listener node facts])
   (retract-facts-logical! [listener node token facts])
   (add-accum-reduced! [listener node join-bindings result fact-bindings])
@@ -35,13 +35,13 @@
     listener)
   (right-retract! [listener node elements]
     listener)
-  (insert-facts! [listener facts]
+  (insert-facts! [listener node token facts]
     listener)
   (alpha-activate! [listener node facts]
     listener)
   (insert-facts-logical! [listener node token facts]
     listener)
-  (retract-facts! [listener facts]
+  (retract-facts! [listener node token facts]
     listener)
   (alpha-retract! [listener node facts]
     listener)
@@ -85,9 +85,9 @@
     (doseq [child children]
       (right-retract! child node elements)))
 
-  (insert-facts! [listener facts]
+  (insert-facts! [listener node token facts]
     (doseq [child children]
-      (insert-facts! child facts)))
+      (insert-facts! child node token facts)))
   
   (alpha-activate! [listener node facts]
     (doseq [child children]
@@ -97,9 +97,9 @@
     (doseq [child children]
       (insert-facts-logical! child node token facts)))
 
-  (retract-facts! [listener facts]
+  (retract-facts! [listener node token facts]
     (doseq [child children]
-      (retract-facts! child facts)))
+      (retract-facts! child node token facts)))
   
   (alpha-retract! [listener node facts]
     (doseq [child children]

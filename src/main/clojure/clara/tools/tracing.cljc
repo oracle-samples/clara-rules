@@ -26,23 +26,23 @@
   (right-retract! [listener node elements]
     (append-trace listener {:type :right-retract :node-id (:id node) :elements elements}))
 
-  (insert-facts! [listener facts]
-    (append-trace listener {:type :add-facts :facts facts}))
+  (insert-facts! [listener node token facts]
+    (append-trace listener {:type :add-facts :node node :token token :facts facts}))
   
   (alpha-activate! [listener node facts]
     (append-trace listener {:type :alpha-activate :facts facts}))
 
   (insert-facts-logical! [listener node token facts]
-    (append-trace listener {:type :add-facts-logical :token token :facts facts}))
+    (append-trace listener {:type :add-facts-logical :node node :token token :facts facts}))
 
-  (retract-facts! [listener facts]
-    (append-trace listener {:type :retract-facts :facts facts}))
+  (retract-facts! [listener node token facts]
+    (append-trace listener {:type :retract-facts :node node :token token :facts facts}))
   
   (alpha-retract! [listener node facts]
     (append-trace listener {:type :alpha-retract :facts facts}))
 
   (retract-facts-logical! [listener node token facts]
-    (append-trace listener {:type :retract-facts-logical :token token :facts facts}))
+    (append-trace listener {:type :retract-facts-logical :node node :token token :facts facts}))
 
   (add-accum-reduced! [listener node join-bindings result fact-bindings]
     (append-trace listener {:type :accum-reduced
@@ -115,7 +115,7 @@
   [session]
   (if-let [listener (->> (eng/components session)
                          :listeners
-                         (filter #(instance? PersistentTracingListener %) )
+                         (filter #(instance? PersistentTracingListener %))
                          (first))]
     (.-trace ^PersistentTracingListener listener)
     (throw (ex-info "No tracing listener attached to session." {:session session}))))
