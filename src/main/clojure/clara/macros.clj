@@ -205,6 +205,10 @@
 
 (defn productions->session-assembly-form
   [productions options]
+  ;;; Calling com/names-unique here rather than in sources-and-options->session-assembly-form
+  ;;; as a ClojureScript DSL may call productions->session-assembly-form if that DSL
+  ;;; has its own mechanism for grouping rules which is different than the clara DSL.
+  (com/names-unique productions)
   (let [beta-graph (com/to-beta-graph productions)
         ;; Compile the children of the logical root condition.
         beta-network (gen-beta-network (get-in beta-graph [:forward-edges 0]) beta-graph #{})

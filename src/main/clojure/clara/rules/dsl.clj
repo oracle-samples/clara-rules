@@ -300,11 +300,14 @@
   [x] (and (keyword? x) (namespace x) true))
 
 (defn- production-name
+  "Compute the full production name. If a namespace-qualified keyword
+   is supplied, just use that for the name, otherwise compute from the
+   current namespace and associated var name."
   [name]
-  (cond
-    (qualified-keyword? name) name
-    (com/compiling-cljs?) (str (clojure.core/name (com/cljs-ns)) "/" (clojure.core/name name))
-    :else (str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name))))
+  (if (qualified-keyword? name)
+    name
+    (let [query-ns (clojure.core/name (if (com/compiling-cljs?) (com/cljs-ns) (ns-name *ns*)))]
+      (str query-ns "/" (clojure.core/name name)))))
 
 (defn build-rule
   "Function used to parse and build a rule using the DSL syntax."
