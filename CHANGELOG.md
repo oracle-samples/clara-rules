@@ -5,7 +5,6 @@ This is a history of changes to clara-rules.
 * Fix issue with incorrect namespace qualification of rule and query code in ClojureScript. See [issue 359](https://github.com/cerner/clara-rules/issues/359).
 * Add clear-ns-productions! functionality to support clean reloading of rule and query definitions. See [issue 316](https://github.com/cerner/clara-rules/issues/316) for details.
 * Support session inspection and fact-graph in ClojureScript. See [issue 307](https://github.com/cerner/clara-rules/issues/307) for details.
-* Fix issue when compiling CLJS and session, rules, and fact-types are not in the same namespace or explicitly referred. See [issue 359](https://github.com/cerner/clara-rules/issues/359).
 * Refactor defrule and defquery to better support customization. See [issue 362](https://github.com/cerner/clara-rules/issues/362) for details.
 
 ### 0.16.1
