@@ -215,7 +215,7 @@
      (->> node
          :children
          (map get-conditions-and-rule-names)
-         (reduce (partial merge-with conj) {})))))
+         (reduce (partial merge-with into) {})))))
 
 ;; Active session during rule execution.
 (def ^:dynamic *current-session* nil)
