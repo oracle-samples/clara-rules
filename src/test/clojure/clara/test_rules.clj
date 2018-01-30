@@ -2371,6 +2371,31 @@
                         (fire-rules)
                         (query temperature-query1)))))
 
+;; See https://github.com/cerner/clara-rules/issues/379 for more info
+(deftest test-single-condition-multiple-rule-constraint-exception
+  (let [rule-one (dsl/parse-rule [[WindSpeed
+                                   (= ?location location)]
+                                  [Temperature
+                                   (> temperature 0)]]
+                                 (println ?location))
+        rule-two (dsl/parse-rule [[Cold
+                                   (> 21 temperature)]
+                                  [Temperature
+                                   (> temperature 0)]]
+                                 (println "ok"))
+        temperature-rule1 (assoc rule-one :name "rule-1")
+        temperature-rule2 (assoc rule-two :name "rule-2")
+        temperature-fact (->Temperature nil "MCI")]
+
+    (assert-ex-data {:bindings nil
+                     :fact temperature-fact
+                     :conditions-and-rules
+                     {[clara.rules.testfacts.Temperature '(> temperature 0)]
+                      (sorted-set [:production  "rule-1"] [:production "rule-2"])}}
+                    (-> (mk-session [temperature-rule1 temperature-rule2] :cache false)
+                        (insert temperature-fact)
+                        (fire-rules)))))
+
 (deftest test-single-condition-rules-constraint-exception
   (let [rule-template (dsl/parse-rule [[Temperature
                                         (= ?location location)
