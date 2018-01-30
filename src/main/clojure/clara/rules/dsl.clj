@@ -304,8 +304,8 @@
          definition (if properties (rest body) body)
          {:keys [lhs rhs]} (split-lhs-rhs definition)]
      (cond-> (parse-rule* lhs rhs properties {} form-meta)
-             name (assoc :name (let [query-ns (clojure.core/name (if (com/compiling-cljs?) (com/cljs-ns) (ns-name *ns*)))]
-                                 (str query-ns "/" (clojure.core/name name))))
+             name (assoc :name (let [rule-ns (clojure.core/name (if (com/compiling-cljs?) (com/cljs-ns) (ns-name *ns*)))]
+                                 (str rule-ns "/" (clojure.core/name name))))
              doc (assoc :doc doc)))))
 
 (defmacro parse-query
