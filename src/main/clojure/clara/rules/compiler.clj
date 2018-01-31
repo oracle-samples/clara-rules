@@ -1772,6 +1772,8 @@
                    :get-alphas-fn get-alphas-fn})))
 
 (defn add-production-load-order
+  "Adds ::rule-load-order to metadata of productions. Custom DSL's may need to use this if
+   creating a session in Clojure without calling mk-session below."
   [productions]
   (map (fn [n production]
          (vary-meta production assoc ::rule-load-order (or n 0)))
