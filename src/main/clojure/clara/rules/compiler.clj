@@ -1077,10 +1077,15 @@
                            result-binding (conj result-binding)
                            fact-binding (conj fact-binding))
 
-            ; Find children that all parent nodes have.
-            forward-edges (apply s/union (-> (:forward-edges beta-graph)
-                                                (select-keys parent-ids)
-                                                (vals)))
+            ;; Find children that all parent nodes have.
+            forward-edges (if (= 1 (count parent-ids))
+                            ;; If there is only one parent then there is no need to reconstruct
+                            ;; the set of forward edges
+                            (-> (:forward-edges beta-graph)
+                                (get (first parent-ids)))
+                            (->> (select-keys parent-ids (:forward-edges beta-graph))
+                                 vals
+                                 (into [] (comp cat (distinct)))))
 
             id-to-condition-nodes (:id-to-condition-node beta-graph)
 
@@ -1096,11 +1101,12 @@
                                   (assoc! m node (min prev id))
                                   (assoc! m node id))))
 
-            node->id (reduce update-node->id
-                             (transient {})
-                             forward-edges)
+            node->id (-> (reduce update-node->id
+                                 (transient {})
+                                 forward-edges)
+                         persistent!)
 
-            ; Use the existing id or create a new one.
+            ;; Use the existing id or create a new one.
             node-id (or (get node->id node)
                         (create-id-fn))
 
