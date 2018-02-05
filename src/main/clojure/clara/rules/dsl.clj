@@ -294,7 +294,33 @@
   ([lhs rhs properties]
      (parse-rule* lhs rhs properties &env)))
 
+(defn build-rule
+  "Function used to parse and build a rule using the DSL syntax."
+  ([name body] (build-rule name body {}))
+  ([name body form-meta]
+   (let [doc (if (string? (first body)) (first body) nil)
+         body (if doc (rest body) body)
+         properties (if (map? (first body)) (first body) nil)
+         definition (if properties (rest body) body)
+         {:keys [lhs rhs]} (split-lhs-rhs definition)]
+     (cond-> (parse-rule* lhs rhs properties {} form-meta)
+             name (assoc :name (let [rule-ns (clojure.core/name (if (com/compiling-cljs?) (com/cljs-ns) (ns-name *ns*)))]
+                                 (str rule-ns "/" (clojure.core/name name))))
+             doc (assoc :doc doc)))))
+
 (defmacro parse-query
   "Macro used to dynamically create a new rule using the DSL syntax."
   [params lhs]
   (parse-query* params lhs &env))
+
+(defn build-query
+  "Function used to parse and build a query using the DSL syntax."
+  ([name body] (build-query name body {}))
+  ([name body form-meta]
+   (let [doc (if (string? (first body)) (first body) nil)
+         binding (if doc (second body) (first body))
+         definition (if doc (drop 2 body) (rest body))]
+     (cond-> (parse-query* binding definition {} form-meta)
+             name (assoc :name (let [query-ns (clojure.core/name (if (com/compiling-cljs?) (com/cljs-ns) (ns-name *ns*)))]
+                                 (str query-ns "/" (clojure.core/name name))))
+             doc (assoc :doc doc)))))
