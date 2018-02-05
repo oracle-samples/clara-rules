@@ -294,21 +294,6 @@
   ([lhs rhs properties]
      (parse-rule* lhs rhs properties &env)))
 
-;;; added to clojure.core in 1.9
-(defn- qualified-keyword?
-  "Return true if x is a keyword with a namespace"
-  [x] (and (keyword? x) (namespace x) true))
-
-(defn- production-name
-  "Compute the full production name. If a namespace-qualified keyword
-   is supplied, just use that for the name, otherwise compute from the
-   current namespace and associated var name."
-  [name]
-  (if (qualified-keyword? name)
-    name
-    (let [query-ns (clojure.core/name (if (com/compiling-cljs?) (com/cljs-ns) (ns-name *ns*)))]
-      (str query-ns "/" (clojure.core/name name)))))
-
 (defn build-rule
   "Function used to parse and build a rule using the DSL syntax."
   ([name body] (build-rule name body {}))
@@ -319,7 +304,8 @@
          definition (if properties (rest body) body)
          {:keys [lhs rhs]} (split-lhs-rhs definition)]
      (cond-> (parse-rule* lhs rhs properties {} form-meta)
-             name (assoc :name (production-name name))
+             name (assoc :name (let [rule-ns (clojure.core/name (if (com/compiling-cljs?) (com/cljs-ns) (ns-name *ns*)))]
+                                 (str rule-ns "/" (clojure.core/name name))))
              doc (assoc :doc doc)))))
 
 (defmacro parse-query
@@ -335,5 +321,6 @@
          binding (if doc (second body) (first body))
          definition (if doc (drop 2 body) (rest body))]
      (cond-> (parse-query* binding definition {} form-meta)
-             name (assoc :name (production-name name))
+             name (assoc :name (let [query-ns (clojure.core/name (if (com/compiling-cljs?) (com/cljs-ns) (ns-name *ns*)))]
+                                 (str query-ns "/" (clojure.core/name name))))
              doc (assoc :doc doc)))))
