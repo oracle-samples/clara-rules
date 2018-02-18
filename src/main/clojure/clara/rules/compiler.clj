@@ -1080,20 +1080,30 @@
             ;; Find children that all parent nodes have.
             forward-edges (if (= 1 (count parent-ids))
                             ;; If there is only one parent then there is no need to reconstruct
-                            ;; the set of forward edges
+                            ;; the set of forward edges. This is an intentional performance optimization for large
+                            ;; beta graphs that have many nodes branching from a common node, typically the root node.
                             (-> (:forward-edges beta-graph)
                                 (get (first parent-ids)))
                             (->> (select-keys parent-ids (:forward-edges beta-graph))
                                  vals
-                                 (into [] (comp cat (distinct)))))
+                                 ;; Order doesn't matter here as we will effectively sort it using update-node->id later,
+                                 ;; thus adding determinism.
+                                 (into #{} cat)))
 
             id-to-condition-nodes (:id-to-condition-node beta-graph)
 
             ;; Since we require that id-to-condition-nodes have an equal value to "node" under the ID
-            ;; for this to be used, the order of this set probably doesn't matter in most cases.  However, in any possible edge
-            ;; cases where there are equal nodes under different IDs, sorting the set will add determinism.
-            ;; Having different nodes under the same
-            ;; ID would be a bug, but having an equivalent node under multiple IDs wouldn't necessarily be one.
+            ;; for this to be used. In any possible edge cases where there are equal nodes under different IDs,
+            ;; maintaining the lowest node id will add determinism.
+            ;; Having different nodes under the same ID would be a bug,
+            ;; but having an equivalent node under multiple IDs wouldn't necessarily be one.
+            ;;
+            ;; Using maps(nodes) as keys acts as a performance optimization here, we are relying on the fact that maps cache
+            ;; their hash codes. This saves us time in the worst case scenarios when there are large amounts of forward edges
+            ;; that will be compared repeatedly. For example, when adding new children to the root node we must first compare
+            ;; all of the old children for a prior match, for each additional child added we incur the assoc but the hash code
+            ;; has already been cached by prior iterations of add-conjunctions. In these cases we have seen that the hashing
+            ;; will out perform equivalence checks.
             update-node->id (fn [m id]
                               (let [node (get id-to-condition-nodes id)
                                     prev (get m node)]
