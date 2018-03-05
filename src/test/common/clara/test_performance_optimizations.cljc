@@ -36,15 +36,10 @@
 (use-fixtures :once st/validate-schemas #?(:clj tu/opts-fixture))
 (use-fixtures :each tu/side-effect-holder-fixture)
 
-;; Note that if the binding is present, this will show up as an error (since an exception is thrown)
-;; rather than a failure.  This is not ideal but since this will happen at compile time in ClojureScript,
-;; rather than test execution time, we can't just register a test failure via the clojure.test/is macro.
 #?(:clj
-   (defmacro fail-if-binding-present
+   (defmacro true-if-binding-absent
      []
-     (when (contains? &env '?unused-binding)
-       (throw (ex-info "Binding that is not expected to be present in the let-bindings of a RHS is present"
-                       {:environment &env})))))
+     (not (contains? &env '?unused-binding))))
 
 ;; See issue https://github.com/cerner/clara-rules/issues/383
 ;; This validates that we don't create let bindings for binding
@@ -53,8 +48,7 @@
 (def-rules-test test-unused-rhs-binding-not-bound
 
   {:rules [cold-windy-rule [[[ColdAndWindy (= ?used-binding temperature) (= ?unused-binding windspeed)]]
-                            (do
-                              (fail-if-binding-present)
+                            (when (true-if-binding-absent)
                               (insert! (->Cold ?used-binding)))]]
 
    :queries [cold-query [[] [[Cold (= ?c temperature)]]]]

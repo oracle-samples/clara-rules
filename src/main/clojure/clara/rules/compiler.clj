@@ -402,7 +402,7 @@
         assignments (sequence
                      (comp
                       (filter rhs-bindings-used)
-                      (mapcat #(list (symbol (name %)) (list 'get-in '?__token__ [:bindings %]))))
+                      (mapcat #(list (symbol (name %)) (list '-> '?__token__ :bindings %))))
                      binding-keys)
 
         ;; The destructured environment, if any.
