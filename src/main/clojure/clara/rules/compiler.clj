@@ -73,6 +73,12 @@
                         ;; Function that takes facts and determines what alpha nodes they match.
                         get-alphas-fn])
 
+(defn- is-variable?
+  "Returns true if the given expression is a variable (a symbol prefixed by ?)"
+  [expr]
+  (and (symbol? expr)
+       (.startsWith (name expr) "?")))
+
 (def ^:private reflector
   "For some reason (bug?) the default reflector doesn't use the
    Clojure dynamic class loader, which prevents reflecting on
@@ -309,8 +315,7 @@
   "Returns a set of the symbols in the given s-expression that start with '?' as keywords"
   [expression]
   (into #{} (for [item (flatten-expression expression)
-                  :when (and (symbol? item)
-                             (= \? (first (name item))))]
+                  :when (is-variable? item)]
               (keyword  item))))
 
 (defn field-name->accessors-used
@@ -386,7 +391,19 @@
 (defn compile-action
   "Compile the right-hand-side action of a rule, returning a function to execute it."
   [binding-keys rhs env]
-  (let [assignments (mapcat #(list (symbol (name %)) (list 'get-in '?__token__ [:bindings %])) binding-keys)
+  (let [;; Avoid creating let bindings in the compile code that aren't actually used in the body.
+        ;; The bindings only exist in the scope of the RHS body, not in any code called by it,
+        ;; so this scanning strategy will detect all possible uses of binding variables in the RHS.
+        ;; Note that some strategies with macros could introduce bindings, but these aren't something
+        ;; we're trying to support.  If necessary a user could macroexpand their RHS code manually before
+        ;; providing it to Clara.
+        rhs-bindings-used (variables-as-keywords rhs)
+
+        assignments (sequence
+                     (comp
+                      (filter rhs-bindings-used)
+                      (mapcat #(list (symbol (name %)) (list '-> '?__token__ :bindings %))))
+                     binding-keys)
 
         ;; The destructured environment, if any.
         destructured-env (if (> (count env) 0)
@@ -608,12 +625,6 @@
                    :else :test)]
 
     node-type))
-
-(defn- is-variable?
-  "Returns true if the given expression is a variable (a symbol prefixed by ?)"
-  [expr]
-  (and (symbol? expr)
-       (.startsWith (name expr) "?")))
 
 (defn- extract-exists
   "Converts :exists operations into an accumulator to detect
