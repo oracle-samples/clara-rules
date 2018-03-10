@@ -1708,7 +1708,9 @@
   (< (-> a meta ::rule-load-order)
      (-> b meta ::rule-load-order)))
 
-(defn names-unique
+(defn validate-names-unique
+  "Checks that all productions included in the session have unique names,
+   throwing an exception if duplicates are found."
   [productions]
   (let [non-unique (->> productions
                         (group-by :name)
@@ -1732,7 +1734,7 @@
         ;;
         ;; Note that this ordering is not for correctness; we are just trying to increase consistency of rulebase compilation,
         ;; and hopefully thereby execution times, from run to run.
-        productions (names-unique productions)
+        _ (validate-names-unique productions)
         productions (with-meta (into (sorted-set-by production-load-order-comp)
                                      productions)
                       ;; Store the name of the custom comparator for durability.

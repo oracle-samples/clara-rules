@@ -33,9 +33,8 @@
                     (insert (facts/->WindSpeed 45 "MCI"))
                     (fire-rules))]
 
-    (is (= #{{:?fact (facts/->ColdAndWindy 15 45)}}
-           (set
-             (query session ::find-cold-and-windy))))))
+    (is (= [{:?fact (facts/->ColdAndWindy 15 45)}]
+           (query session ::find-cold-and-windy)))))
 
 ;;; Verify that an exception is thrown when a duplicate name is encountered.
 ;;; Note we create the session with com/mk-session*, as com/mk-session allows

@@ -227,3 +227,14 @@
     (is (= (query no-activations-session find-cold-and-windy) []))
     (is (= (query one-activation-session find-cold-and-windy)
            [{:?fact (->ColdAndWindy -10 50)}]))))                   
+
+;;; Basic test of keyword names
+(defsession my-session-data-with-keyword-names (clara.test-rules-data/weather-rules-with-keyword-names))
+(deftest test-simple-insert-data-with-keyword-names
+
+  (let [session (-> my-session-data-with-keyword-names
+                    (insert (->Temperature 15 "MCI"))
+                    (insert (->WindSpeed 45 "MCI"))
+                    (fire-rules))]
+    (is (= [{:?fact (->ColdAndWindy 15 45)}]
+           (query session :clara.test-rules-data/find-cold-and-windy-data)))))
