@@ -12,6 +12,7 @@
                                                          NegationWithJoinFilterNode]])
             [clara.rules.schema :as schema]
             [clara.rules.memory :as mem]
+            [clara.tools.internal.inspect :as i]
             #?(:cljs [goog.string :as gstr])
             [schema.core :as s])
   #?(:clj
@@ -135,6 +136,16 @@
                           #?(:cljs (gstr/startsWith (name k) "?__gen__")))
                         bindings))))))
 
+(defn ^:private gen-all-rule-matches
+  [session]
+  (when-let [activation-info (i/get-activation-info session)]
+    (let [grouped-info (group-by #(-> % :activation :node) activation-info)]
+      (into {}
+            (map (fn [[k v]]
+                   [(:production k)
+                    (to-explanations session (map #(-> % :activation :token) v))]))
+            grouped-info))))
+                    
 (defn ^:private gen-fact->explanations
   [session]
 
@@ -149,6 +160,10 @@
                  insertion insertion-group]
              {insertion [{:rule rule
                           :explanation (first (to-explanations session [token]))}]}))))
+
+(def with-full-logging i/with-rule-activation-listening)
+
+(def without-full-logging i/without-rule-activation-listening)
         
 (s/defn inspect
   " Returns a representation of the given rule session useful to understand the
@@ -188,29 +203,33 @@
 
         ;; Map of rules to their nodes in the network.
         rule-to-nodes (into {} (for [rule-node production-nodes]
-                                 [(:production rule-node) rule-node]))]
+                                 [(:production rule-node) rule-node]))
 
-    {:rule-matches (into {}
-                         (for [[rule rule-node] rule-to-nodes]
-                           [rule (to-explanations session
-                                                  (mem/get-tokens-all memory rule-node))]))
+        base-info {:rule-matches (into {}
+                                       (for [[rule rule-node] rule-to-nodes]
+                                         [rule (to-explanations session
+                                                                (keys (mem/get-insertions-all memory rule-node)))]))
 
-     :query-matches (into {}
-                          (for [[query query-node] query-to-nodes]
-                            [query (to-explanations session
-                                                    (mem/get-tokens-all memory query-node))]))
+                   :query-matches (into {}
+                                        (for [[query query-node] query-to-nodes]
+                                          [query (to-explanations session
+                                                                  (mem/get-tokens-all memory query-node))]))
 
-     :condition-matches (get-condition-matches (vals id-to-node) memory)
+                   :condition-matches (get-condition-matches (vals id-to-node) memory)
 
-     :insertions (into {}
-                       (for [[rule rule-node] rule-to-nodes]
-                         [rule
-                          (for [token (keys (mem/get-insertions-all memory rule-node))
-                                insertion-group (get (mem/get-insertions-all memory rule-node) token)
-                                insertion insertion-group]
-                            {:explanation (first (to-explanations session [token])) :fact insertion})]))
+                   :insertions (into {}
+                                     (for [[rule rule-node] rule-to-nodes]
+                                       [rule
+                                        (for [token (keys (mem/get-insertions-all memory rule-node))
+                                              insertion-group (get (mem/get-insertions-all memory rule-node) token)
+                                              insertion insertion-group]
+                                          {:explanation (first (to-explanations session [token])) :fact insertion})]))
 
-     :fact->explanations (gen-fact->explanations session)}))
+                   :fact->explanations (gen-fact->explanations session)}]
+
+    (if-let [all-rule-matches (gen-all-rule-matches session)]
+      (assoc base-info :all-rule-matches all-rule-matches)
+      base-info)))
 
 (defn- explain-activation
   "Prints a human-readable explanation of the facts and conditions that created the Rete token."

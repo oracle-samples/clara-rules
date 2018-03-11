@@ -337,16 +337,16 @@
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport listener]
 
+    ;; Provide listeners information on all left-retract calls for passivity,
+    ;; but we don't store these tokens in the beta-memory since the production-memory
+    ;; and activation-memory collectively contain all information that ProductionNode
+    ;; needs.  See https://github.com/cerner/clara-rules/issues/386
     (l/left-activate! listener node tokens)
 
     ;; Fire the rule if it's not a no-loop rule, or if the rule is not
     ;; active in the current context.
     (when (or (not (get-in production [:props :no-loop]))
               (not (= production (get-in *rule-context* [:node :production]))))
-
-      ;; Preserve tokens that fired for the rule so we
-      ;; can perform retractions if they become false.
-      (mem/add-tokens! memory node join-bindings tokens)
 
       (let [activations (platform/eager-for [token tokens]
                                             (->Activation node token))]
@@ -358,10 +358,11 @@
 
   (left-retract [node join-bindings tokens memory transport listener]
 
+    ;; Provide listeners information on all left-retract calls for passivity,
+    ;; but we don't store these tokens in the beta-memory since the production-memory
+    ;; and activation-memory collectively contain all information that ProductionNode
+    ;; needs.  See https://github.com/cerner/clara-rules/issues/386
     (l/left-retract! listener node tokens)
-
-    ;; Remove any tokens to avoid future rule execution on retracted items.
-    (mem/remove-tokens! memory node join-bindings tokens)
 
     ;; Remove pending activations triggered by the retracted tokens.
     (let [activations (platform/eager-for [token tokens]
@@ -1743,7 +1744,7 @@
           (do
 
             ;; If there are activations, fire them.
-            (when-let [{:keys [node token]} (mem/pop-activation! transient-memory)]
+            (when-let [{:keys [node token] :as activation} (mem/pop-activation! transient-memory)]
               ;; Use vectors for the insertion caches so that within an insertion type
               ;; (unconditional or logical) all insertions are done in order after the into
               ;; calls in insert-facts!.  This shouldn't have a functional impact, since any ordering
@@ -1766,6 +1767,11 @@
                     ;; Therefore, the reordering of retractions and insertions should have no impact
                     ;; assuming that the evaluation of rule conditions is pure, which is a general expectation
                     ;; of the rules engine.
+                    (l/fire-activation! listener
+                                        activation
+                                        {:unconditional-inserts @batched-unconditional-insertions
+                                         :logical-insertions @batched-logical-insertions
+                                         :rhs-retractions @batched-rhs-retractions})
                     (when-let [batched (seq @batched-unconditional-insertions)]
                       (flush-insertions! batched true))
                     (when-let [batched (seq @batched-logical-insertions)]
@@ -2001,6 +2007,29 @@
                    l/default-listener)
                  get-alphas-fn
                  []))
+
+(defn with-listener
+  [session listener]
+  (let [{:keys [listeners] :as components} (components session)]
+    (assemble (assoc components
+                     :listeners
+                     (conj listeners
+                           listener)))))
+
+(defn remove-listeners
+  [session pred]
+  (let [{:keys [listeners] :as components} (components session)
+        matching-listeners (filterv pred listeners)]
+    (if (seq matching-listeners)
+      (assemble (assoc components
+                       :listeners
+                       (remove pred listeners)))
+      session)))
+
+(defn listeners-matching-pred
+  [session pred]
+  (let [{:keys [listeners]} (components session)]
+    (filter pred listeners)))
 
 (defn local-memory
   "Returns a local, in-process working memory."

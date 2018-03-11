@@ -1,7 +1,7 @@
 (ns clara.tools.test-inspect
   (:require [clara.tools.testing-utils :as tu]
-            [clara.tools.inspect :refer [inspect map->Explanation explain-activations]]
-            [clara.rules :refer [insert fire-rules insert! retract query]]
+            [clara.tools.inspect :refer [inspect map->Explanation explain-activations with-full-logging without-full-logging]]
+            [clara.rules :refer [insert fire-rules insert! insert-unconditional! retract query]]
             [clara.rules.accumulators :as acc]
             [schema.test :as st]
             [clojure.walk :as w]
@@ -32,13 +32,7 @@
    :sessions [empty-session [cold-query cold-rule hot-rule] {}]}
 
   ;; Create some rules and a session for our test.
-  (let [session (-> empty-session
-                    (insert (->Temperature 15 "MCI"))
-                    (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 90 "MCI"))
-                    (fire-rules))
-
-        hot-rule-90-explanation (map->Explanation {:matches  [{:fact      (->Temperature 90 "MCI")
+  (let [hot-rule-90-explanation (map->Explanation {:matches  [{:fact      (->Temperature 90 "MCI")
                                                                :condition (first (:lhs hot-rule))}],
                                                    :bindings {:?t 90}})
 
@@ -52,6 +46,7 @@
                                                     :bindings {:?t 10}})]
 
     (let [session (-> empty-session
+                      with-full-logging
                       (insert (->Temperature 15 "MCI"))
                       (insert (->Temperature 10 "MCI"))
                       (insert (->Temperature 90 "MCI"))
@@ -68,6 +63,9 @@
 
       ;; Retrieve tokens matching the hot rule.
       (is (= [hot-rule-90-explanation]
+             ;; This validates that :all-rule-matches has activations that triggered logical insertions as
+             ;; well.
+             (get-in rule-dump [:all-rule-matches hot-rule])
              (get-in rule-dump [:rule-matches hot-rule]))
           "Rule matches test")
 
@@ -547,3 +545,31 @@
                     (insert (->Temperature 15 "MCI"))
                     (fire-rules))]
     (is (with-out-str (explain-activations session)))))
+
+(tu/def-rules-test test-unconditional-rule-matches
+  {:rules [cold-rule [[[Cold]]
+                      (insert-unconditional! (->LousyWeather))]]
+   :sessions [base-session [cold-rule] {}]}
+
+  (let [fired-no-listening (-> base-session
+                               (insert (->Cold 0))
+                               fire-rules)
+        fired-with-listening (-> base-session
+                                 with-full-logging
+                                 (insert (->Cold 0))
+                                 fire-rules)
+        fired-disabled-listening (without-full-logging fired-with-listening)]
+
+    (is (= [(map->Explanation {:matches [{:fact (->Cold 0)
+                                          :condition (-> cold-rule :lhs first)}]
+                               :bindings {}})]
+           (-> fired-with-listening inspect :all-rule-matches (get cold-rule))))
+
+    (is (not (contains? (inspect fired-no-listening) :all-rule-rule-matches)))
+    (is (not (contains? (inspect fired-disabled-listening) :all-rule-rule-matches)))
+
+    ;; No logical insertions happened in any case so we shouldn't have entries in :rule-matches.
+    (is (empty?  (-> fired-no-listening inspect :rule-matches (get cold-rule))))
+    (is (empty?  (-> fired-with-listening inspect :rule-matches (get cold-rule))))
+    (is (empty?  (-> fired-disabled-listening inspect :rule-matches (get cold-rule))))))
+
