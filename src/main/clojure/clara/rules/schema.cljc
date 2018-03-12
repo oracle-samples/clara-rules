@@ -63,7 +63,7 @@
    ;; context that it was originally defined in.  It is optional and only used
    ;; when given.  It may be used for other purposes in the future.
    (s/optional-key :ns-name) s/Symbol
-   (s/optional-key :name) s/Str
+   (s/optional-key :name) (s/cond-pre s/Str s/Keyword)
    (s/optional-key :doc) s/Str
    (s/optional-key :props) {s/Keyword s/Any}
    (s/optional-key :env) {s/Keyword s/Any}
@@ -71,7 +71,7 @@
    :rhs s/Any})
 
 (def Query
-  {(s/optional-key :name) s/Str
+  {(s/optional-key :name) (s/cond-pre s/Str s/Keyword)
    (s/optional-key :doc) s/Str
    (s/optional-key :props) {s/Keyword s/Any}
    (s/optional-key :env) {s/Keyword s/Any}
@@ -146,7 +146,7 @@
    :backward-edges {s/Int #{s/Int}}
 
    ;; Map of identifier to condition nodes.
-   :id-to-condition-node {s/Int (s/either (s/eq :clara.rules.compiler/root-condition)
+   :id-to-condition-node {s/Int (s/cond-pre (s/eq :clara.rules.compiler/root-condition)
                                           ConditionNode)}
 
    ;; Map of identifier to query or rule nodes.

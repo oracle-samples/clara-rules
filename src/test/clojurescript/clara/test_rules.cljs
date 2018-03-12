@@ -1,6 +1,6 @@
 (ns clara.test-rules
   (:require-macros [cljs.test :refer (is deftest run-tests testing)]
-                   [clara.test-rules-data])
+                   [clara.rules.test-rules-data :refer []])
   (:require [cljs.test :as t]
             [clara.rules.engine :as eng]
             [clara.rules.accumulators :as acc]
@@ -94,7 +94,7 @@
 
 (defsession my-session 'clara.test-rules)
 (defsession my-session-map 'clara.test-rules :fact-type-fn :type)
-(defsession my-session-data (clara.test-rules-data/weather-rules))
+(defsession my-session-data (clara.rules.test-rules-data/weather-rules))
 
 (deftest test-number-query
   (is (= (-> my-session
@@ -162,7 +162,7 @@
                     (fire-rules))]
     (is (= #{{:?fact (->ColdAndWindy 15 45)}}
            (set
-            (query session "clara.test-rules-data/find-cold-and-windy-data"))))))
+            (query session "clara.rules.test-rules-data/find-cold-and-windy-data"))))))
 
 (deftest test-no-temperature
 
@@ -229,7 +229,7 @@
            [{:?fact (->ColdAndWindy -10 50)}]))))                   
 
 ;;; Basic test of keyword names
-(defsession my-session-data-with-keyword-names (clara.test-rules-data/weather-rules-with-keyword-names))
+(defsession my-session-data-with-keyword-names (clara.rules.test-rules-data/weather-rules-with-keyword-names))
 (deftest test-simple-insert-data-with-keyword-names
 
   (let [session (-> my-session-data-with-keyword-names
@@ -237,4 +237,4 @@
                     (insert (->WindSpeed 45 "MCI"))
                     (fire-rules))]
     (is (= [{:?fact (->ColdAndWindy 15 45)}]
-           (query session :clara.test-rules-data/find-cold-and-windy-data)))))
+           (query session :clara.rules.test-rules-data/find-cold-and-windy-data)))))

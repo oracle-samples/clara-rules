@@ -1,6 +1,7 @@
 (ns clara.test-rules
   (:require [clara.sample-ruleset :as sample]
             [clara.other-ruleset :as other]
+            [clara.rules.test-rules-data :as rules-data]
             [clara.rules :refer :all]
             [clojure.test :refer :all]
             [clara.rules.testfacts :refer :all]
@@ -2700,3 +2701,25 @@
 
       (is (= {:?w 10, :?t nil}
              (-> e (ex-data) :bindings))))))
+
+;;; Test that we can properly assemble a session, insert facts, fire rules,
+;;; and run a query with keyword-named productions.
+(deftest test-simple-insert-data-with-keyword-names
+  (let [session (-> (mk-session (rules-data/weather-rules-with-keyword-names))
+                    (insert (->Temperature 15 "MCI"))
+                    (insert (->WindSpeed 45 "MCI"))
+                    (fire-rules))]
+    (is (= [{:?fact (->ColdAndWindy 15 45)}]
+           (query session ::rules-data/find-cold-and-windy-data)))))
+
+;;; Verify that an exception is thrown when a duplicate name is encountered.
+;;; Note we create the session with com/mk-session*, as com/mk-session allows
+;;; duplicate names and will take what it considers to be the most recent
+;;; definition of a production.
+(deftest test-duplicate-name
+  (try
+    (com/mk-session* (com/add-production-load-order (vec (concat (rules-data/weather-rules-with-keyword-names)
+                                                                 (rules-data/weather-rules-with-keyword-names)))) {})
+    (catch Exception e
+      (clojure.pprint/pprint e)
+      (is (= (.getMessage e) "Non-unique production names: #{:clara.rules.test-keyword-names/find-cold-and-windy}")))))
