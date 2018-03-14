@@ -235,7 +235,7 @@
     (productions->session-assembly-form productions options)))
 
 (defmacro defsession
-  "Creates a sesson given a list of sources and keyword-style options, which are typically ClojureScript namespaces.
+  "Creates a session given a list of sources and keyword-style options, which are typically ClojureScript namespaces.
 
   Each source is eval'ed at compile time, in Clojure (not ClojureScript.)
 

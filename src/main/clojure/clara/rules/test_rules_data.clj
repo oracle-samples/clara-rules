@@ -25,7 +25,9 @@
   []
   the-rules)
 
+(def the-rules-with-keyword-names (mapv #(update % :name keyword) the-rules))
+
 (defn weather-rules-with-keyword-names
   "Return some weather rules using keyword names"
   []
-  (mapv #(update % :name keyword) the-rules))
+  the-rules-with-keyword-names)

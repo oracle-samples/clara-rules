@@ -2717,9 +2717,10 @@
 ;;; duplicate names and will take what it considers to be the most recent
 ;;; definition of a production.
 (deftest test-duplicate-name
-  (try
-    (com/mk-session* (com/add-production-load-order (vec (concat (rules-data/weather-rules-with-keyword-names)
-                                                                 (rules-data/weather-rules-with-keyword-names)))) {})
-    (catch Exception e
-      (clojure.pprint/pprint e)
-      (is (= (.getMessage e) "Non-unique production names: #{:clara.rules.test-keyword-names/find-cold-and-windy}")))))
+  (assert-ex-data {:names #{::rules-data/is-cold-and-windy-data}}
+                  (com/mk-session*
+                    (set (com/add-production-load-order (conj (rules-data/weather-rules-with-keyword-names)
+                                                              {:doc  "An extra rule to test for duplicate names."
+                                                               :name :clara.rules.test-rules-data/is-cold-and-windy-data
+                                                               :lhs  []
+                                                               :rhs  '(println "I have no meaning outside of this test")}))) {})))
