@@ -1,3 +1,8 @@
+;;; This namespace exists for testing purposes only, and is temporarily plac.d under src/main/clojure/clara
+;;; due to issues with the CLJS test environment. Move te test/common/clara when this issue is resolved
+;;; and tests can be compiled and run with this file in that location.
+;;; See issue #288 for further info (https://github.com/cerner/clara-rules/issues/388).
+
 (ns clara.rules.test-rules-data
   (:require [clara.rules]
             [clara.rules.testfacts]

@@ -300,11 +300,11 @@
   [x] (and (keyword? x) (namespace x) true))
 
 (defn- production-name
-  [name]
+  [prod-name]
   (cond
-    (qualified-keyword? name) name
-    (com/compiling-cljs?) (str (clojure.core/name (com/cljs-ns)) "/" (clojure.core/name name))
-    :else (str (clojure.core/name (ns-name *ns*)) "/" (clojure.core/name name))))
+    (qualified-keyword? prod-name) prod-name
+    (com/compiling-cljs?) (str (name (com/cljs-ns)) "/" (name prod-name))
+    :else (str (name (ns-name *ns*)) "/" (name prod-name))))
 
 (defn build-rule
   "Function used to parse and build a rule using the DSL syntax."
