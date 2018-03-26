@@ -209,8 +209,8 @@
   [env sym]
   (if (:tag (meta sym))
     (vary-meta sym update-in [:tag] (fn [tag] (-> ^Class (resolve tag)
-                                                 (.getName)
-                                                 (symbol))))
+                                                  (.getName)
+                                                  (symbol))))
     sym))
 
 (defn- resolve-vars
@@ -290,9 +290,21 @@
 (defmacro parse-rule
   "Macro used to dynamically create a new rule using the DSL syntax."
   ([lhs rhs]
-     (parse-rule* lhs rhs nil &env))
+   (parse-rule* lhs rhs nil &env))
   ([lhs rhs properties]
-     (parse-rule* lhs rhs properties &env)))
+   (parse-rule* lhs rhs properties &env)))
+
+;;; added to clojure.core in 1.9
+(defn- qualified-keyword?
+  "Return true if x is a keyword with a namespace"
+  [x] (and (keyword? x) (namespace x) true))
+
+(defn- production-name
+  [prod-name]
+  (cond
+    (qualified-keyword? prod-name) prod-name
+    (com/compiling-cljs?) (str (name (com/cljs-ns)) "/" (name prod-name))
+    :else (str (name (ns-name *ns*)) "/" (name prod-name))))
 
 (defn build-rule
   "Function used to parse and build a rule using the DSL syntax."
@@ -304,9 +316,9 @@
          definition (if properties (rest body) body)
          {:keys [lhs rhs]} (split-lhs-rhs definition)]
      (cond-> (parse-rule* lhs rhs properties {} form-meta)
-             name (assoc :name (let [rule-ns (clojure.core/name (if (com/compiling-cljs?) (com/cljs-ns) (ns-name *ns*)))]
-                                 (str rule-ns "/" (clojure.core/name name))))
-             doc (assoc :doc doc)))))
+
+       name (assoc :name (production-name name))
+       doc (assoc :doc doc)))))
 
 (defmacro parse-query
   "Macro used to dynamically create a new rule using the DSL syntax."
@@ -321,6 +333,5 @@
          binding (if doc (second body) (first body))
          definition (if doc (drop 2 body) (rest body))]
      (cond-> (parse-query* binding definition {} form-meta)
-             name (assoc :name (let [query-ns (clojure.core/name (if (com/compiling-cljs?) (com/cljs-ns) (ns-name *ns*)))]
-                                 (str query-ns "/" (clojure.core/name name))))
-             doc (assoc :doc doc)))))
+       name (assoc :name (production-name name))
+       doc (assoc :doc doc)))))

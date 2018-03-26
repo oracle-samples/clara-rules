@@ -1738,6 +1738,19 @@
   (< (-> a meta ::rule-load-order)
      (-> b meta ::rule-load-order)))
 
+(defn validate-names-unique
+  "Checks that all productions included in the session have unique names,
+   throwing an exception if duplicates are found."
+  [productions]
+  (let [non-unique (->> productions
+                        (group-by :name)
+                        (filter (fn [[k v]] (and (some? k) (not= 1 (count v)))))
+                        (map key)
+                        set)]
+    (if (empty? non-unique)
+      productions
+      (throw (ex-info (str "Non-unique production names: " non-unique) {:names non-unique})))))
+
 (sc/defn mk-session*
   "Compile the rules into a rete network and return the given session."
   [productions :- #{schema/Production}
@@ -1751,6 +1764,7 @@
         ;;
         ;; Note that this ordering is not for correctness; we are just trying to increase consistency of rulebase compilation,
         ;; and hopefully thereby execution times, from run to run.
+        _ (validate-names-unique productions)
         productions (with-meta (into (sorted-set-by production-load-order-comp)
                                      productions)
                       ;; Store the name of the custom comparator for durability.
@@ -1789,6 +1803,14 @@
                    :listeners (get options :listeners  [])
                    :get-alphas-fn get-alphas-fn})))
 
+(defn add-production-load-order
+  "Adds ::rule-load-order to metadata of productions. Custom DSL's may need to use this if
+   creating a session in Clojure without calling mk-session below."
+  [productions]
+  (map (fn [n production]
+         (vary-meta production assoc ::rule-load-order (or n 0)))
+       (range) productions))
+
 (defn mk-session
   "Creates a new session using the given rule source. The resulting session
   is immutable, and can be used with insert, retract, fire-rules, and query functions."
@@ -1800,9 +1822,7 @@
                           (mapcat #(if (satisfies? IRuleSource %)
                                      (load-rules %)
                                      %))
-                          (map (fn [n production]
-                                 (vary-meta production assoc ::rule-load-order (or n 0)))
-                               (range))
+                          add-production-load-order
                           ;; Ensure that we choose the earliest occurrence of a rule for the purpose of rule order.
                           ;; There are Clojure core functions for distinctness, of course, but none of them seem to guarantee
                           ;; which instance will be chosen in case of duplicates.
