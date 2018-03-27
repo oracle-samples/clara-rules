@@ -1,5 +1,8 @@
 This is a history of changes to clara-rules.
 
+### 0.18.0-SNAPSHOT
+* Support keyword names for use in custom DSLs. See [issue 371](https://github.com/cerner/clara-rules/issues/371) for details.
+
 ### 0.17.0
 * Breaking change affecting clara.rules.listener and clara.tools.tracing namespaces. `insert-facts!` and `retract-facts!` listener methods are now called with `node` and `token` arguments. See [PR 366](https://github.com/cerner/clara-rules/pull/366).
 * Fix issue with incorrect namespace qualification of rule and query code in ClojureScript. See [issue 359](https://github.com/cerner/clara-rules/issues/359).
