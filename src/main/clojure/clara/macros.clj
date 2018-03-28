@@ -205,6 +205,10 @@
 
 (defn productions->session-assembly-form
   [productions options]
+  ;;; Calling com/names-unique here rather than in sources-and-options->session-assembly-form
+  ;;; as a ClojureScript DSL may call productions->session-assembly-form if that DSL
+  ;;; has its own mechanism for grouping rules which is different than the clara DSL.
+  (com/validate-names-unique productions)
   (let [beta-graph (com/to-beta-graph productions)
         ;; Compile the children of the logical root condition.
         beta-network (gen-beta-network (get-in beta-graph [:forward-edges 0]) beta-graph #{})
@@ -231,7 +235,7 @@
     (productions->session-assembly-form productions options)))
 
 (defmacro defsession
-  "Creates a sesson given a list of sources and keyword-style options, which are typically ClojureScript namespaces.
+  "Creates a session given a list of sources and keyword-style options, which are typically ClojureScript namespaces.
 
   Each source is eval'ed at compile time, in Clojure (not ClojureScript.)
 

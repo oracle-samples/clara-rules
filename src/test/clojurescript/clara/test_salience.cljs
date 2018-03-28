@@ -1,6 +1,6 @@
 (ns clara.test-salience
   (:require-macros [cljs.test :refer (is deftest run-tests testing)]
-    [clara.test-rules-data])
+    [clara.rules.test-rules-data])
   (:require [cljs.test :as t]
     [clara.rules.engine :as eng]
     [clara.rules.accumulators :as acc]
