@@ -61,7 +61,7 @@
                     (fire-rules))]
 
     ;; Ensure expected events occur in order.
-    (is (= [:add-facts :alpha-activate :right-activate :left-activate :add-activations]
+    (is (= [:add-facts :alpha-activate :right-activate :left-activate :add-activations :fire-activation]
            (map :type (t/get-trace session))))))
 
 (def-rules-test test-rhs-retraction-trace
@@ -80,7 +80,8 @@
     (is (= (map :type (t/get-trace session))
            [:add-facts :alpha-activate :right-activate :left-activate
             :add-facts :alpha-activate :right-activate :left-activate
-            :add-activations :retract-facts :alpha-retract :right-retract :left-retract])
+            :add-activations :fire-activation :retract-facts
+            :alpha-retract :right-retract :left-retract])
         "Validate that a retract! call in the RHS side of a rule appears in the trace
          before the :right-retract")))
         
@@ -129,7 +130,8 @@
                   (fire-rules))]
 
     ;; Ensure expected events occur in order.
-    (is (= [:add-facts :alpha-activate :right-activate :left-activate :add-activations :add-facts-logical]
+   (is (= [:add-facts :alpha-activate :right-activate :left-activate
+           :add-activations :fire-activation :add-facts-logical]
            (map :type (t/get-trace session))))))
 
 (def-rules-test test-insert-and-retract-trace
@@ -148,7 +150,7 @@
        session-trace (t/get-trace session)]
 
     ;; Ensure expected events occur in order.
-   (is (= [:add-facts :alpha-activate :right-activate :left-activate :add-activations :add-facts-logical
+   (is (= [:add-facts :alpha-activate :right-activate :left-activate :add-activations :fire-activation :add-facts-logical
            :retract-facts :alpha-retract :right-retract :left-retract :remove-activations :retract-facts-logical]
           (map :type session-trace)))
 

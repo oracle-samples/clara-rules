@@ -161,17 +161,24 @@
              {insertion [{:rule rule
                           :explanation (first (to-explanations session [token]))}]}))))
 
-(def with-full-logging i/with-rule-activation-listening)
+(def ^{:doc "Return a new session on which information will be gathered for optional inspection keys.
+             This can significantly increase memory consumption since retracted facts
+             cannot be garbage collected as normally."}
+  with-full-logging i/with-activation-listening)
 
-(def without-full-logging i/without-rule-activation-listening)
+(def ^{:doc "Return a new session without information gathering on this session for optional inspection keys.
+             This new session will not retain references to any such information previously gathered."}
+  without-full-logging i/without-activation-listening)
         
 (s/defn inspect
   " Returns a representation of the given rule session useful to understand the
    state of the underlying rules.
 
-   The returned structure includes the following keys:
+   The returned structure always includes the following keys:
 
    * :rule-matches -- a map of rule structures to their matching explanations.
+     Note that this only includes rule matches with corresponding logical 
+     insertions after the rules finished firing.
    * :query-matches -- a map of query structures to their matching explanations.
    * :condition-matches -- a map of conditions pulled from each rule to facts they match.
    * :insertions -- a map of rules to a sequence of {:explanation E, :fact F} records
@@ -179,6 +186,16 @@
    * :fact->explanations -- a map of facts inserted to a sequence 
      of maps of the form {:rule rule-structure :explanation explanation}, 
      where each such map justifies a single insertion of the fact.
+
+   And additionally includes the following keys for operations 
+   performed after a with-full-logging call on the session:
+   
+   * :unfiltered-rule-matches: A map of rule structures to their matching explanations.
+     This includes all rule activations, regardless of whether they led to insertions or if
+     they were ultimately retracted.  This should be considered low-level information primarily
+     useful for debugging purposes rather than application control logic, although legitimate use-cases
+     for the latter do exist if care is taken.  Patterns of insertion and retraction prior to returning to
+     the caller are internal implementation details of Clara unless explicitly controlled by the user.
 
    Users may inspect the entire structure for troubleshooting or explore it
    for specific cases. For instance, the following code snippet could look
@@ -227,8 +244,8 @@
 
                    :fact->explanations (gen-fact->explanations session)}]
 
-    (if-let [all-rule-matches (gen-all-rule-matches session)]
-      (assoc base-info :all-rule-matches all-rule-matches)
+    (if-let [unfiltered-rule-matches (gen-all-rule-matches session)]
+      (assoc base-info :unfiltered-rule-matches unfiltered-rule-matches)
       base-info)))
 
 (defn- explain-activation

@@ -63,9 +63,9 @@
 
       ;; Retrieve tokens matching the hot rule.
       (is (= [hot-rule-90-explanation]
-             ;; This validates that :all-rule-matches has activations that triggered logical insertions as
+             ;; This validates that :unfiltered-rule-matches has activations that triggered logical insertions as
              ;; well.
-             (get-in rule-dump [:all-rule-matches hot-rule])
+             (get-in rule-dump [:unfiltered-rule-matches hot-rule])
              (get-in rule-dump [:rule-matches hot-rule]))
           "Rule matches test")
 
@@ -547,6 +547,7 @@
     (is (with-out-str (explain-activations session)))))
 
 (tu/def-rules-test test-unconditional-rule-matches
+  
   {:rules [cold-rule [[[Cold]]
                       (insert-unconditional! (->LousyWeather))]]
    :sessions [base-session [cold-rule] {}]}
@@ -563,10 +564,12 @@
     (is (= [(map->Explanation {:matches [{:fact (->Cold 0)
                                           :condition (-> cold-rule :lhs first)}]
                                :bindings {}})]
-           (-> fired-with-listening inspect :all-rule-matches (get cold-rule))))
+           (-> fired-with-listening inspect :unfiltered-rule-matches (get cold-rule))))
 
-    (is (not (contains? (inspect fired-no-listening) :all-rule-rule-matches)))
-    (is (not (contains? (inspect fired-disabled-listening) :all-rule-rule-matches)))
+    (is (= (get (inspect fired-no-listening) :unfiltered-rule-matches ::absent)
+           ::absent))
+    (is (= (get (inspect fired-disabled-listening) :unfiltered-rule-matches ::absent)
+           ::absent))
 
     ;; No logical insertions happened in any case so we shouldn't have entries in :rule-matches.
     (is (empty?  (-> fired-no-listening inspect :rule-matches (get cold-rule))))

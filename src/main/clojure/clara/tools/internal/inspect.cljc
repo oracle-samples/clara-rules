@@ -4,11 +4,11 @@
 
 (declare to-persistent-listener)
 
-(deftype TransientRuleActivationListener [activations]
+(deftype TransientActivationListener [activations]
   l/ITransientEventListener
   (fire-activation! [listener activation resulting-operations]
-    (reset! (.-activations listener) (conj @(.-activations listener) {:activation activation
-                                                                      :resulting-operations resulting-operations}))
+    (swap! (.-activations listener) conj {:activation activation
+                                          :resulting-operations resulting-operations})
     listener)
   (to-persistent! [listener]
     (to-persistent-listener @(.-activations listener)))
@@ -45,32 +45,32 @@
   (fire-rules! [listener node]
     listener))
 
-(deftype PersistentRuleActivationListener [activations]
+(deftype PersistentActivationListener [activations]
   l/IPersistentEventListener
   (to-transient [listener]
-    (TransientRuleActivationListener. (atom activations))))
+    (TransientActivationListener. (atom activations))))
 
 (defn to-persistent-listener
   [activations]
-  (PersistentRuleActivationListener. activations))
+  (PersistentActivationListener. activations))
 
-(defn with-rule-activation-listening
+(defn with-activation-listening
   [session]
-  (if (empty? (eng/listeners-matching-pred session (partial instance? PersistentRuleActivationListener)))
-    (eng/with-listener session (PersistentRuleActivationListener. []))
+  (if (empty? (eng/find-listeners session (partial instance? PersistentActivationListener)))
+    (eng/with-listener session (PersistentActivationListener. []))
     session))
 
-(defn without-rule-activation-listening
+(defn without-activation-listening
   [session]
-  (eng/remove-listeners session (partial instance? PersistentRuleActivationListener)))
+  (eng/remove-listeners session (partial instance? PersistentActivationListener)))
 
 (defn get-activation-info
   [session]
-  (let [matching-listeners (eng/listeners-matching-pred session (partial instance? PersistentRuleActivationListener))]
+  (let [matching-listeners (eng/find-listeners session (partial instance? PersistentActivationListener))]
     (condp = (count matching-listeners)
       0 nil
-      1 (-> matching-listeners ^PersistentRuleActivationListener (first) .activations)
-      (throw (ex-info "Found more than one PersistentRuleActivationListener on session"
+      1 (-> matching-listeners ^PersistentActivationListener (first) .-activations)
+      (throw (ex-info "Found more than one PersistentActivationListener on session"
                       {:session session})))))
 
   
