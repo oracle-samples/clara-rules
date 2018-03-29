@@ -337,7 +337,7 @@
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport listener]
 
-    ;; Provide listeners information on all left-retract calls for passivity,
+    ;; Provide listeners information on all left-activate calls,
     ;; but we don't store these tokens in the beta-memory since the production-memory
     ;; and activation-memory collectively contain all information that ProductionNode
     ;; needs.  See https://github.com/cerner/clara-rules/issues/386
