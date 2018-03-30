@@ -1777,7 +1777,7 @@
                           retrieved-rhs-retractions @batched-rhs-retractions]
                       (l/fire-activation! listener
                                           activation
-                                          {:unconditional-inserts retrieved-unconditional-insertions
+                                          {:unconditional-insertions retrieved-unconditional-insertions
                                            :logical-insertions retrieved-logical-insertions
                                            :rhs-retractions retrieved-rhs-retractions})
                       (when-let [batched (seq retrieved-unconditional-insertions)]
