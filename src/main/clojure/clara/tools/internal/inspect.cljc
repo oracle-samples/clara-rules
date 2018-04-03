@@ -1,4 +1,6 @@
 (ns clara.tools.internal.inspect
+  "Internal implementation details of session inspection.  Nothing in this namespace
+   should be directly referenced by callers outside of the clara-rules project."
   (:require [clara.rules.listener :as l]
             [clara.rules.engine :as eng]))
 
