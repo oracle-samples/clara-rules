@@ -337,16 +337,16 @@
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport listener]
 
+    ;; Provide listeners information on all left-activate calls,
+    ;; but we don't store these tokens in the beta-memory since the production-memory
+    ;; and activation-memory collectively contain all information that ProductionNode
+    ;; needs.  See https://github.com/cerner/clara-rules/issues/386
     (l/left-activate! listener node tokens)
 
     ;; Fire the rule if it's not a no-loop rule, or if the rule is not
     ;; active in the current context.
     (when (or (not (get-in production [:props :no-loop]))
               (not (= production (get-in *rule-context* [:node :production]))))
-
-      ;; Preserve tokens that fired for the rule so we
-      ;; can perform retractions if they become false.
-      (mem/add-tokens! memory node join-bindings tokens)
 
       (let [activations (platform/eager-for [token tokens]
                                             (->Activation node token))]
@@ -358,10 +358,11 @@
 
   (left-retract [node join-bindings tokens memory transport listener]
 
+    ;; Provide listeners information on all left-retract calls for passivity,
+    ;; but we don't store these tokens in the beta-memory since the production-memory
+    ;; and activation-memory collectively contain all information that ProductionNode
+    ;; needs.  See https://github.com/cerner/clara-rules/issues/386
     (l/left-retract! listener node tokens)
-
-    ;; Remove any tokens to avoid future rule execution on retracted items.
-    (mem/remove-tokens! memory node join-bindings tokens)
 
     ;; Remove pending activations triggered by the retracted tokens.
     (let [activations (platform/eager-for [token tokens]
@@ -1743,11 +1744,12 @@
           (do
 
             ;; If there are activations, fire them.
-            (when-let [{:keys [node token]} (mem/pop-activation! transient-memory)]
+            (when-let [{:keys [node token] :as activation} (mem/pop-activation! transient-memory)]
               ;; Use vectors for the insertion caches so that within an insertion type
               ;; (unconditional or logical) all insertions are done in order after the into
               ;; calls in insert-facts!.  This shouldn't have a functional impact, since any ordering
-              ;; should be valid, but makes traces less confusing to end users.
+              ;; should be valid, but makes traces less confusing to end users.  It also prevents any laziness
+              ;; in the sequences.
               (let [batched-logical-insertions (atom [])
                     batched-unconditional-insertions (atom [])
                     batched-rhs-retractions (atom [])]
@@ -1766,12 +1768,24 @@
                     ;; Therefore, the reordering of retractions and insertions should have no impact
                     ;; assuming that the evaluation of rule conditions is pure, which is a general expectation
                     ;; of the rules engine.
-                    (when-let [batched (seq @batched-unconditional-insertions)]
-                      (flush-insertions! batched true))
-                    (when-let [batched (seq @batched-logical-insertions)]
-                      (flush-insertions! batched false))
-                    (when-let [batched (seq @batched-rhs-retractions)]
-                      (flush-rhs-retractions! batched))
+                    ;;
+                    ;; Bind the contents of the cache atoms after the RHS is fired since they are used twice
+                    ;; below.  They will be dereferenced again if an exception is caught, but in the error
+                    ;; case we aren't worried about performance.
+                    (let [retrieved-unconditional-insertions @batched-unconditional-insertions
+                          retrieved-logical-insertions @batched-logical-insertions
+                          retrieved-rhs-retractions @batched-rhs-retractions]
+                      (l/fire-activation! listener
+                                          activation
+                                          {:unconditional-insertions retrieved-unconditional-insertions
+                                           :logical-insertions retrieved-logical-insertions
+                                           :rhs-retractions retrieved-rhs-retractions})
+                      (when-let [batched (seq retrieved-unconditional-insertions)]
+                        (flush-insertions! batched true))
+                      (when-let [batched (seq retrieved-logical-insertions)]
+                        (flush-insertions! batched false))
+                      (when-let [batched (seq retrieved-rhs-retractions)]
+                        (flush-rhs-retractions! batched)))
                     (catch #?(:clj Exception :cljs :default) e
 
                            ;; If the rule fired an exception, help debugging by attaching
@@ -2001,6 +2015,32 @@
                    l/default-listener)
                  get-alphas-fn
                  []))
+
+(defn with-listener
+  "Return a new session with the listener added to the provided session,
+   in addition to all listeners previously on the session."
+  [session listener]
+  (let [{:keys [listeners] :as components} (components session)]
+    (assemble (assoc components
+                     :listeners
+                     (conj listeners
+                           listener)))))
+
+(defn remove-listeners
+  "Return a new session with all listeners matching the predicate removed"
+  [session pred]
+  (let [{:keys [listeners] :as components} (components session)]
+    (if (some pred listeners)
+      (assemble (assoc components
+                       :listeners
+                       (into [] (remove pred) listeners)))
+      session)))
+
+(defn find-listeners
+  "Return all listeners on the session matching the predicate."
+  [session pred]
+  (let [{:keys [listeners]} (components session)]
+    (filterv pred listeners)))
 
 (defn local-memory
   "Returns a local, in-process working memory."

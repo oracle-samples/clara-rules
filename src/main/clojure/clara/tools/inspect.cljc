@@ -12,6 +12,7 @@
                                                          NegationWithJoinFilterNode]])
             [clara.rules.schema :as schema]
             [clara.rules.memory :as mem]
+            [clara.tools.internal.inspect :as i]
             #?(:cljs [goog.string :as gstr])
             [schema.core :as s])
   #?(:clj
@@ -135,6 +136,16 @@
                           #?(:cljs (gstr/startsWith (name k) "?__gen__")))
                         bindings))))))
 
+(defn ^:private gen-all-rule-matches
+  [session]
+  (when-let [activation-info (i/get-activation-info session)]
+    (let [grouped-info (group-by #(-> % :activation :node) activation-info)]
+      (into {}
+            (map (fn [[k v]]
+                   [(:production k)
+                    (to-explanations session (map #(-> % :activation :token) v))]))
+            grouped-info))))
+                    
 (defn ^:private gen-fact->explanations
   [session]
 
@@ -149,14 +160,25 @@
                  insertion insertion-group]
              {insertion [{:rule rule
                           :explanation (first (to-explanations session [token]))}]}))))
+
+(def ^{:doc "Return a new session on which information will be gathered for optional inspection keys.
+             This can significantly increase memory consumption since retracted facts
+             cannot be garbage collected as normally."}
+  with-full-logging i/with-activation-listening)
+
+(def ^{:doc "Return a new session without information gathering on this session for optional inspection keys.
+             This new session will not retain references to any such information previously gathered."}
+  without-full-logging i/without-activation-listening)
         
 (s/defn inspect
   " Returns a representation of the given rule session useful to understand the
    state of the underlying rules.
 
-   The returned structure includes the following keys:
+   The returned structure always includes the following keys:
 
    * :rule-matches -- a map of rule structures to their matching explanations.
+     Note that this only includes rule matches with corresponding logical 
+     insertions after the rules finished firing.
    * :query-matches -- a map of query structures to their matching explanations.
    * :condition-matches -- a map of conditions pulled from each rule to facts they match.
    * :insertions -- a map of rules to a sequence of {:explanation E, :fact F} records
@@ -164,6 +186,16 @@
    * :fact->explanations -- a map of facts inserted to a sequence 
      of maps of the form {:rule rule-structure :explanation explanation}, 
      where each such map justifies a single insertion of the fact.
+
+   And additionally includes the following keys for operations 
+   performed after a with-full-logging call on the session:
+   
+   * :unfiltered-rule-matches: A map of rule structures to their matching explanations.
+     This includes all rule activations, regardless of whether they led to insertions or if
+     they were ultimately retracted.  This should be considered low-level information primarily
+     useful for debugging purposes rather than application control logic, although legitimate use-cases
+     for the latter do exist if care is taken.  Patterns of insertion and retraction prior to returning to
+     the caller are internal implementation details of Clara unless explicitly controlled by the user.
 
    Users may inspect the entire structure for troubleshooting or explore it
    for specific cases. For instance, the following code snippet could look
@@ -188,29 +220,33 @@
 
         ;; Map of rules to their nodes in the network.
         rule-to-nodes (into {} (for [rule-node production-nodes]
-                                 [(:production rule-node) rule-node]))]
+                                 [(:production rule-node) rule-node]))
 
-    {:rule-matches (into {}
-                         (for [[rule rule-node] rule-to-nodes]
-                           [rule (to-explanations session
-                                                  (mem/get-tokens-all memory rule-node))]))
+        base-info {:rule-matches (into {}
+                                       (for [[rule rule-node] rule-to-nodes]
+                                         [rule (to-explanations session
+                                                                (keys (mem/get-insertions-all memory rule-node)))]))
 
-     :query-matches (into {}
-                          (for [[query query-node] query-to-nodes]
-                            [query (to-explanations session
-                                                    (mem/get-tokens-all memory query-node))]))
+                   :query-matches (into {}
+                                        (for [[query query-node] query-to-nodes]
+                                          [query (to-explanations session
+                                                                  (mem/get-tokens-all memory query-node))]))
 
-     :condition-matches (get-condition-matches (vals id-to-node) memory)
+                   :condition-matches (get-condition-matches (vals id-to-node) memory)
 
-     :insertions (into {}
-                       (for [[rule rule-node] rule-to-nodes]
-                         [rule
-                          (for [token (keys (mem/get-insertions-all memory rule-node))
-                                insertion-group (get (mem/get-insertions-all memory rule-node) token)
-                                insertion insertion-group]
-                            {:explanation (first (to-explanations session [token])) :fact insertion})]))
+                   :insertions (into {}
+                                     (for [[rule rule-node] rule-to-nodes]
+                                       [rule
+                                        (for [token (keys (mem/get-insertions-all memory rule-node))
+                                              insertion-group (get (mem/get-insertions-all memory rule-node) token)
+                                              insertion insertion-group]
+                                          {:explanation (first (to-explanations session [token])) :fact insertion})]))
 
-     :fact->explanations (gen-fact->explanations session)}))
+                   :fact->explanations (gen-fact->explanations session)}]
+
+    (if-let [unfiltered-rule-matches (gen-all-rule-matches session)]
+      (assoc base-info :unfiltered-rule-matches unfiltered-rule-matches)
+      base-info)))
 
 (defn- explain-activation
   "Prints a human-readable explanation of the facts and conditions that created the Rete token."

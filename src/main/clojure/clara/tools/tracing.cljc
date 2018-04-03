@@ -63,6 +63,9 @@
   (remove-activations! [listener node activations]
     (append-trace listener {:type :remove-activations :node-id (:id node) :activations activations}))
 
+  (fire-activation! [listener activation resulting-operations]
+    (append-trace listener {:type :fire-activation :activation activation :resulting-operations resulting-operations}))
+
   (fire-rules! [listener node]
     (append-trace listener {:type :fire-rules :node-id (:id node)}))
 
@@ -94,21 +97,13 @@
   [session]
   (if (is-tracing? session)
     session
-    (let [{:keys [listeners] :as components} (eng/components session)]
-      (eng/assemble (assoc components
-                      :listeners
-                      (conj listeners (PersistentTracingListener. [])))))))
+    (eng/with-listener session (PersistentTracingListener. []))))
 
 (defn without-tracing
   "Returns a new session identical to the given one, but with tracing disabled
    The given session is returned unmodified if tracing is already disabled."
   [session]
-  (if (is-tracing? session)
-    (let [{:keys [listeners] :as components} (eng/components session)]
-      (eng/assemble (assoc components
-                      :listeners
-                      (remove #(instance? PersistentTracingListener %) listeners))))
-    session))
+  (eng/remove-listeners session (partial instance? PersistentTracingListener)))
 
 (defn get-trace
   "Returns the trace from the given session."
