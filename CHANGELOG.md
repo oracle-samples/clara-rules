@@ -1,7 +1,12 @@
 This is a history of changes to clara-rules.
 
-### 0.18.0-SNAPSHOT
+### 0.18.0
+* Remove unnecessary memory operations from ProductionNode to optimize performance.  Remove :rule-matches in session inspection that did not cause logical insertions and add a new optional feature to return all rule matches, regardless of what their RHS did or whether they were retracted. Add a new listener and tracing method fire-activation!. These changes are moderately non-passive with respect to listening, tracing, and session inspection but are otherwise passive.  See [issue 386](https://github.com/cerner/clara-rules/issues/386) for details.
 * Support keyword names for use in custom DSLs. See [issue 371](https://github.com/cerner/clara-rules/issues/371) for details.
+* Remove unused let-bindings from generated RHS functions.  See [issue 383 ](https://github.com/cerner/clara-rules/issues/383).
+* Improve performance of building rule sessions where conditions have many descendants.  See [issue 377](https://github.com/cerner/clara-rules/issues/377).
+* Refactoring to better support custom user-designed DSLs in ClojureScript. See [issue 362](https://github.com/cerner/clara-rules/issues/362).
+* Fix a ClassCastException in error handling code for shared LHS conditions.  See [issue 379](https://github.com/cerner/clara-rules/issues/379).
 
 ### 0.17.0
 * Breaking change affecting clara.rules.listener and clara.tools.tracing namespaces. `insert-facts!` and `retract-facts!` listener methods are now called with `node` and `token` arguments. See [PR 366](https://github.com/cerner/clara-rules/pull/366).
