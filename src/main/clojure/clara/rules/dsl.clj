@@ -8,7 +8,8 @@
             [clara.rules.engine :as eng]
             [clara.rules.compiler :as com]
             [clara.rules.schema :as schema]
-            [schema.core :as sc]))
+            [schema.core :as sc])
+  (:refer-clojure :exclude [qualified-keyword?]))
 
 ;; Let operators be symbols or keywords.
 (def ops #{'and 'or 'not 'exists :and :or :not :exists})

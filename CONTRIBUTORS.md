@@ -10,6 +10,7 @@ Community
 
 - David Goeke [@dgoeke]
 - Dave Dixon [@sparkofreason]
+- Baptiste Fontaine [@bfontaine]
 
 [@rbrush]: https://github.com/rbrush
 [@mrrodriguez]: https://github.com/mrrodriguez
@@ -18,3 +19,4 @@ Community
 [@kulkarnipushkar]: https://github.com/kulkarnipushkar
 [@dgoeke]: https://github.com/dgoeke
 [@sparkofreason]: https://github.com/sparkofreason
+[@bfontaine]: https://github.com/bfontaine
