@@ -1,5 +1,8 @@
 This is a history of changes to clara-rules.
 
+### 0.19.0-SNAPSHOT
+* Remove a warning about `qualified-keyword?` being replaced when using Clojure 1.9.
+
 ### 0.18.0
 * Remove unnecessary memory operations from ProductionNode to optimize performance.  Remove :rule-matches in session inspection that did not cause logical insertions and add a new optional feature to return all rule matches, regardless of what their RHS did or whether they were retracted. Add a new listener and tracing method fire-activation!. These changes are moderately non-passive with respect to listening, tracing, and session inspection but are otherwise passive.  See [issue 386](https://github.com/cerner/clara-rules/issues/386) for details.
 * Support keyword names for use in custom DSLs. See [issue 371](https://github.com/cerner/clara-rules/issues/371) for details.
