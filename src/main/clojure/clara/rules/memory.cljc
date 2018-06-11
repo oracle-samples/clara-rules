@@ -320,7 +320,8 @@
 
 #?(:clj
    (defprotocol IdentityComparable
-     (using-token-identity! [this bool])))
+     (using-token-identity! [this bool])
+     (use-token-identity? [this])))
 
 #?(:clj
    (deftype RuleOrderedActivation [node-id
@@ -340,6 +341,10 @@
      (using-token-identity! [this bool]
        (set! use-token-identity? bool)
        this)
+
+     (use-token-identity? [_]
+       use-token-identity?)
+
      Object
      ;; Two RuleOrderedActivation instances should be equal if and only if their
      ;; activation is equal.  Note that if the node of two activations is the same,

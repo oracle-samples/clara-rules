@@ -3,6 +3,7 @@
             [clara.rules.durability.fressian :as df]
             [clojure.data.fressian :as fres]
             [clara.rules.platform :as pform]
+            [clara.rules.memory :as mem]
             [clojure.test :refer :all])
   (:import [org.fressian
             FressianWriter
@@ -106,5 +107,9 @@
         (test-serde-with-meta sm-custom sm-custom)
         (is (thrown? Exception
                      (serde (with-meta sm-custom {})))
-            "cannot serialized custom sort comparators without name given in metadata")))))
+            "cannot serialized custom sort comparators without name given in metadata"))))
+
+  (testing "RuleOrderActivation"
+    (let [act (mem/->RuleOrderedActivation 1 nil nil 1 false)]
+      (test-serde act act))))
 
