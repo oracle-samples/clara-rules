@@ -1283,7 +1283,9 @@
         cold-windy-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]
                                               [WindSpeed (> windspeed 25)]])
 
-        beta-graph (com/to-beta-graph #{cold-query cold-windy-query})]
+        beta-graph (com/to-beta-graph #{cold-query cold-windy-query} (let [x (atom 0)]
+                                                                       (fn []
+                                                                         (swap! x inc))))]
 
     ;; The above rules should share a root condition, so there are
     ;; only two distinct conditions in our network, plus the root node.

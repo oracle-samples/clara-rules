@@ -553,10 +553,12 @@
   d/ISessionSerializer
   (serialize [_ session opts]
     (let [{:keys [rulebase memory]} (eng/components session)
+          node-fns (:node-identifier-to-fn rulebase)
           rulebase (assoc rulebase
                           :activation-group-sort-fn nil
                           :activation-group-fn nil
-                          :get-alphas-fn nil)
+                          :get-alphas-fn nil
+                          :node-identifier-to-fn nil)
           record-holder (IdentityHashMap.)
           do-serialize
           (fn [sources]
@@ -568,12 +570,13 @@
       
       ;; In this case there is nothing to do with memory, so just serialize immediately.
       (if (:rulebase-only? opts)
-        (do-serialize [rulebase])
+        ;; The keys of the node-fns should contain enough data to reconstruct the entire map.
+        (do-serialize [(keys node-fns) rulebase])
         
         ;; Otherwise memory needs to have facts extracted to return.
         (let [{:keys [memory indexed-facts internal-indexed-facts]} (d/indexed-session-memory-state memory)
               sources (if (:with-rulebase? opts)
-                        [rulebase internal-indexed-facts memory]
+                        [(keys node-fns) rulebase internal-indexed-facts memory]
                         [internal-indexed-facts memory])]
           
           (do-serialize sources)
@@ -584,19 +587,32 @@
   (deserialize [_ mem-facts opts]
     
     (with-open [^FressianReader rdr (fres/create-reader in-stream :handlers read-handler-lookup)]
-      (let [{:keys [rulebase-only? base-rulebase]} opts
+      (let [{:keys [rulebase-only? base-rulebase compilation-partition-size]} opts
             
             record-holder (ArrayList.)
             ;; The rulebase should either be given from the base-session or found in
             ;; the restored session-state.
             maybe-base-rulebase (when (and (not rulebase-only?) base-rulebase)
                                   base-rulebase)
+
+            compilation-partition-size (or compilation-partition-size 1250)
+
+            reconstruct-expressions (fn [ks]
+                                      (into {}
+                                            (for [k ks]
+                                              [k (-> k meta (get (nth k 1)))])))
+
             rulebase (if maybe-base-rulebase
                        maybe-base-rulebase
-                       (let [without-opts-rulebase (pform/thread-local-binding [d/node-id->node-cache (volatile! {})
-                                                                                d/compile-expr-fn (memoize (fn [id expr] (com/try-eval expr)))
-                                                                                d/clj-record-holder record-holder]
-                                                                               (fres/read-object rdr))]
+                       (let [without-opts-rulebase
+                             (pform/thread-local-binding [d/node-id->node-cache (volatile! {})
+                                                          d/clj-record-holder record-holder]
+                                                         (pform/thread-local-binding [d/node-fn-cache (-> (fres/read-object rdr)
+                                                                                                          reconstruct-expressions
+                                                                                                          (com/compile-exprs compilation-partition-size))]
+                                                                                     (assoc (fres/read-object rdr)
+                                                                                       :node-identifier-to-fn
+                                                                                       (.get d/node-fn-cache))))]
                          (d/rulebase->rulebase-with-opts without-opts-rulebase opts)))]
         
         (if rulebase-only?

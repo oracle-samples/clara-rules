@@ -131,7 +131,8 @@
 
 ;; Alpha network schema.
 (def AlphaNode
-  {:condition FactCondition
+  {:id s/Int
+   :condition FactCondition
    ;; Opional environment for the alpha node.
    (s/optional-key :env) {s/Keyword s/Any}
    ;; IDs of the beta nodes that are the children.
@@ -154,3 +155,14 @@
 
    ;; Map of identifier to new bindings created by the corresponding node.
    :id-to-new-bindings {s/Int #{s/Keyword}}})
+
+(defn tuple
+  "Given `items`, a list of schemas, will generate a schema to validate that a vector contains and is in the order provided
+   by `items`."
+  [& items]
+  (s/constrained [s/Any]
+                 (fn [tuple-vals]
+                   (and (= (count tuple-vals)
+                           (count items))
+                        (every? nil? (map s/check items tuple-vals))))
+                 "tuple"))
