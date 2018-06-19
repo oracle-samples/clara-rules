@@ -329,6 +329,9 @@
         It defaults to checking the :salience property, or 0 if none exists.
       * :activation-group-sort-fn, a comparator function used to sort the values returned by the above :activation-group-fn.
         Defaults to >, so rules with a higher salience are executed first.
+      * :compilation-partition-size - The maximum number of expressions that will be evaluated per call to eval.
+        Larger batch sizes should see better performance compared to smaller batch sizes.
+        Defaults to 1250.
 
       This is not supported in ClojureScript, since it requires eval to dynamically build a session. ClojureScript
       users must use pre-defined rule sessions using defsession."

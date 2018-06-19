@@ -585,7 +585,7 @@
           indexed-facts))))
   
   (deserialize [_ mem-facts opts]
-    
+
     (with-open [^FressianReader rdr (fres/create-reader in-stream :handlers read-handler-lookup)]
       (let [{:keys [rulebase-only? base-rulebase compilation-partition-size]} opts
             
@@ -595,6 +595,9 @@
             maybe-base-rulebase (when (and (not rulebase-only?) base-rulebase)
                                   base-rulebase)
 
+            ;; 1250 is an arbitrary number, this could be lower or higher depending on the
+            ;; rulebase that is being deserialized, with regards to the average size of the
+            ;; forms being evaluated.
             compilation-partition-size (or compilation-partition-size 1250)
 
             reconstruct-expressions (fn [ks]

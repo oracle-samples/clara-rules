@@ -1393,7 +1393,7 @@
   "Takes a map in form produced by extract-exprs and evaluates the values(expressions) of the map in a batched manner.
    This allows the eval calls to be more effecient, rather than evaluating each expression on its own."
   [key->expr :- {(schema/tuple sc/Int sc/Keyword) schema/SExpr}
-   partiton-size :- sc/Int]
+   partition-size :- sc/Int]
   (let [batching-try-eval (fn [node-keys exprs]
                             ;; Try to evaluate all of the expressions as a batch. If they fail the batch eval then we
                             ;; try them one by one with their compilation context, this is slow but we were going to fail
@@ -1422,7 +1422,7 @@
           (for [[ns pairs] (group-by (comp :ns meta key) key->expr)
                 ;; Partitioning the number of forms to be evaluated, Java has a limit to the size of methods if we were
                 ;; evaluate all expressions at once it would likely exceed this limit and throw an exception.
-                pairs (partition-all partiton-size pairs)
+                pairs (partition-all partition-size pairs)
                 :let [node-keys (map #(nth % 0) pairs)]]
             (mapv (fn [node-key expr]
                     [node-key expr])
@@ -1872,6 +1872,9 @@
         id-counter (atom 0)
         create-id-fn (fn [] (swap! id-counter inc))
 
+        ;; 1250 is an arbitrary number, this could be lower or higher depending on the
+        ;; rulebase that is being compiled, with regards to the average size of the
+        ;; forms being evaluated.
         compilation-partition-size (:compilation-partition-size options 1250)
 
         beta-graph (to-beta-graph productions create-id-fn)
