@@ -550,7 +550,7 @@
      the session was serialized without the rulebase, i.e. :with-rulebase? = false, so it needs a rulebase
      to be 'attached' back onto it to be usable.
 
-   * :compilation-partition-size - The maximum number of expressions that will be evaluated per call to eval.
+   * :forms-per-eval - The maximum number of expressions that will be evaluated per call to eval.
      This will be defaulted to 1250 if not provided. Larger batch sizes should see better performance compared
      to smaller batch sizes. This option will only apply to deserialization of the rulebase, as serialization
      does not need to evaluate any expressions.

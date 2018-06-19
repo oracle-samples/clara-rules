@@ -75,7 +75,7 @@
                         ;; Function that takes facts and determines what alpha nodes they match.
                         get-alphas-fn
                         ;; A map of [node-id field-name] to function.
-                        node-identifier-to-fn])
+                        node-expr-fn-lookup])
 
 (defn- is-variable?
   "Returns true if the given expression is a variable (a symbol prefixed by ?)"
@@ -1256,7 +1256,7 @@
             empty-beta-graph
             productions))
 
-(sc/defn extract-exprs :- {(schema/tuple sc/Int sc/Keyword) schema/SExpr}
+(sc/defn extract-exprs :- schema/NodeExprLookup
   "Walks the Alpha and Beta graphs and extracts the expressions that will be used in the construction of the final network.
    The extracted expressions are stored by their key, [<node-id> <field-key>], this allows for the function to be retrieved
    after it has been compiled.
@@ -1389,10 +1389,10 @@
       exprs
       (:id-to-condition-node beta-graph))))
 
-(sc/defn compile-exprs :- {(schema/tuple sc/Int sc/Keyword) IFn}
+(sc/defn compile-exprs :- schema/NodeFnLookup
   "Takes a map in form produced by extract-exprs and evaluates the values(expressions) of the map in a batched manner.
    This allows the eval calls to be more effecient, rather than evaluating each expression on its own."
-  [key->expr :- {(schema/tuple sc/Int sc/Keyword) schema/SExpr}
+  [key->expr :- schema/NodeExprLookup
    partition-size :- sc/Int]
   (let [batching-try-eval (fn [node-keys exprs]
                             ;; Try to evaluate all of the expressions as a batch. If they fail the batch eval then we
@@ -1439,7 +1439,7 @@
    id :- sc/Int
    is-root :- sc/Bool
    children :- [sc/Any]
-   id-key->expr :- {(schema/tuple sc/Int sc/Keyword) IFn}
+   expr-fn-lookup :- schema/NodeFnLookup
    new-bindings :- #{sc/Keyword}]
 
   (let [{:keys [condition production query join-bindings]} beta-node
@@ -1448,7 +1448,7 @@
                     (.loadClass (clojure.lang.RT/makeClassLoader) (name condition))
                     condition)
 
-        retrieve-fn (fn [id field] (get id-key->expr [id field]))]
+        compiled-expr-fn (fn [id field] (get expr-fn-lookup [id field]))]
 
     (case (:node-type beta-node)
 
@@ -1467,7 +1467,7 @@
           (eng/->ExpressionJoinNode
             id
             condition
-            (retrieve-fn id :join-filter-expr)
+            (compiled-expr-fn id :join-filter-expr)
             children
             join-bindings)
           (eng/->HashJoinNode
@@ -1484,7 +1484,7 @@
         (eng/->NegationWithJoinFilterNode
           id
           condition
-          (retrieve-fn id :join-filter-expr)
+          (compiled-expr-fn id :join-filter-expr)
           children
           join-bindings)
         (eng/->NegationNode
@@ -1496,13 +1496,13 @@
       :test
       (eng/->TestNode
         id
-        (retrieve-fn id :test-expr)
+        (compiled-expr-fn id :test-expr)
         children)
 
       :accumulator
       ;; We create an accumulator that accepts the environment for the beta node
       ;; into its context, hence the function with the given environment.
-      (let [compiled-node (retrieve-fn id :accum-expr)
+      (let [compiled-node (compiled-expr-fn id :accum-expr)
             compiled-accum (compiled-node (:env beta-node))]
 
         ;; Ensure the compiled accumulator has the expected structure
@@ -1522,7 +1522,7 @@
              :from (update-in condition [:constraints]
                               into (-> beta-node :join-filter-expressions :constraints))}
             compiled-accum
-            (retrieve-fn id :join-filter-expr)
+            (compiled-expr-fn id :join-filter-expr)
             (:result-binding beta-node)
             children
             join-bindings
@@ -1545,7 +1545,7 @@
       (eng/->ProductionNode
         id
         production
-        (retrieve-fn id :action-expr))
+        (compiled-expr-fn id :action-expr))
 
       :query
       (eng/->QueryNode
@@ -1556,7 +1556,7 @@
 (sc/defn ^:private compile-beta-graph :- {sc/Int sc/Any}
   "Compile the beta description to the nodes used at runtime."
   [{:keys [id-to-production-node id-to-condition-node id-to-new-bindings forward-edges backward-edges]} :- schema/BetaGraph
-   id-key->expr :- {(schema/tuple sc/Int sc/Keyword) IFn}]
+   expr-fn-lookup :- schema/NodeFnLookup]
   (let [;; Sort the ids to compile based on dependencies.
         ids-to-compile (loop [pending-ids (into #{} (concat (keys id-to-production-node) (keys id-to-condition-node)))
                               node-deps forward-edges
@@ -1604,7 +1604,7 @@
                                        ;; 0 is the id of the root node.
                                        (= #{0} (get backward-edges id-to-compile))
                                        children
-                                       id-key->expr
+                                       expr-fn-lookup
                                        (get id-to-new-bindings id-to-compile))))))
             ;; The node IDs have been determined before now, so we just need to sort the map returned.
             ;; This matters because the engine will left-activate the beta roots with the empty token
@@ -1659,11 +1659,11 @@
                                   (sc/optional-key :env) {sc/Keyword sc/Any}
                                   :children [sc/Num]}]
   [alpha-nodes :- [schema/AlphaNode]
-   id-key->expr :- {(schema/tuple sc/Int sc/Keyword) IFn}]
+   expr-fn-lookup :- schema/NodeFnLookup]
   (for [{:keys [id condition beta-children env] :as node} alpha-nodes]
     (cond-> {:id id
              :type (effective-type (:type condition))
-             :alpha-fn (get id-key->expr [id :alpha-expr])
+             :alpha-fn (get expr-fn-lookup [id :alpha-expr])
              :children beta-children}
             env (assoc :env env))))
 
@@ -1776,7 +1776,7 @@
    ancestors-fn
    activation-group-sort-fn
    activation-group-fn
-   expressions]
+   expr-fn-lookup]
 
   (let [beta-nodes (vals id-to-node)
 
@@ -1819,7 +1819,7 @@
       :activation-group-sort-fn activation-group-sort-fn
       :activation-group-fn activation-group-fn
       :get-alphas-fn get-alphas-fn
-      :node-identifier-to-fn expressions})))
+      :node-expr-fn-lookup expr-fn-lookup})))
 
 ;; Cache of sessions for fast reloading.
 (def ^:private session-cache (atom {}))
@@ -1875,14 +1875,14 @@
         ;; 1250 is an arbitrary number, this could be lower or higher depending on the
         ;; rulebase that is being compiled, with regards to the average size of the
         ;; forms being evaluated.
-        compilation-partition-size (:compilation-partition-size options 1250)
+        forms-per-eval (:forms-per-eval options 1250)
 
         beta-graph (to-beta-graph productions create-id-fn)
         alpha-graph (to-alpha-graph beta-graph create-id-fn)
 
         ;; Extract the expressions from the graphs and evaluate them in a batch manner.
         ;; This is a performance optimization, see Issue 381 for more information.
-        exprs (compile-exprs (extract-exprs beta-graph alpha-graph) compilation-partition-size)
+        exprs (compile-exprs (extract-exprs beta-graph alpha-graph) forms-per-eval)
         beta-tree (compile-beta-graph beta-graph exprs)
         beta-root-ids (-> beta-graph :forward-edges (get 0)) ; 0 is the id of the virtual root node.
         beta-roots (vals (select-keys beta-tree beta-root-ids))

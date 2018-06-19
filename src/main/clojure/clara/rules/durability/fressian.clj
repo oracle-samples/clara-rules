@@ -553,12 +553,12 @@
   d/ISessionSerializer
   (serialize [_ session opts]
     (let [{:keys [rulebase memory]} (eng/components session)
-          node-fns (:node-identifier-to-fn rulebase)
+          node-fns (:node-expr-fn-lookup rulebase)
           rulebase (assoc rulebase
                           :activation-group-sort-fn nil
                           :activation-group-fn nil
                           :get-alphas-fn nil
-                          :node-identifier-to-fn nil)
+                          :node-expr-fn-lookup nil)
           record-holder (IdentityHashMap.)
           do-serialize
           (fn [sources]
@@ -587,7 +587,7 @@
   (deserialize [_ mem-facts opts]
 
     (with-open [^FressianReader rdr (fres/create-reader in-stream :handlers read-handler-lookup)]
-      (let [{:keys [rulebase-only? base-rulebase compilation-partition-size]} opts
+      (let [{:keys [rulebase-only? base-rulebase forms-per-eval]} opts
             
             record-holder (ArrayList.)
             ;; The rulebase should either be given from the base-session or found in
@@ -598,7 +598,7 @@
             ;; 1250 is an arbitrary number, this could be lower or higher depending on the
             ;; rulebase that is being deserialized, with regards to the average size of the
             ;; forms being evaluated.
-            compilation-partition-size (or compilation-partition-size 1250)
+            forms-per-eval (or forms-per-eval 1250)
 
             reconstruct-expressions (fn [ks]
                                       (into {}
@@ -612,9 +612,9 @@
                                                           d/clj-record-holder record-holder]
                                                          (pform/thread-local-binding [d/node-fn-cache (-> (fres/read-object rdr)
                                                                                                           reconstruct-expressions
-                                                                                                          (com/compile-exprs compilation-partition-size))]
+                                                                                                          (com/compile-exprs forms-per-eval))]
                                                                                      (assoc (fres/read-object rdr)
-                                                                                       :node-identifier-to-fn
+                                                                                       :node-expr-fn-lookup
                                                                                        (.get d/node-fn-cache))))]
                          (d/rulebase->rulebase-with-opts without-opts-rulebase opts)))]
         

@@ -1,7 +1,10 @@
 (ns clara.rules.schema
   "Schema definition of Clara data structures using Prismatic's Schema library. This includes structures for rules and queries, as well as the schema
    for the underlying Rete network itself. This can be used by tools or other libraries working with rules."
-  (:require [schema.core :as s]))
+  (:require [schema.core :as s])
+  #?(:clj
+     (:import [clojure.lang
+               IFn])))
 
 
 (s/defn condition-type :- (s/enum :or :not :and :exists :fact :accumulator :test)
@@ -166,3 +169,12 @@
                            (count items))
                         (every? nil? (map s/check items tuple-vals))))
                  "tuple"))
+
+;; A map of [<node-id> <field-name>] to SExpression, used in compilation of the rulebase.
+(def NodeExprLookup
+  {(tuple s/Int s/Keyword) SExpr})
+
+;; An evaluated version of the schema mentioned above.
+#?(:clj
+   (def NodeFnLookup
+     {(tuple s/Int s/Keyword) IFn}))

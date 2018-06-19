@@ -329,7 +329,7 @@
         It defaults to checking the :salience property, or 0 if none exists.
       * :activation-group-sort-fn, a comparator function used to sort the values returned by the above :activation-group-fn.
         Defaults to >, so rules with a higher salience are executed first.
-      * :compilation-partition-size - The maximum number of expressions that will be evaluated per call to eval.
+      * :forms-per-eval - The maximum number of expressions that will be evaluated per call to eval.
         Larger batch sizes should see better performance compared to smaller batch sizes.
         Defaults to 1250.
 
