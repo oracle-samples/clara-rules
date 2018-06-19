@@ -2,7 +2,9 @@
   (:require [clojure.test :refer :all]
             [clara.rules.compiler :as com]
             [clara.rules :as r]
-            [clara.rules.durability.fressian :as dura])
+            [clara.rules.durability :as dura]
+            [clara.rules.durability.fressian :as fres]
+            [clara.rules.accumulators :as acc])
   (:import [java.io ByteArrayOutputStream ByteArrayInputStream]))
 
 (defn filter-fn
@@ -42,7 +44,7 @@
     (println description)
     (println "==========================================")
     (println (str "Mean: " mean "ms"))
-    (println (str "Standard Deviation : " std "ms" \newline))
+    (println (str "Standard Deviation: " std "ms" \newline))
     (is (mean-assertion mean))))
 
 (def base-production
@@ -55,7 +57,7 @@
               :let [next-fact (symbol (str seed-sym "prime"))
                     production (assoc base-production
                                  :lhs [{:type (keyword seed-sym)
-                                        :constraints ['(= this ?binding) `(filter-fn ~'this)]}]
+                                        :constraints [`(= ~'this ~'?binding) `(filter-fn ~'this)]}]
                                  :rhs `(r/insert! (with-meta ~(set (repeatedly 10 #(rand-nth (range 100))))
                                                              {:type ~(keyword next-fact)
                                                               :val ~'?binding})))]]
@@ -68,9 +70,9 @@
                    ([l r] (let [next-fact (symbol (str l r "prime"))
                                 production (assoc base-production
                                              :lhs [{:type (keyword l)
-                                                    :constraints ['(= this ?binding-l)]}
+                                                    :constraints [`(= ~'this ~'?binding-l)]}
                                                    {:type (keyword r)
-                                                    :constraints ['(= ?binding-l this)]}]
+                                                    :constraints [`(= ~'?binding-l ~'this)]}]
                                              :rhs `(r/insert! (with-meta ~(set (repeatedly 10 #(rand-nth (range 100))))
                                                                          {:type ~(keyword next-fact)})))]
                             [next-fact production])))]
@@ -84,7 +86,7 @@
         (for [seed-sym seed-syms
               :let [next-fact (symbol (str seed-sym "prime"))
                     production (assoc base-production
-                                 :lhs [{:accumulator '(clara.rules.accumulators/all)
+                                 :lhs [{:accumulator `(acc/all)
                                         :from {:type (keyword seed-sym),
                                                :constraints [`(filter-fn ~'this)]}
                                         :result-binding :?binding}]
@@ -97,7 +99,7 @@
   (into {}
         (for [seed-sym seed-syms
               :let [production (assoc base-production
-                                 :lhs [{:type [seed-sym]
+                                 :lhs [{:type (keyword seed-sym)
                                         :constraints []
                                         :fact-binding :?binding}]
                                  :params #{})]]
@@ -131,24 +133,24 @@
 
     (let [session (com/mk-session rules)
           os (ByteArrayOutputStream.)]
-      (testing "Session serialization performance"
+      (testing "Session rulebase serialization performance"
         (run-performance-test
           {:description "Generated Session serialization"
-           :func #(.serialize (dura/create-session-serializer (ByteArrayOutputStream.))
-                              session
-                              {:rulebase-only? true})
+           :func #(dura/serialize-rulebase
+                    session
+                    (fres/create-session-serializer (ByteArrayOutputStream.)))
            :iterations 50
            :mean-assertion (partial > 1000)}))
 
-      (testing "Session deserialization performance"
-        (.serialize (dura/create-session-serializer os)
-                    session
-                    {:rulebase-only? true})
+      (testing "Session rulebase deserialization performance"
+        (dura/serialize-rulebase
+          session
+          (fres/create-session-serializer os))
 
         (let [session-bytes (.toByteArray os)]
           (run-performance-test
             {:description "Generated Session deserialization"
-             :func #(-> (dura/create-session-serializer (ByteArrayInputStream. session-bytes))
-                        (.deserialize session-bytes {:rulebase-only? true}))
+             :func #(dura/deserialize-rulebase
+                      (fres/create-session-serializer (ByteArrayInputStream. session-bytes)))
              :iterations 50
              :mean-assertion (partial > 5000)}))))))
