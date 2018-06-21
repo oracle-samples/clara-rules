@@ -330,8 +330,8 @@
       * :activation-group-sort-fn, a comparator function used to sort the values returned by the above :activation-group-fn.
         Defaults to >, so rules with a higher salience are executed first.
       * :forms-per-eval - The maximum number of expressions that will be evaluated per call to eval.
-        Larger batch sizes should see better performance compared to smaller batch sizes.
-        Defaults to 1250.
+        Larger batch sizes should see better performance compared to smaller batch sizes. (Only applicable to Clojure)
+        Defaults to 5000, see clara.rules.compiler/forms-per-eval-default for more information.
 
       This is not supported in ClojureScript, since it requires eval to dynamically build a session. ClojureScript
       users must use pre-defined rule sessions using defsession."

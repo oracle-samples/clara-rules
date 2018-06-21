@@ -135,7 +135,7 @@
           os (ByteArrayOutputStream.)]
       (testing "Session rulebase serialization performance"
         (run-performance-test
-          {:description "Generated Session serialization"
+          {:description "Session rulebase serialization"
            :func #(dura/serialize-rulebase
                     session
                     (fres/create-session-serializer (ByteArrayOutputStream.)))
@@ -149,7 +149,7 @@
 
         (let [session-bytes (.toByteArray os)]
           (run-performance-test
-            {:description "Generated Session deserialization"
+            {:description "Session rulebase deserialization"
              :func #(dura/deserialize-rulebase
                       (fres/create-session-serializer (ByteArrayInputStream. session-bytes)))
              :iterations 50

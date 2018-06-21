@@ -1308,7 +1308,7 @@
                                             ;; ProductionNode expressions can be arbitrary code, therefore we need the
                                             ;; ns where the production was define so that we can compile the expression
                                             ;; later.
-                                            {:ns (some-> (:ns-name production) str)
+                                            {:ns (:ns-name production)
                                              :file (-> production :rhs meta :file)
                                              :compile-ctx {:production production
                                                            :msg "compiling production node"}})))
@@ -1322,7 +1322,7 @@
                           condition)]
           (case (or (:node-type beta-node)
                     ;; If there is no :node-type then the node is the ::root-condition
-                    ;; however, creating a case for nil could potentially casue weird effects if something about the
+                    ;; however, creating a case for nil could potentially cause weird effects if something about the
                     ;; compilation of the beta graph changes. Therefore making an explicit case for ::root-condition
                     ;; and if there was anything that wasn't ::root-condition this case statement will fail rather than
                     ;; failing somewhere else.
@@ -1390,8 +1390,9 @@
       (:id-to-condition-node beta-graph))))
 
 (sc/defn compile-exprs :- schema/NodeFnLookup
-  "Takes a map in form produced by extract-exprs and evaluates the values(expressions) of the map in a batched manner.
-   This allows the eval calls to be more effecient, rather than evaluating each expression on its own."
+  "Takes a map in the form produced by extract-exprs and evaluates the values(expressions) of the map in a batched manner.
+   This allows the eval calls to be more effecient, rather than evaluating each expression on its own.
+   See #381 for more details."
   [key->expr :- schema/NodeExprLookup
    partition-size :- sc/Int]
   (let [batching-try-eval (fn [node-keys exprs]
@@ -1413,24 +1414,24 @@
                                 ;; size of the code trying to be evaluated has exceeded the limit
                                 ;; set by java.
                                 (throw (ex-info "The batching size of expressions has exceeded the limit set by java."
-                                                {:orginal-exception e})))))]
+                                                {:node-keys node-keys}
+                                                e)))))]
     (into {}
           cat
           ;; Grouping by ns, most expressions will not have a defined ns, only expressions from production nodes.
           ;; These expressions must be evaluated in the ns where they were defined, as they will likely contain code
           ;; that is namespace dependent.
-          (for [[ns pairs] (group-by (comp :ns meta key) key->expr)
+          (for [[ns group] (sort-by key (group-by (comp :ns meta key) key->expr))
                 ;; Partitioning the number of forms to be evaluated, Java has a limit to the size of methods if we were
                 ;; evaluate all expressions at once it would likely exceed this limit and throw an exception.
-                pairs (partition-all partition-size pairs)
-                :let [node-keys (map #(nth % 0) pairs)]]
-            (mapv (fn [node-key expr]
-                    [node-key expr])
+                expr-batch (partition-all partition-size group)
+                :let [node-keys (map key expr-batch)]]
+            (mapv vector
                   node-keys
                   (with-bindings (if ns
-                                   {#'*ns* (-> ns symbol the-ns)}
+                                   {#'*ns* (the-ns ns )}
                                    {})
-                    (batching-try-eval node-keys (mapv #(nth % 1) pairs))))))))
+                    (batching-try-eval node-keys (mapv val expr-batch))))))))
 
 (sc/defn ^:private compile-node
   "Compiles a given node description into a node usable in the network with the
@@ -1849,6 +1850,37 @@
       productions
       (throw (ex-info (str "Non-unique production names: " non-unique) {:names non-unique})))))
 
+(def forms-per-eval-default
+  ;; The default max number of forms that will be evaluated together as a single batch.
+  ;; 5000 is chosen here due to the way that clojure will evaluate the vector of forms extracted from the nodes.
+  ;; The limiting factor here is the max java method size (64KiB), clojure will compile each form in the vector down into
+  ;; its own class file and generate another class file that will reference each of the other functions and wrap them in
+  ;; a vector inside a static method. For example,
+  ;;
+  ;; (eval [(fn one [_] ...) (fn two [_] ...)])
+  ;; would generate 3 classes.
+  ;;
+  ;; some_namespace$eval1234
+  ;; some_namespace$eval1234$one_1234
+  ;; some_namespace$eval1234$two_1235
+  ;;
+  ;; some_namespace$eval1234$one_1234 and some_namespace$eval1234$two_1235 contian the implementation of the functions,
+  ;; where some_namespace$eval1234 will contain two methods, invoke and invokeStatic.
+  ;; The invokeStatic method breaks down into something similar to a single create array call followed by 2 array set calls
+  ;; with new invocations on the 2 classes the method then returns a new vector created from the array.
+  ;;
+  ;; 5000 is lower than the absolute max to allow for modifications to how clojure compiles without needing to modify this.
+  ;; The current limit should be 5471, this is derived from the following opcode investigation:
+  ;;
+  ;; Array creation:                                                    5B
+  ;; Creating and populating the first 6 elements of the array:        60B
+  ;; Creating and populating the next 122 elements of the array:    1,342B
+  ;; Creating and populating the next 5343 elements of the array:  64,116B
+  ;; Creating the vector and the return statement:                      4B
+  ;;
+  ;; This sums to 65,527B just shy of the 65,536B method size limit.
+  5000)
+
 (sc/defn mk-session*
   "Compile the rules into a rete network and return the given session."
   [productions :- #{schema/Production}
@@ -1872,10 +1904,7 @@
         id-counter (atom 0)
         create-id-fn (fn [] (swap! id-counter inc))
 
-        ;; 1250 is an arbitrary number, this could be lower or higher depending on the
-        ;; rulebase that is being compiled, with regards to the average size of the
-        ;; forms being evaluated.
-        forms-per-eval (:forms-per-eval options 1250)
+        forms-per-eval (:forms-per-eval options forms-per-eval-default)
 
         beta-graph (to-beta-graph productions create-id-fn)
         alpha-graph (to-alpha-graph beta-graph create-id-fn)

@@ -595,10 +595,7 @@
             maybe-base-rulebase (when (and (not rulebase-only?) base-rulebase)
                                   base-rulebase)
 
-            ;; 1250 is an arbitrary number, this could be lower or higher depending on the
-            ;; rulebase that is being deserialized, with regards to the average size of the
-            ;; forms being evaluated.
-            forms-per-eval (or forms-per-eval 1250)
+            forms-per-eval (or forms-per-eval com/forms-per-eval-default)
 
             reconstruct-expressions (fn [ks]
                                       (into {}
