@@ -17,7 +17,8 @@
 
      Object
      (equals [this other]
-       (= wrapped (.wrapped ^JavaEqualityWrapper other)))
+       (and (instance? JavaEqualityWrapper other)
+            (= wrapped (.wrapped ^JavaEqualityWrapper other))))
 
      (hashCode [this]
        hash-code)))
