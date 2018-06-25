@@ -68,12 +68,12 @@
   ;; perhaps because Leiningen is using this as uneval'ed code.
   ;; For now just duplicate the line.
   :test-selectors {:default (complement (fn [x]
-                                          (let [backlisted-packages #{"generative" "performance"}
+                                          (let [blacklisted-packages #{"generative" "performance"}
                                                 patterns (into []
                                                            (comp
                                                              (map #(str "^clara\\." % ".*"))
                                                              (interpose "|"))
-                                                           backlisted-packages)]
+                                                           blacklisted-packages)]
                                             (some->> x :ns ns-name str (re-matches (re-pattern (apply str patterns)))))))
                    :generative (fn [x] (some->> x :ns ns-name str (re-matches #"^clara\.generative.*")))
                    :performance (fn [x] (some->> x :ns ns-name str (re-matches #"^clara\.performance.*")))}

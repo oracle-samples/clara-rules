@@ -1019,7 +1019,8 @@
            (keys (:id-to-node rulebase2))))
 
     ;; Ensure there are beta and production nodes as expected.
-    (is (= 4 (count (:id-to-node rulebase))))))
+    ;; 2 alpha-nodes, 2 root-join nodes, and 2 production nodes
+    (is (= 6 (count (:id-to-node rulebase))))))
 
 (deftest test-simple-test
   (let [distinct-temps-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t1 temperature)]
@@ -1758,7 +1759,7 @@
         s (mk-session [q])]
 
     ;; Mostly just ensuring the rulebase was compiled successfully.
-    (is (== 3
+    (is (== 4 ;; 1 alpha-node, 2 accumulate nodes, and 1 query node
             (-> s
                 .rulebase
                 :id-to-node

@@ -408,31 +408,11 @@
                                "clara/querynodeid")
 
    "clara/alphanode"
-   {:class AlphaNode
-    ;; The writer and reader here work similar to the IRecord implementation.  The only
-    ;; difference is that the record needs to be written with out the compiled clj
-    ;; function on it.  This is due to clj functions not having any convenient format
-    ;; for serialization.  The function is restored by re-eval'ing the function based on
-    ;; its originating code form at read-time.
-    :writer (reify WriteHandler
-              (write [_ w o]
-                (if-let [idx (d/clj-record-fact->idx o)]
-                  (do
-                    (.writeTag w "clara/alphanodeid" 1)
-                    (.writeInt w idx))
-                  (do
-                    (write-record w "clara/alphanode" (assoc o :activation nil))
-                    (d/clj-record-holder-add-fact-idx! o)))))
-    :readers {"clara/alphanodeid"
-              (reify ReadHandler
-                (read [_ rdr tag component-count]
-                  (d/clj-record-idx->fact (.readObject rdr))))
-              "clara/alphanode"
-              (reify ReadHandler
-                (read [_ rdr tag component-count]
-                  (-> rdr
-                      (read-record d/add-alpha-fn)
-                      d/clj-record-holder-add-fact!)))}}
+   (create-cached-node-handler AlphaNode
+                               "clara/alphanodeid"
+                               "clara/alphanode"
+                               #(assoc % :activation nil)
+                               d/add-alpha-fn)
 
    "clara/rootjoinnode"
    (create-cached-node-handler RootJoinNode

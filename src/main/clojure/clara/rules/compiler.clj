@@ -66,8 +66,10 @@
                         production-nodes :- [ProductionNode]
                         ;; Map of queries to the nodes hosting them.
                         query-nodes :- {sc/Any QueryNode}
-                        ;; Map of id to one of the beta nodes (join, accumulate, etc).
-                        id-to-node :- {sc/Num BetaNode}
+                        ;; Map of id to one of the  alpha or beta nodes (join, accumulate, etc).
+                        id-to-node :- {sc/Num (sc/conditional
+                                                :activation AlphaNode
+                                                :else BetaNode)}
                         ;; Function for sorting activation groups of rules for firing.
                         activation-group-sort-fn
                         ;; Function that takes a rule and returns its activation group.
@@ -1267,8 +1269,8 @@
   [beta-graph :- schema/BetaGraph
    alpha-graph :- [schema/AlphaNode]]
   (let [backward-edges (:backward-edges beta-graph)
-        handle-expr (fn [exprs s-expr id expr-key metadata]
-                      (assoc exprs
+        handle-expr (fn [id->expr s-expr id expr-key metadata]
+                      (assoc id->expr
                         ;; Letting the key carry all of the metadata, this makes the batch evaluation of the expressions
                         ;; easier because the metadata contains unevalable forms.
                         (with-meta [id expr-key] (assoc metadata expr-key s-expr))
@@ -1276,7 +1278,7 @@
         is-root? #(= #{0} (get backward-edges %))
 
         ;; If extract-exprs ever became a hot spot, this could be changed out to use more java interop.
-        alpha-exprs (reduce (fn [prev alpha-node]
+        id->expr (reduce (fn [prev alpha-node]
                               (let [{:keys [id condition env]} alpha-node
                                     {:keys [type constraints fact-binding args]} condition
                                     cmeta (meta condition)]
@@ -1285,7 +1287,7 @@
                                                           type (first args) constraints
                                                           fact-binding env)
                                                         ;; Remove all metadata but file and line number
-                                                        ;; to protect from evaluating usafe metadata
+                                                        ;; to protect from evaluating unsafe metadata
                                                         ;; See PR 243 for more detailed discussion
                                                         (select-keys cmeta [:line :file]))
                                              id
@@ -1296,7 +1298,7 @@
                                                             :msg "compiling alpha node"}})))
                             {}
                             alpha-graph)
-        exprs (reduce-kv (fn [prev id production-node]
+        id->expr (reduce-kv (fn [prev id production-node]
                              (let [production (-> production-node :production)]
                                (handle-expr prev
                                             (with-meta (compile-action (:bindings production-node)
@@ -1312,7 +1314,7 @@
                                              :file (-> production :rhs meta :file)
                                              :compile-ctx {:production production
                                                            :msg "compiling production node"}})))
-                           alpha-exprs
+                            id->expr
                            (:id-to-production-node beta-graph))]
     (reduce-kv
       (fn [prev id beta-node]
@@ -1386,7 +1388,7 @@
                                                              :env (:env beta-node)
                                                              :msg "compiling accumulate with join filter node"}}))
             :query prev)))
-      exprs
+      id->expr
       (:id-to-condition-node beta-graph))))
 
 (sc/defn compile-exprs :- schema/NodeFnLookup
@@ -1413,7 +1415,9 @@
                                 ;; If none of the rules are the issue, it is likely that the
                                 ;; size of the code trying to be evaluated has exceeded the limit
                                 ;; set by java.
-                                (throw (ex-info "The batching size of expressions has exceeded the limit set by java."
+                                (throw (ex-info (str "There was a failure while batch evaling the node expressions, " \newline
+                                                     "but wasn't present when evaling them individually. This likely indicates " \newline
+                                                     "that the method size exceeded the maximum set by java, see the cause for the actual error.")
                                                 {:node-keys node-keys}
                                                 e)))))]
     (into {}
@@ -1807,6 +1811,11 @@
                      (update-in alpha-map [type] conj alpha-node))
                    {}
                    alpha-nodes)
+
+        ;; Merge the alpha nodes into the id-to-node map
+        id-to-node (into id-to-node
+                         (map (juxt :id identity))
+                         (mapv second alpha-nodes))
 
         get-alphas-fn (create-get-alphas-fn fact-type-fn ancestors-fn alpha-map)]
 
