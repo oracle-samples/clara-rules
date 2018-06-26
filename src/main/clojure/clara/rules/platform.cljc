@@ -7,10 +7,26 @@
   [^String description]
   (throw #?(:clj (IllegalArgumentException. description) :cljs (js/Error. description))))
 
+;; This class wraps Clojure objects to ensure Clojure's equality and hash
+;; semantics are visible to Java code. This allows these Clojure objects
+;; to be safely used in things like Java Sets or Maps.
+;; This class also accepts and stores the hash code, since it almost always
+;; will be used once and generally more than once.
+#?(:clj
+   (deftype JavaEqualityWrapper [wrapped ^int hash-code]
+
+     Object
+     (equals [this other]
+       (and (instance? JavaEqualityWrapper other)
+            (= wrapped (.wrapped ^JavaEqualityWrapper other))))
+
+     (hashCode [this]
+       hash-code)))
+
 #?(:clj
    (defn group-by-seq
-     "Groups the items of the given coll by f to each item.  Returns a seq of tuples of the form 
-      [f-val xs] where xs are items from the coll and f-val is the result of applying f to any of 
+     "Groups the items of the given coll by f to each item.  Returns a seq of tuples of the form
+      [f-val xs] where xs are items from the coll and f-val is the result of applying f to any of
       those xs.  Each x in xs has the same value (f x).  xs will be in the same order as they were
       found in coll.
       The behavior is similar to calling `(seq (group-by f coll))` However, the returned seq will
@@ -21,9 +37,10 @@
      [f coll]
      (let [^java.util.Map m (reduce (fn [^java.util.Map m x]
                                       (let [k (f x)
-                                            xs (or (.get m k)
+                                            wrapper (JavaEqualityWrapper. k (hash k))
+                                            xs (or (.get m wrapper)
                                                    (transient []))]
-                                        (.put m k (conj! xs x)))
+                                        (.put m wrapper (conj! xs x)))
                                       m)
                                     (java.util.LinkedHashMap.)
                                     coll)
@@ -33,7 +50,7 @@
        (loop [coll (transient [])]
          (if (.hasNext it)
            (let [^java.util.Map$Entry e (.next it)]
-             (recur (conj! coll [(.getKey e) (persistent! (.getValue e))])))
+             (recur (conj! coll [(.wrapped ^JavaEqualityWrapper (.getKey e)) (persistent! (.getValue e))])))
            (persistent! coll)))))
    :cljs
    (def group-by-seq (comp seq clojure.core/group-by)))
@@ -59,7 +76,7 @@
 
 #?(:clj
     (defmacro thread-local-binding
-      "Wraps given body in a try block, where it sets each given ThreadLocal binding 
+      "Wraps given body in a try block, where it sets each given ThreadLocal binding
        and removes it in finally block."
       [bindings & body]
       (when-not (vector? bindings)

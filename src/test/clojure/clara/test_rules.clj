@@ -2729,6 +2729,30 @@
                                                                :lhs  []
                                                                :rhs  '(println "I have no meaning outside of this test")}))) {})))
 
+(defrecord OuterRecordOne [x])
+(defrecord OuterRecordTwo [x])
+
+(defrecord InnerRecordOne [num])
+(defrecord InnerRecordTwo [num])
+
+;; Test for issue 393
+(deftest test-record-equality-semantics
+  (let [inner-one (->InnerRecordOne 1)
+        inner-two (->InnerRecordTwo 1)
+
+        test-query (dsl/parse-query [] [[OuterRecordOne (= ?x x)]
+                                        [OuterRecordTwo (= ?x x)]])
+
+
+        session (-> (mk-session [test-query])
+                    (insert (->OuterRecordOne inner-one)
+                            ;; Needed to reproduce the bug.
+                            (->OuterRecordTwo inner-one)
+                            (->OuterRecordTwo inner-two))
+                    (fire-rules))]
+
+    (is (= [{:?x inner-one}] (query session test-query)))))
+
 (deftest test-maximum-forms-per-eval
   ;; 5472 to ensure that we have enough forms to create a full batch, see clara.rules.compiler/forms-per-eval-default
   ;; or Issue 381 for more info
