@@ -37,6 +37,9 @@
      :mean (double mean)}))
 
 (defn run-performance-test
+  "Created as a rudimentary alternative to criterium, do to assumptions made during benchmarking. Specifically, that
+   criterium attempts to reach a steady state of compiled and loaded classes. This fundamentally doesn't work when the
+   metrics needed rely on compilation or evaluation."
   [form]
   (let [{:keys [description func iterations mean-assertion]} form
         {:keys [std mean]} (execute-tests func iterations)]
@@ -45,7 +48,8 @@
     (println "==========================================")
     (println (str "Mean: " mean "ms"))
     (println (str "Standard Deviation: " std "ms" \newline))
-    (is (mean-assertion mean))))
+    (is (mean-assertion mean)
+        (str "Actual mean value: " mean))))
 
 (def base-production
   {:ns-name (symbol (str *ns*))})

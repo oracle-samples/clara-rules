@@ -1404,6 +1404,8 @@
                             (try
                               (eval exprs)
                               (catch Exception e
+                                ;; Using mapv here rather than map to avoid laziness, otherwise compilation failure might
+                                ;; fall into the throw below for the wrong reason.
                                 (mapv (fn [expr node-keys]
                                         (let [cmeta (meta node-keys)]
                                           (with-bindings
