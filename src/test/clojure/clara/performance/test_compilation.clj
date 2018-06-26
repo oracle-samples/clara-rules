@@ -37,7 +37,7 @@
      :mean (double mean)}))
 
 (defn run-performance-test
-  "Created as a rudimentary alternative to criterium, do to assumptions made during benchmarking. Specifically, that
+  "Created as a rudimentary alternative to criterium, due to assumptions made during benchmarking. Specifically, that
    criterium attempts to reach a steady state of compiled and loaded classes. This fundamentally doesn't work when the
    metrics needed rely on compilation or evaluation."
   [form]
