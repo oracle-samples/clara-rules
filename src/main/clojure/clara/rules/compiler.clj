@@ -77,7 +77,7 @@
                         ;; Function that takes facts and determines what alpha nodes they match.
                         get-alphas-fn
                         ;; A map of [node-id field-name] to function.
-                        node-expr-fn-lookup])
+                        node-expr-fn-lookup :- schema/NodeFnLookup])
 
 (defn- is-variable?
   "Returns true if the given expression is a variable (a symbol prefixed by ?)"
@@ -1258,6 +1258,13 @@
             empty-beta-graph
             productions))
 
+(sc/defn ^:private root-node? :- sc/Bool
+  "A helper function to determine if the node-id provided is a root node. A given node would be considered a root-node,
+   if its only backward edge was that of the artificial root node, node 0."
+  [backward-edges :- {sc/Int #{sc/Int}}
+   node-id :- sc/Int]
+  (= #{0} (get backward-edges node-id)))
+
 (sc/defn extract-exprs :- schema/NodeExprLookup
   "Walks the Alpha and Beta graphs and extracts the expressions that will be used in the construction of the final network.
    The extracted expressions are stored by their key, [<node-id> <field-key>], this allows for the function to be retrieved
@@ -1275,7 +1282,6 @@
                         ;; easier because the metadata contains unevalable forms.
                         (with-meta [id expr-key] (assoc metadata expr-key s-expr))
                         s-expr))
-        is-root? #(= #{0} (get backward-edges %))
 
         ;; If extract-exprs ever became a hot spot, this could be changed out to use more java interop.
         id->expr (reduce (fn [prev alpha-node]
@@ -1331,7 +1337,7 @@
                     beta-node)
             ::root-condition prev
 
-            :join (if (or (is-root? id)
+            :join (if (or (root-node? backward-edges id)
                           (not (:join-filter-expressions beta-node)))
                     ;; This is either a RootJoin or HashJoin node, in either case they do not have an expression
                     ;; to capture.
@@ -1419,7 +1425,7 @@
                                 ;; set by java.
                                 (throw (ex-info (str "There was a failure while batch evaling the node expressions, " \newline
                                                      "but wasn't present when evaling them individually. This likely indicates " \newline
-                                                     "that the method size exceeded the maximum set by java, see the cause for the actual error.")
+                                                     "that the method size exceeded the maximum set by the jvm, see the cause for the actual error.")
                                                 {:node-keys node-keys}
                                                 e)))))]
     (into {}
@@ -1427,17 +1433,26 @@
           ;; Grouping by ns, most expressions will not have a defined ns, only expressions from production nodes.
           ;; These expressions must be evaluated in the ns where they were defined, as they will likely contain code
           ;; that is namespace dependent.
-          (for [[ns group] (sort-by key (group-by (comp :ns meta key) key->expr))
+          (for [[nspace group] (sort-by key (group-by (comp :ns meta key) key->expr))
                 ;; Partitioning the number of forms to be evaluated, Java has a limit to the size of methods if we were
                 ;; evaluate all expressions at once it would likely exceed this limit and throw an exception.
                 expr-batch (partition-all partition-size group)
                 :let [node-keys (map key expr-batch)]]
             (mapv vector
                   node-keys
-                  (with-bindings (if ns
-                                   {#'*ns* (the-ns ns )}
+                  (with-bindings (if nspace
+                                   {#'*ns* (the-ns nspace)}
                                    {})
                     (batching-try-eval node-keys (mapv val expr-batch))))))))
+
+(defn safe-get
+  "A helper function for retrieving a given key from the provided map. If the key doesn't exist within the map this
+   function will throw an exception."
+  [m k]
+  (let [v (get m k ::not-found)]
+    (if (identical? v ::not-found)
+      (throw (ex-info "Key not found with safe-get" {:map map :key k}))
+      v)))
 
 (sc/defn ^:private compile-node
   "Compiles a given node description into a node usable in the network with the
@@ -1455,7 +1470,7 @@
                     (.loadClass (clojure.lang.RT/makeClassLoader) (name condition))
                     condition)
 
-        compiled-expr-fn (fn [id field] (get expr-fn-lookup [id field]))]
+        compiled-expr-fn (fn [id field] (safe-get expr-fn-lookup [id field]))]
 
     (case (:node-type beta-node)
 
@@ -1608,8 +1623,7 @@
                          id-to-compile
                          (compile-node node-to-compile
                                        id-to-compile
-                                       ;; 0 is the id of the root node.
-                                       (= #{0} (get backward-edges id-to-compile))
+                                       (root-node? backward-edges id-to-compile)
                                        children
                                        expr-fn-lookup
                                        (get id-to-new-bindings id-to-compile))))))
@@ -1670,7 +1684,7 @@
   (for [{:keys [id condition beta-children env] :as node} alpha-nodes]
     (cond-> {:id id
              :type (effective-type (:type condition))
-             :alpha-fn (get expr-fn-lookup [id :alpha-expr])
+             :alpha-fn (safe-get expr-fn-lookup [id :alpha-expr])
              :children beta-children}
             env (assoc :env env))))
 

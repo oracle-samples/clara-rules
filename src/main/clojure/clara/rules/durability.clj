@@ -551,9 +551,8 @@
      to be 'attached' back onto it to be usable.
 
    * :forms-per-eval - The maximum number of expressions that will be evaluated per call to eval.
-     This will be defaulted to 1250 if not provided. Larger batch sizes should see better performance compared
-     to smaller batch sizes. This option will only apply to deserialization of the rulebase, as serialization
-     does not need to evaluate any expressions.
+     Larger batch sizes should see better performance compared to smaller batch sizes.
+     Defaults to 5000, see clara.rules.compiler/forms-per-eval-default for more information.
 
    Options for the rulebase semantics that are documented at clara.rules/mk-session include:
 
