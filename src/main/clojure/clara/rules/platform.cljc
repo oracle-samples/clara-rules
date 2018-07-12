@@ -41,8 +41,8 @@
                                             ;; discussed at https://github.com/cerner/clara-rules/issues/393
                                             wrapper (JavaEqualityWrapper. k
                                                                           (if (nil? k)
-                                                                              0
-                                                                              (.hashCode ^Object k)))
+                                                                            (int 0)
+                                                                            (int (.hashCode ^Object k))))
                                             xs (or (.get m wrapper)
                                                    (transient []))]
                                         (.put m wrapper (conj! xs x)))
