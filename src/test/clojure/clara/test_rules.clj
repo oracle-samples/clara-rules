@@ -2748,3 +2748,19 @@
                     (fire-rules))]
 
     (is (= [{:?x inner-one}] (query session test-query)))))
+
+;; Ensure that nil values can be bound and unified as expected.
+(deftest test-nil-binding
+  (let [inner-two (->InnerRecordTwo 1)
+
+        test-query (dsl/parse-query [] [[OuterRecordOne (= ?x x)]
+                                        [OuterRecordTwo (= ?x x)]])
+
+        session (-> (mk-session [test-query])
+                    (insert (->OuterRecordOne nil)
+                            ;; Needed to reproduce the bug.
+                            (->OuterRecordTwo nil)
+                            (->OuterRecordTwo inner-two))
+                    (fire-rules))]
+
+    (is (= [{:?x nil}] (query session test-query)))))
