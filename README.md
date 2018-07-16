@@ -2,7 +2,7 @@
 
 # _About_
 
-Clara is a forward-chaining rules engine written in Clojure with Java interoperability. It aims to simplify code with a developer-centric approach to expert systems. See [clara-rules.org](http://www.clara-rules.org) for more.
+Clara is a forward-chaining rules engine written in Clojure(Script) with Java interoperability. It aims to simplify code with a developer-centric approach to expert systems. See [clara-rules.org](http://www.clara-rules.org) for more.
 
 # _Usage_
 
