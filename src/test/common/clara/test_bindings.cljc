@@ -300,6 +300,7 @@
          than the binding in the ColdAndWindy condition that would create a ?t binding if one were
          not already present"))
 
+;; Tests for issue 393
 (defrecord OuterRecordOne [x])
 (defrecord OuterRecordTwo [x])
 
