@@ -59,11 +59,11 @@
   (is (= @tu/side-effect-holder 10)))
 
 (def-rules-test test-simple-join-binding
-  
+
   {:rules [same-wind-and-temp [[[Temperature (= ?t temperature)]
                                 [WindSpeed (= ?t windspeed)]]
                                (reset! tu/side-effect-holder ?t)]]
-   
+
    :sessions [empty-session [same-wind-and-temp] {}]}
 
   (let [session (-> empty-session
@@ -78,7 +78,7 @@
   {:rules [same-wind-and-temp [[[Temperature (= ?t temperature)]
                                 [WindSpeed (= ?t windspeed)]]
                                (reset! tu/side-effect-holder ?t)]]
-   
+
    :sessions [empty-session [same-wind-and-temp] {}]}
 
   (let [session (-> empty-session
@@ -220,7 +220,7 @@
                (fire-rules)
                (query temps-with-addition))))
 
-    
+
     ;; Test if not all conditions are satisfied.
     (is (empty? (-> session
                     (insert (->Temperature 10 "MCI")
@@ -299,3 +299,47 @@
       "Validate that the ?t binding from the previous accumulator result is used, rather
          than the binding in the ColdAndWindy condition that would create a ?t binding if one were
          not already present"))
+
+;; Tests for issue 393
+(defrecord OuterRecordOne [x])
+(defrecord OuterRecordTwo [x])
+
+(defrecord InnerRecordOne [num])
+(defrecord InnerRecordTwo [num])
+
+(def-rules-test test-record-equality-semantics
+
+  {:queries [test-query [[] [[OuterRecordOne (= ?x x)]
+                             [OuterRecordTwo (= ?x x)]]]]
+
+   :sessions [equality-empty-session [test-query] {}]}
+
+  (let [inner-one (->InnerRecordOne 1)
+        inner-two (->InnerRecordTwo 1)
+
+        session (-> equality-empty-session
+                    (insert (->OuterRecordOne inner-one)
+                            ;; Needed to reproduce the bug.
+                            (->OuterRecordTwo inner-one)
+                            (->OuterRecordTwo inner-two))
+                    (fire-rules))]
+
+    (is (= [{:?x inner-one}] (query session test-query)))))
+
+(def-rules-test test-nil-binding
+
+  {:queries [test-query [[] [[OuterRecordOne (= ?x x)]
+                             [OuterRecordTwo (= ?x x)]]]]
+
+   :sessions [empty-session-nil-test [test-query] {}]}
+
+  (let [inner-two (->InnerRecordTwo 1)
+
+        session (-> empty-session-nil-test
+                    (insert (->OuterRecordOne nil)
+                            ;; Needed to reproduce the bug.
+                            (->OuterRecordTwo nil)
+                            (->OuterRecordTwo inner-two))
+                    (fire-rules))]
+
+    (is (= [{:?x nil}] (query session test-query)))))
