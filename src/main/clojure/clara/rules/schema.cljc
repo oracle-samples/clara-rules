@@ -167,10 +167,23 @@
                         (every? nil? (map s/check items tuple-vals))))
                  "tuple"))
 
+(def NodeCompilationContext
+  (s/constrained {s/Keyword s/Any}
+                 (fn [ctx]
+                   (let [expr-keys #{:alpha-expr :action-expr :join-filter-expr :test-expr :accum-expr}
+                         xor #(and (or %1 %2)
+                                   (not (and %1 %2)))]
+                     (and (some expr-keys (keys ctx))
+                          (contains? ctx :compile-ctx)
+                          (contains? (:compile-ctx ctx) :msg)
+                          (xor (contains? (:compile-ctx ctx) :condition)
+                               (contains? (:compile-ctx ctx) :production)))))
+                 "node-compilation-context"))
+
 ;; A map of [<node-id> <field-name>] to SExpression, used in compilation of the rulebase.
 (def NodeExprLookup
-  {(tuple s/Int s/Keyword) SExpr})
+  {(tuple s/Int s/Keyword) (tuple SExpr NodeCompilationContext)})
 
 ;; An evaluated version of the schema mentioned above.
 (def NodeFnLookup
-  {(tuple s/Int s/Keyword) (s/pred ifn? "ifn?")})
+  {(tuple s/Int s/Keyword) (tuple (s/pred ifn? "ifn?") NodeCompilationContext)})

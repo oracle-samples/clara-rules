@@ -38,10 +38,10 @@
    rulebase is deserialized the nodes will reference this cache to repopulate their fns."
   (ThreadLocal.))
 
-(defn- add-node-fn [node fn-key meta-key]
+(defn- add-node-fn [node fn-key expr-key]
   (assoc node
          fn-key
-         (get (.get node-fn-cache) [(:id node) meta-key])))
+         (first (get (.get node-fn-cache) [(:id node) expr-key]))))
 
 (defn add-rhs-fn [node]
   (add-node-fn node :rhs :action-expr))
@@ -57,7 +57,7 @@
 
 (defn add-accumulator [node]
   (assoc node
-         :accumulator ((get (.get node-fn-cache) [(:id node) :accum-expr])
+         :accumulator ((first (get (.get node-fn-cache) [(:id node) :accum-expr]))
                        (:env node))))
 
 (defn node-id->node

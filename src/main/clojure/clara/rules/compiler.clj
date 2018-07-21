@@ -1276,12 +1276,10 @@
   [beta-graph :- schema/BetaGraph
    alpha-graph :- [schema/AlphaNode]]
   (let [backward-edges (:backward-edges beta-graph)
-        handle-expr (fn [id->expr s-expr id expr-key metadata]
+        handle-expr (fn [id->expr s-expr id expr-key compilation-ctx]
                       (assoc id->expr
-                        ;; Letting the key carry all of the metadata, this makes the batch evaluation of the expressions
-                        ;; easier because the metadata contains unevalable forms.
-                        (with-meta [id expr-key] (assoc metadata expr-key s-expr))
-                        s-expr))
+                        [id expr-key]
+                        [s-expr (assoc compilation-ctx expr-key s-expr)]))
 
         ;; If extract-exprs ever became a hot spot, this could be changed out to use more java interop.
         id->expr (reduce (fn [prev alpha-node]
@@ -1403,54 +1401,55 @@
    See #381 for more details."
   [key->expr :- schema/NodeExprLookup
    partition-size :- sc/Int]
-  (let [batching-try-eval (fn [node-keys exprs]
+  (let [batching-try-eval (fn [compilation-ctxs exprs]
                             ;; Try to evaluate all of the expressions as a batch. If they fail the batch eval then we
                             ;; try them one by one with their compilation context, this is slow but we were going to fail
                             ;; anyway.
                             (try
-                              (eval exprs)
+                              (mapv vector (eval exprs) compilation-ctxs)
                               (catch Exception e
                                 ;; Using mapv here rather than map to avoid laziness, otherwise compilation failure might
                                 ;; fall into the throw below for the wrong reason.
-                                (mapv (fn [expr node-keys]
-                                        (let [cmeta (meta node-keys)]
-                                          (with-bindings
-                                            {#'*compile-ctx* (:compile-ctx cmeta)
-                                             #'*file* (:file cmeta *file*)}
-                                            (try-eval expr))))
+                                (mapv (fn [expr compilation-ctx]
+                                        (with-bindings
+                                          {#'*compile-ctx* (:compile-ctx compilation-ctx)
+                                           #'*file* (:file compilation-ctx *file*)}
+                                          (try-eval expr)))
                                       exprs
-                                      node-keys)
+                                      compilation-ctxs)
                                 ;; If none of the rules are the issue, it is likely that the
                                 ;; size of the code trying to be evaluated has exceeded the limit
                                 ;; set by java.
                                 (throw (ex-info (str "There was a failure while batch evaling the node expressions, " \newline
                                                      "but wasn't present when evaling them individually. This likely indicates " \newline
                                                      "that the method size exceeded the maximum set by the jvm, see the cause for the actual error.")
-                                                {:node-keys node-keys}
+                                                {:compilation-ctxs compilation-ctxs}
                                                 e)))))]
     (into {}
           cat
           ;; Grouping by ns, most expressions will not have a defined ns, only expressions from production nodes.
           ;; These expressions must be evaluated in the ns where they were defined, as they will likely contain code
           ;; that is namespace dependent.
-          (for [[nspace group] (sort-by key (group-by (comp :ns meta key) key->expr))
+          (for [[nspace group] (sort-by key (group-by (comp :ns second val) key->expr))
                 ;; Partitioning the number of forms to be evaluated, Java has a limit to the size of methods if we were
                 ;; evaluate all expressions at once it would likely exceed this limit and throw an exception.
                 expr-batch (partition-all partition-size group)
-                :let [node-keys (map key expr-batch)]]
+                :let [node-expr-keys (mapv first expr-batch)
+                      compilation-ctxs (mapv (comp second val) expr-batch)
+                      exprs (mapv (comp first val) expr-batch)]]
             (mapv vector
-                  node-keys
+                  node-expr-keys
                   (with-bindings (if nspace
                                    {#'*ns* (the-ns nspace)}
                                    {})
-                    (batching-try-eval node-keys (mapv val expr-batch))))))))
+                    (batching-try-eval compilation-ctxs exprs)))))))
 
 (defn safe-get
   "A helper function for retrieving a given key from the provided map. If the key doesn't exist within the map this
    function will throw an exception."
   [m k]
   (let [v (get m k ::not-found)]
-    (if (identical? v ::not-found)
+    (if (= v ::not-found)
       (throw (ex-info "Key not found with safe-get" {:map map :key k}))
       v)))
 
@@ -1470,7 +1469,7 @@
                     (.loadClass (clojure.lang.RT/makeClassLoader) (name condition))
                     condition)
 
-        compiled-expr-fn (fn [id field] (safe-get expr-fn-lookup [id field]))]
+        compiled-expr-fn (fn [id field] (first (safe-get expr-fn-lookup [id field])))]
 
     (case (:node-type beta-node)
 
@@ -1684,7 +1683,7 @@
   (for [{:keys [id condition beta-children env] :as node} alpha-nodes]
     (cond-> {:id id
              :type (effective-type (:type condition))
-             :alpha-fn (safe-get expr-fn-lookup [id :alpha-expr])
+             :alpha-fn (first (safe-get expr-fn-lookup [id :alpha-expr]))
              :children beta-children}
             env (assoc :env env))))
 

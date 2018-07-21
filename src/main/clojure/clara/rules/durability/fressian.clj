@@ -534,6 +534,9 @@
   (serialize [_ session opts]
     (let [{:keys [rulebase memory]} (eng/components session)
           node-fns (:node-expr-fn-lookup rulebase)
+          remove-node-fns (fn [expr-lookup]
+                            (zipmap (keys expr-lookup)
+                                    (mapv second (vals expr-lookup))))
           rulebase (assoc rulebase
                           :activation-group-sort-fn nil
                           :activation-group-fn nil
@@ -551,12 +554,12 @@
       ;; In this case there is nothing to do with memory, so just serialize immediately.
       (if (:rulebase-only? opts)
         ;; The keys of the node-fns should contain enough data to reconstruct the entire map.
-        (do-serialize [(keys node-fns) rulebase])
+        (do-serialize [(remove-node-fns node-fns) rulebase])
         
         ;; Otherwise memory needs to have facts extracted to return.
         (let [{:keys [memory indexed-facts internal-indexed-facts]} (d/indexed-session-memory-state memory)
               sources (if (:with-rulebase? opts)
-                        [(keys node-fns) rulebase internal-indexed-facts memory]
+                        [(remove-node-fns node-fns) rulebase internal-indexed-facts memory]
                         [internal-indexed-facts memory])]
           
           (do-serialize sources)
@@ -577,10 +580,13 @@
 
             forms-per-eval (or forms-per-eval com/forms-per-eval-default)
 
-            reconstruct-expressions (fn [ks]
+            reconstruct-expressions (fn [expr-lookup]
+                                      ;; Rebuilding the expr-lookup map from the serialized map:
+                                      ;; {[Int Keyword] {Keyword Any}} -> {[Int Keyword] [SExpr {Keyword Any}]}
                                       (into {}
-                                            (for [k ks]
-                                              [k (-> k meta (get (nth k 1)))])))
+                                            (for [[node-key compilation-ctx] expr-lookup]
+                                              [node-key [(-> compilation-ctx (get (nth node-key 1)))
+                                                         compilation-ctx]])))
 
             rulebase (if maybe-base-rulebase
                        maybe-base-rulebase
