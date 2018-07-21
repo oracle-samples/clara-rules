@@ -37,7 +37,12 @@
      [f coll]
      (let [^java.util.Map m (reduce (fn [^java.util.Map m x]
                                       (let [k (f x)
-                                            wrapper (JavaEqualityWrapper. k (hash k))
+                                            ;; Use Java's hashcode for performance reasons as
+                                            ;; discussed at https://github.com/cerner/clara-rules/issues/393
+                                            wrapper (JavaEqualityWrapper. k
+                                                                          (if (nil? k)
+                                                                            (int 0)
+                                                                            (int (.hashCode ^Object k))))
                                             xs (or (.get m wrapper)
                                                    (transient []))]
                                         (.put m wrapper (conj! xs x)))
