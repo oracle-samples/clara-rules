@@ -8,11 +8,13 @@
                [clara.rules.update-cache.cancelling :as ca]
                [clara.rules.compiler :as com]
                [clara.macros :as m]
-               [clara.rules.dsl :as dsl]))
+               [clara.rules.dsl :as dsl]
+               [clojure.test :refer [is]]))
    :cljs
    (ns clara.tools.testing-utils
      (:require [clara.rules.update-cache.core :as uc])
-     (:require-macros clara.tools.testing-utils)))
+     (:require-macros [clara.tools.testing-utils]
+       [cljs.test :refer [is]])))
 
 #?(:clj
    (defmacro def-rules-test
@@ -99,3 +101,54 @@
   (reset! side-effect-holder nil)
   (t)
   (reset! side-effect-holder nil))
+
+#?(:clj
+   (defn time-execution
+     [func]
+     (let [start (System/currentTimeMillis)
+           _ (func)
+           stop (System/currentTimeMillis)]
+       (- stop start)))
+   :cljs
+   (defn time-execution
+     [func]
+     (let [start (.getTime (js/Date.))
+           _ (func)
+           stop (.getTime (js/Date.))]
+       (- stop start))))
+
+(defn execute-tests
+  [func iterations]
+  (let [execution-times (for [_ (range iterations)]
+                          (time-execution func))
+        sum #(reduce + %)
+        mean (/ (sum execution-times) iterations)
+        std (->
+              (into []
+                    (comp
+                      (map #(- % mean))
+                      (map #(Math/pow (double %) 2.0)))
+                    execution-times)
+              sum
+              (/ iterations)
+              Math/sqrt)]
+    {:std (double std)
+     :mean (double mean)}))
+
+(defn run-performance-test
+  "Created as a rudimentary alternative to criterium, due to assumptions made during benchmarking. Specifically, that
+   criterium attempts to reach a steady state of compiled and loaded classes. This fundamentally doesn't work when the
+   metrics needed rely on compilation or evaluation."
+  [form]
+  (let [{:keys [description func iterations mean-assertion verbose]} form
+        {:keys [std mean]} (execute-tests func iterations)]
+    (when verbose
+      (println (str \newline "Running Performance tests for:"))
+      (println description)
+      (println "==========================================")
+      (println (str "Mean: " mean "ms"))
+      (println (str "Standard Deviation: " std "ms" \newline)))
+    (is (mean-assertion mean)
+        (str "Actual mean value: " mean))
+    {:mean mean
+     :std std}))

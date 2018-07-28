@@ -378,10 +378,16 @@
              ~'?__bindings__ (atom ~initial-bindings)]
          ~(compile-constraints constraints)))))
 
+(defn build-token-assingment
+  "A helper function to build variable assignment forms for tokens."
+  [binding-key]
+  (list (symbol (name binding-key))
+        (list '-> '?__token__ :bindings binding-key)))
+
 ;; FIXME: add env...
 (defn compile-test [tests]
   (let [binding-keys (variables-as-keywords tests)
-        assignments (mapcat #(list (symbol (name %)) (list 'get-in '?__token__ [:bindings %])) binding-keys)]
+        assignments (mapcat build-token-assingment binding-keys)]
 
     `(fn [~'?__token__]
        (let [~@assignments]
@@ -402,7 +408,7 @@
         assignments (sequence
                      (comp
                       (filter rhs-bindings-used)
-                      (mapcat #(list (symbol (name %)) (list '-> '?__token__ :bindings %))))
+                      (mapcat build-token-assingment))
                      binding-keys)
 
         ;; The destructured environment, if any.
@@ -456,9 +462,7 @@
         ;; created element bindings for this condition removed.
         token-binding-keys (remove element-bindings (variables-as-keywords constraints))
 
-        token-assignments (mapcat #(list (symbol (name %))
-                                         (list 'get-in '?__token__ [:bindings %]))
-                                  token-binding-keys)
+        token-assignments (mapcat build-token-assingment token-binding-keys)
 
         new-binding-assignments (mapcat #(list (symbol (name %))
                                                (list 'get '?__element-bindings__ %))
