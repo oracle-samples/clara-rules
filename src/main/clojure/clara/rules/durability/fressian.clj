@@ -533,7 +533,7 @@
   d/ISessionSerializer
   (serialize [_ session opts]
     (let [{:keys [rulebase memory]} (eng/components session)
-          node-fns (:node-expr-fn-lookup rulebase)
+          node-expr-fn-lookup (:node-expr-fn-lookup rulebase)
           remove-node-fns (fn [expr-lookup]
                             (zipmap (keys expr-lookup)
                                     (mapv second (vals expr-lookup))))
@@ -553,13 +553,18 @@
       
       ;; In this case there is nothing to do with memory, so just serialize immediately.
       (if (:rulebase-only? opts)
-        ;; The keys of the node-fns should contain enough data to reconstruct the entire map.
-        (do-serialize [(remove-node-fns node-fns) rulebase])
+        ;; node-expr-fn-lookup is a map with a structure of:
+        ;; {[Int Keyword] [IFn {Keyword Any}]}
+        ;; as fns are not serializable, we must remove them and alter the structure of the map to be
+        ;; {[Int Keyword] {Keyword Any}}
+        ;; during deserialization the compilation-context({Keyword Any}), which contains the unevaluated form,
+        ;; can be used to reconstruct the original map.
+        (do-serialize [(remove-node-fns node-expr-fn-lookup) rulebase])
         
         ;; Otherwise memory needs to have facts extracted to return.
         (let [{:keys [memory indexed-facts internal-indexed-facts]} (d/indexed-session-memory-state memory)
               sources (if (:with-rulebase? opts)
-                        [(remove-node-fns node-fns) rulebase internal-indexed-facts memory]
+                        [(remove-node-fns node-expr-fn-lookup) rulebase internal-indexed-facts memory]
                         [internal-indexed-facts memory])]
           
           (do-serialize sources)

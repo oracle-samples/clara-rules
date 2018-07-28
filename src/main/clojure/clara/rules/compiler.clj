@@ -1391,7 +1391,12 @@
                                                              :join-filter-expressions (:join-filter-expressions beta-node)
                                                              :env (:env beta-node)
                                                              :msg "compiling accumulate with join filter node"}}))
-            :query prev)))
+            :query prev
+
+            ;; This error should only be thrown if there are changes to the compilation of the beta-graph
+            ;; such as an addition of a node type.
+            (throw (ex-info "Invalid node type encountered while compiling rulebase."
+                            {:node beta-node})))))
       id->expr
       (:id-to-condition-node beta-graph))))
 
@@ -1448,9 +1453,10 @@
   "A helper function for retrieving a given key from the provided map. If the key doesn't exist within the map this
    function will throw an exception."
   [m k]
-  (let [v (get m k ::not-found)]
-    (if (= v ::not-found)
-      (throw (ex-info "Key not found with safe-get" {:map map :key k}))
+  (let [not-found ::not-found
+        v (get m k not-found)]
+    (if (identical? v not-found)
+      (throw (ex-info "Key not found with safe-get" {:map m :key k}))
       v)))
 
 (sc/defn ^:private compile-node
@@ -1875,34 +1881,34 @@
       (throw (ex-info (str "Non-unique production names: " non-unique) {:names non-unique})))))
 
 (def forms-per-eval-default
-  ;; The default max number of forms that will be evaluated together as a single batch.
-  ;; 5000 is chosen here due to the way that clojure will evaluate the vector of forms extracted from the nodes.
-  ;; The limiting factor here is the max java method size (64KiB), clojure will compile each form in the vector down into
-  ;; its own class file and generate another class file that will reference each of the other functions and wrap them in
-  ;; a vector inside a static method. For example,
-  ;;
-  ;; (eval [(fn one [_] ...) (fn two [_] ...)])
-  ;; would generate 3 classes.
-  ;;
-  ;; some_namespace$eval1234
-  ;; some_namespace$eval1234$one_1234
-  ;; some_namespace$eval1234$two_1235
-  ;;
-  ;; some_namespace$eval1234$one_1234 and some_namespace$eval1234$two_1235 contian the implementation of the functions,
-  ;; where some_namespace$eval1234 will contain two methods, invoke and invokeStatic.
-  ;; The invokeStatic method breaks down into something similar to a single create array call followed by 2 array set calls
-  ;; with new invocations on the 2 classes the method then returns a new vector created from the array.
-  ;;
-  ;; 5000 is lower than the absolute max to allow for modifications to how clojure compiles without needing to modify this.
-  ;; The current limit should be 5471, this is derived from the following opcode investigation:
-  ;;
-  ;; Array creation:                                                    5B
-  ;; Creating and populating the first 6 elements of the array:        60B
-  ;; Creating and populating the next 122 elements of the array:    1,342B
-  ;; Creating and populating the next 5343 elements of the array:  64,116B
-  ;; Creating the vector and the return statement:                      4B
-  ;;
-  ;; This sums to 65,527B just shy of the 65,536B method size limit.
+  "The default max number of forms that will be evaluated together as a single batch.
+   5000 is chosen here due to the way that clojure will evaluate the vector of forms extracted from the nodes.
+   The limiting factor here is the max java method size (64KiB), clojure will compile each form in the vector down into
+   its own class file and generate another class file that will reference each of the other functions and wrap them in
+   a vector inside a static method. For example,
+
+   (eval [(fn one [_] ...) (fn two [_] ...)])
+   would generate 3 classes.
+
+   some_namespace$eval1234
+   some_namespace$eval1234$one_1234
+   some_namespace$eval1234$two_1235
+
+   some_namespace$eval1234$one_1234 and some_namespace$eval1234$two_1235 contian the implementation of the functions,
+   where some_namespace$eval1234 will contain two methods, invoke and invokeStatic.
+   The invokeStatic method breaks down into something similar to a single create array call followed by 2 array set calls
+   with new invocations on the 2 classes the method then returns a new vector created from the array.
+
+   5000 is lower than the absolute max to allow for modifications to how clojure compiles without needing to modify this.
+   The current limit should be 5471, this is derived from the following opcode investigation:
+
+   Array creation:                                                    5B
+   Creating and populating the first 6 elements of the array:        60B
+   Creating and populating the next 122 elements of the array:    1,342B
+   Creating and populating the next 5343 elements of the array:  64,116B
+   Creating the vector and the return statement:                      4B
+
+   This sums to 65,527B just shy of the 65,536B method size limit."
   5000)
 
 (sc/defn mk-session*
