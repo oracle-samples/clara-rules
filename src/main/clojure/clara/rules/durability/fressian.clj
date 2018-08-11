@@ -492,11 +492,13 @@
                 (.writeObject w (.-node-id ^RuleOrderedActivation c) true)
                 (.writeObject w (.-token ^RuleOrderedActivation c))
                 (.writeObject w (.-activation ^RuleOrderedActivation c))
-                (.writeInt w (.-rule-load-order ^RuleOrderedActivation c))))
+                (.writeInt w (.-rule-load-order ^RuleOrderedActivation c))
+                (.writeBoolean w (mem/use-token-identity? ^RuleOrderedActivation c))))
     :readers {"clara/ruleorderactivation"
               (reify ReadHandler
                 (read [_ rdr tag component-count]
                   (mem/->RuleOrderedActivation (.readObject rdr)
+                                               (.readObject rdr)
                                                (.readObject rdr)
                                                (.readObject rdr)
                                                (.readObject rdr))))}}
