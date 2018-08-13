@@ -32,34 +32,22 @@
    avoid creating multiple object instances for the same node."
   (ThreadLocal.))
 
-(def ^:internal ^ThreadLocal compile-expr-fn
-  "Similar to what is done in clara.rules.compiler, this is a function used to compile
-   expressions used in nodes of the rulebase network.  A common function would cache
-   evaluated expressions by node-id and expression form to avoid duplicate evalutation
-   of the same expressions."
+(def ^:internal ^ThreadLocal node-fn-cache
+  "A cache for holding the fns used to reconstruct the nodes. Only applicable during read time, specifically
+   this will be bound to a Map of [<node-id> <field-name>] to IFn before the rulebase is deserialized. While the
+   rulebase is deserialized the nodes will reference this cache to repopulate their fns."
   (ThreadLocal.))
 
-(defn- add-node-fn [node fn-key meta-key]
+(defn- add-node-fn [node fn-key expr-key]
   (assoc node
          fn-key
-         ((.get compile-expr-fn) (:id node) (meta-key (meta node)))))
+         (first (get (.get node-fn-cache) [(:id node) expr-key]))))
 
 (defn add-rhs-fn [node]
-  ;; The RHS expression may need to be compiled within the namespace scope of specifically declared
-  ;; :ns-name.  The LHS expressions do not (currently) need or support this path.
-  ;; See https://github.com/cerner/clara-rules/issues/178 for more details.
-  (with-bindings (if-let [ns (some-> node
-                                     :production
-                                     :ns-name
-                                     the-ns)]
-                   {#'*ns* ns}
-                   {})
-    (add-node-fn node :rhs :action-expr)))
+  (add-node-fn node :rhs :action-expr))
 
 (defn add-alpha-fn [node]
-  ;; AlphaNode's do not have node :id's right now since they don't
-  ;; have any memory specifically associated with them.
-  (assoc node :activation (com/try-eval (:alpha-expr (meta node)))))
+  (add-node-fn node :activation :alpha-expr))
 
 (defn add-join-filter-fn [node]
   (add-node-fn node :join-filter-fn :join-filter-expr))
@@ -69,8 +57,7 @@
 
 (defn add-accumulator [node]
   (assoc node
-         :accumulator (((.get compile-expr-fn) (:id node)
-                                          (:accum-expr (meta node)))
+         :accumulator ((first (get (.get node-fn-cache) [(:id node) :accum-expr]))
                        (:env node))))
 
 (defn node-id->node
@@ -562,6 +549,10 @@
    * :base-rulebase - A rulebase to attach to the session being deserialized.  The assumption here is that
      the session was serialized without the rulebase, i.e. :with-rulebase? = false, so it needs a rulebase
      to be 'attached' back onto it to be usable.
+
+   * :forms-per-eval - The maximum number of expressions that will be evaluated per call to eval.
+     Larger batch sizes should see better performance compared to smaller batch sizes.
+     Defaults to 5000, see clara.rules.compiler/forms-per-eval-default for more information.
 
    Options for the rulebase semantics that are documented at clara.rules/mk-session include:
 

@@ -31,7 +31,9 @@
             Accumulator
             ISystemFact]
            [java.beans
-            PropertyDescriptor]))
+            PropertyDescriptor]
+           [clojure.lang
+            IFn]))
 
 ;; Protocol for loading rules from some arbitrary source.
 (defprotocol IRuleSource
@@ -64,14 +66,18 @@
                         production-nodes :- [ProductionNode]
                         ;; Map of queries to the nodes hosting them.
                         query-nodes :- {sc/Any QueryNode}
-                        ;; Map of id to one of the beta nodes (join, accumulate, etc).
-                        id-to-node :- {sc/Num BetaNode}
+                        ;; Map of id to one of the  alpha or beta nodes (join, accumulate, etc).
+                        id-to-node :- {sc/Num (sc/conditional
+                                                :activation AlphaNode
+                                                :else BetaNode)}
                         ;; Function for sorting activation groups of rules for firing.
                         activation-group-sort-fn
                         ;; Function that takes a rule and returns its activation group.
                         activation-group-fn
                         ;; Function that takes facts and determines what alpha nodes they match.
-                        get-alphas-fn])
+                        get-alphas-fn
+                        ;; A map of [node-id field-name] to function.
+                        node-expr-fn-lookup :- schema/NodeFnLookup])
 
 (defn- is-variable?
   "Returns true if the given expression is a variable (a symbol prefixed by ?)"
@@ -1242,19 +1248,216 @@
 
 
 (sc/defn to-beta-graph :- schema/BetaGraph
-
   "Produces a description of the beta network."
-  [productions :- #{schema/Production}]
-
-  (let [id-counter (atom 0)
-        create-id-fn (fn [] (swap! id-counter inc))]
-
-    (reduce (fn [beta-graph production]
+  [productions :- #{schema/Production}
+   create-id-fn :- IFn]
+  (reduce (fn [beta-graph production]
               (binding [*compile-ctx* {:production production}]
                 (add-production production beta-graph create-id-fn)))
 
             empty-beta-graph
-            productions)))
+            productions))
+
+(sc/defn ^:private root-node? :- sc/Bool
+  "A helper function to determine if the node-id provided is a root node. A given node would be considered a root-node,
+   if its only backward edge was that of the artificial root node, node 0."
+  [backward-edges :- {sc/Int #{sc/Int}}
+   node-id :- sc/Int]
+  (= #{0} (get backward-edges node-id)))
+
+(sc/defn extract-exprs :- schema/NodeExprLookup
+  "Walks the Alpha and Beta graphs and extracts the expressions that will be used in the construction of the final network.
+   The extracted expressions are stored by their key, [<node-id> <field-key>], this allows for the function to be retrieved
+   after it has been compiled.
+
+   Note: The keys of the map returned carry the metadata that can be used during evaluation. This metadata will contain,
+   if available, the compile context, file and ns. This metadata is not stored on the expression itself because it will
+   contain forms that will fail to eval."
+  [beta-graph :- schema/BetaGraph
+   alpha-graph :- [schema/AlphaNode]]
+  (let [backward-edges (:backward-edges beta-graph)
+        handle-expr (fn [id->expr s-expr id expr-key compilation-ctx]
+                      (assoc id->expr
+                        [id expr-key]
+                        [s-expr (assoc compilation-ctx expr-key s-expr)]))
+
+        ;; If extract-exprs ever became a hot spot, this could be changed out to use more java interop.
+        id->expr (reduce (fn [prev alpha-node]
+                              (let [{:keys [id condition env]} alpha-node
+                                    {:keys [type constraints fact-binding args]} condition
+                                    cmeta (meta condition)]
+                                (handle-expr prev
+                                             (with-meta (compile-condition
+                                                          type (first args) constraints
+                                                          fact-binding env)
+                                                        ;; Remove all metadata but file and line number
+                                                        ;; to protect from evaluating unsafe metadata
+                                                        ;; See PR 243 for more detailed discussion
+                                                        (select-keys cmeta [:line :file]))
+                                             id
+                                             :alpha-expr
+                                             {:file (or (:file cmeta) *file*)
+                                              :compile-ctx {:condition condition
+                                                            :env env
+                                                            :msg "compiling alpha node"}})))
+                            {}
+                            alpha-graph)
+        id->expr (reduce-kv (fn [prev id production-node]
+                             (let [production (-> production-node :production)]
+                               (handle-expr prev
+                                            (with-meta (compile-action (:bindings production-node)
+                                                                       (:rhs production)
+                                                                       (:env production))
+                                                       (meta (:rhs production)))
+                                            id
+                                            :action-expr
+                                            ;; ProductionNode expressions can be arbitrary code, therefore we need the
+                                            ;; ns where the production was define so that we can compile the expression
+                                            ;; later.
+                                            {:ns (:ns-name production)
+                                             :file (-> production :rhs meta :file)
+                                             :compile-ctx {:production production
+                                                           :msg "compiling production node"}})))
+                            id->expr
+                           (:id-to-production-node beta-graph))]
+    (reduce-kv
+      (fn [prev id beta-node]
+        (let [condition (:condition beta-node)
+              condition (if (symbol? condition)
+                          (.loadClass (clojure.lang.RT/makeClassLoader) (name condition))
+                          condition)]
+          (case (or (:node-type beta-node)
+                    ;; If there is no :node-type then the node is the ::root-condition
+                    ;; however, creating a case for nil could potentially cause weird effects if something about the
+                    ;; compilation of the beta graph changes. Therefore making an explicit case for ::root-condition
+                    ;; and if there was anything that wasn't ::root-condition this case statement will fail rather than
+                    ;; failing somewhere else.
+                    beta-node)
+            ::root-condition prev
+
+            :join (if (or (root-node? backward-edges id)
+                          (not (:join-filter-expressions beta-node)))
+                    ;; This is either a RootJoin or HashJoin node, in either case they do not have an expression
+                    ;; to capture.
+                    prev
+                    (handle-expr prev
+                                 (compile-join-filter (:join-filter-expressions beta-node)
+                                                      (:join-filter-join-bindings beta-node)
+                                                      (:new-bindings beta-node)
+                                                      (:env beta-node))
+                                 id
+                                 :join-filter-expr
+                                 {:compile-ctx {:condition condition
+                                                :join-filter-expressions (:join-filter-expressions beta-node)
+                                                :env (:env beta-node)
+                                                :msg "compiling expression join node"}}))
+            :negation (if (:join-filter-expressions beta-node)
+                        (handle-expr prev
+                                     (compile-join-filter (:join-filter-expressions beta-node)
+                                                          (:join-filter-join-bindings beta-node)
+                                                          (:new-bindings beta-node)
+                                                          (:env beta-node))
+                                     id
+                                     :join-filter-expr
+                                     {:compile-ctx {:condition condition
+                                                    :join-filter-expressions (:join-filter-expressions beta-node)
+                                                    :env (:env beta-node)
+                                                    :msg "compiling negation with join filter node"}})
+                        prev)
+            :test (handle-expr prev
+                               (compile-test (:constraints condition))
+                               id
+                               :test-expr
+                               {:compile-ctx {:condition condition
+                                              :env (:env beta-node)
+                                              :msg "compiling test node"}})
+            :accumulator (cond-> (handle-expr prev
+                                              (compile-accum (:accumulator beta-node) (:env beta-node))
+                                              id
+                                              :accum-expr
+                                              {:compile-ctx {:condition condition
+                                                             :accumulator (:accumulator beta-node)
+                                                             :env (:env beta-node)
+                                                             :msg "compiling accumulator"}})
+
+                                 (:join-filter-expressions beta-node)
+                                 (handle-expr (compile-join-filter (:join-filter-expressions beta-node)
+                                                                   (:join-filter-join-bindings beta-node)
+                                                                   (:new-bindings beta-node)
+                                                                   (:env beta-node))
+                                              id
+                                              :join-filter-expr
+                                              {:compile-ctx {:condition condition
+                                                             :join-filter-expressions (:join-filter-expressions beta-node)
+                                                             :env (:env beta-node)
+                                                             :msg "compiling accumulate with join filter node"}}))
+            :query prev
+
+            ;; This error should only be thrown if there are changes to the compilation of the beta-graph
+            ;; such as an addition of a node type.
+            (throw (ex-info "Invalid node type encountered while compiling rulebase."
+                            {:node beta-node})))))
+      id->expr
+      (:id-to-condition-node beta-graph))))
+
+(sc/defn compile-exprs :- schema/NodeFnLookup
+  "Takes a map in the form produced by extract-exprs and evaluates the values(expressions) of the map in a batched manner.
+   This allows the eval calls to be more effecient, rather than evaluating each expression on its own.
+   See #381 for more details."
+  [key->expr :- schema/NodeExprLookup
+   partition-size :- sc/Int]
+  (let [batching-try-eval (fn [compilation-ctxs exprs]
+                            ;; Try to evaluate all of the expressions as a batch. If they fail the batch eval then we
+                            ;; try them one by one with their compilation context, this is slow but we were going to fail
+                            ;; anyway.
+                            (try
+                              (mapv vector (eval exprs) compilation-ctxs)
+                              (catch Exception e
+                                ;; Using mapv here rather than map to avoid laziness, otherwise compilation failure might
+                                ;; fall into the throw below for the wrong reason.
+                                (mapv (fn [expr compilation-ctx]
+                                        (with-bindings
+                                          {#'*compile-ctx* (:compile-ctx compilation-ctx)
+                                           #'*file* (:file compilation-ctx *file*)}
+                                          (try-eval expr)))
+                                      exprs
+                                      compilation-ctxs)
+                                ;; If none of the rules are the issue, it is likely that the
+                                ;; size of the code trying to be evaluated has exceeded the limit
+                                ;; set by java.
+                                (throw (ex-info (str "There was a failure while batch evaling the node expressions, " \newline
+                                                     "but wasn't present when evaling them individually. This likely indicates " \newline
+                                                     "that the method size exceeded the maximum set by the jvm, see the cause for the actual error.")
+                                                {:compilation-ctxs compilation-ctxs}
+                                                e)))))]
+    (into {}
+          cat
+          ;; Grouping by ns, most expressions will not have a defined ns, only expressions from production nodes.
+          ;; These expressions must be evaluated in the ns where they were defined, as they will likely contain code
+          ;; that is namespace dependent.
+          (for [[nspace group] (sort-by key (group-by (comp :ns second val) key->expr))
+                ;; Partitioning the number of forms to be evaluated, Java has a limit to the size of methods if we were
+                ;; evaluate all expressions at once it would likely exceed this limit and throw an exception.
+                expr-batch (partition-all partition-size group)
+                :let [node-expr-keys (mapv first expr-batch)
+                      compilation-ctxs (mapv (comp second val) expr-batch)
+                      exprs (mapv (comp first val) expr-batch)]]
+            (mapv vector
+                  node-expr-keys
+                  (with-bindings (if nspace
+                                   {#'*ns* (the-ns nspace)}
+                                   {})
+                    (batching-try-eval compilation-ctxs exprs)))))))
+
+(defn safe-get
+  "A helper function for retrieving a given key from the provided map. If the key doesn't exist within the map this
+   function will throw an exception."
+  [m k]
+  (let [not-found ::not-found
+        v (get m k not-found)]
+    (if (identical? v not-found)
+      (throw (ex-info "Key not found with safe-get" {:map m :key k}))
+      v)))
 
 (sc/defn ^:private compile-node
   "Compiles a given node description into a node usable in the network with the
@@ -1263,14 +1466,16 @@
    id :- sc/Int
    is-root :- sc/Bool
    children :- [sc/Any]
-   compile-expr ; Function to do the evaluation.
+   expr-fn-lookup :- schema/NodeFnLookup
    new-bindings :- #{sc/Keyword}]
 
   (let [{:keys [condition production query join-bindings]} beta-node
 
         condition (if (symbol? condition)
                     (.loadClass (clojure.lang.RT/makeClassLoader) (name condition))
-                    condition)]
+                    condition)
+
+        compiled-expr-fn (fn [id field] (first (safe-get expr-fn-lookup [id field])))]
 
     (case (:node-type beta-node)
 
@@ -1278,90 +1483,53 @@
       ;; Use an specialized root node for efficiency in this case.
       (if is-root
         (eng/->RootJoinNode
-         id
-         condition
-         children
-         join-bindings)
+          id
+          condition
+          children
+          join-bindings)
 
         ;; If the join operation includes arbitrary expressions
         ;; that can't expressed as a hash join, we must use the expressions
         (if (:join-filter-expressions beta-node)
-          (let [join-filter-expr (compile-join-filter (:join-filter-expressions beta-node)
-                                                      (:join-filter-join-bindings beta-node)
-                                                      (:new-bindings beta-node)
-                                                      (:env beta-node))]
-            (with-meta
-              (eng/->ExpressionJoinNode
-               id
-               condition
-               (binding [*compile-ctx* {:condition condition
-                                        :join-filter-expressions (:join-filter-expressions beta-node)
-                                        :env (:env beta-node)
-                                        :msg "compiling expression join node"}]
-                 (compile-expr id
-                               join-filter-expr))
-               children
-               join-bindings)
-              {:join-filter-expr join-filter-expr}))
+          (eng/->ExpressionJoinNode
+            id
+            condition
+            (compiled-expr-fn id :join-filter-expr)
+            children
+            join-bindings)
           (eng/->HashJoinNode
-           id
-           condition
-           children
-           join-bindings)))
+            id
+            condition
+            children
+            join-bindings)))
 
       :negation
       ;; Check to see if the negation includes an
       ;; expression that must be joined to the incoming token
       ;; and use the appropriate node type.
       (if (:join-filter-expressions beta-node)
-
-        (let [join-filter-expr (compile-join-filter (:join-filter-expressions beta-node)
-                                                    (:join-filter-join-bindings beta-node)
-                                                    (:new-bindings beta-node)
-                                                    (:env beta-node))]
-          (with-meta
-            (eng/->NegationWithJoinFilterNode
-             id
-             condition
-             (binding [*compile-ctx* {:condition condition
-                                      :join-filter-expressions (:join-filter-expressions beta-node)
-                                      :env (:env beta-node)
-                                      :msg "compiling negation with join filter node"}]
-               (compile-expr id
-                             join-filter-expr))
-             children
-             join-bindings)
-            {:join-filter-expr join-filter-expr}))
-
+        (eng/->NegationWithJoinFilterNode
+          id
+          condition
+          (compiled-expr-fn id :join-filter-expr)
+          children
+          join-bindings)
         (eng/->NegationNode
-         id
-         condition
-         children
-         join-bindings))
+          id
+          condition
+          children
+          join-bindings))
 
       :test
-      (let [test-expr (compile-test (:constraints condition))]
-        (with-meta
-          (eng/->TestNode
-           id
-           (binding [*compile-ctx* {:condition condition
-                                    :env (:env beta-node)
-                                    :msg "compiling test node"}]
-             (compile-expr id
-                           test-expr))
-           children)
-          {:test-expr test-expr}))
+      (eng/->TestNode
+        id
+        (compiled-expr-fn id :test-expr)
+        children)
 
       :accumulator
       ;; We create an accumulator that accepts the environment for the beta node
       ;; into its context, hence the function with the given environment.
-      (let [accum-expr (compile-accum (:accumulator beta-node) (:env beta-node))
-            compiled-node (binding [*compile-ctx* {:condition condition
-                                                   :accumulator (:accumulator beta-node)
-                                                   :env (:env beta-node)
-                                                   :msg "compiling accumulator"}]
-                            (compile-expr id
-                                          accum-expr))
+      (let [compiled-node (compiled-expr-fn id :accum-expr)
             compiled-accum (compiled-node (:env beta-node))]
 
         ;; Ensure the compiled accumulator has the expected structure
@@ -1372,83 +1540,51 @@
         ;; the specialized accumulate node.
 
         (if (:join-filter-expressions beta-node)
-
-          (let [join-filter-expr (compile-join-filter (:join-filter-expressions beta-node)
-                                                      (:join-filter-join-bindings beta-node)
-                                                      (:new-bindings beta-node)
-                                                      (:env beta-node))]
-            (with-meta
-              (eng/->AccumulateWithJoinFilterNode
-               id
-               ;; Create an accumulator structure for use when examining the node or the tokens
-               ;; it produces.
-               {:accumulator (:accumulator beta-node)
-                ;; Include the original filter expressions in the constraints for inspection tooling.
-                :from (update-in condition [:constraints]
-                                 into (-> beta-node :join-filter-expressions :constraints))}
-               compiled-accum
-               (binding [*compile-ctx* {:condition condition
-                                        :join-filter-expressions (:join-filter-expressions beta-node)
-                                        :env (:env beta-node)
-                                        :msg "compiling accumulate with join filter node"}]
-                 (compile-expr id
-                               join-filter-expr))
-               (:result-binding beta-node)
-               children
-               join-bindings
-               (:new-bindings beta-node))
-              {:accum-expr accum-expr
-               :join-filter-expr join-filter-expr}))
+          (eng/->AccumulateWithJoinFilterNode
+            id
+            ;; Create an accumulator structure for use when examining the node or the tokens
+            ;; it produces.
+            {:accumulator (:accumulator beta-node)
+             ;; Include the original filter expressions in the constraints for inspection tooling.
+             :from (update-in condition [:constraints]
+                              into (-> beta-node :join-filter-expressions :constraints))}
+            compiled-accum
+            (compiled-expr-fn id :join-filter-expr)
+            (:result-binding beta-node)
+            children
+            join-bindings
+            (:new-bindings beta-node))
 
           ;; All unification is based on equality, so just use the simple accumulate node.
-          (with-meta
-            (eng/->AccumulateNode
-             id
-             ;; Create an accumulator structure for use when examining the node or the tokens
-             ;; it produces.
-             {:accumulator (:accumulator beta-node)
-              :from condition}
-             compiled-accum
-             (:result-binding beta-node)
-             children
-             join-bindings
-             (:new-bindings beta-node))
-            {:accum-expr accum-expr})))
+          (eng/->AccumulateNode
+            id
+            ;; Create an accumulator structure for use when examining the node or the tokens
+            ;; it produces.
+            {:accumulator (:accumulator beta-node)
+             :from condition}
+            compiled-accum
+            (:result-binding beta-node)
+            children
+            join-bindings
+            (:new-bindings beta-node))))
 
       :production
-      (let [action-expr (with-meta (compile-action (:bindings beta-node)
-                                                   (:rhs production)
-                                                   (:env production))
-                          (meta (:rhs production)))]
-        (with-meta
-          (eng/->ProductionNode
-           id
-           production
-           (with-bindings (cond-> {#'*file* (-> production :rhs meta :file)
-                                   #'*compile-ctx* {:production production
-                                                    :msg "compiling production node"}}
-                            (:ns-name production) (assoc #'*ns* (the-ns (:ns-name production))))
-             (compile-expr id
-                           action-expr)))
-          {:action-expr action-expr}))
+      (eng/->ProductionNode
+        id
+        production
+        (compiled-expr-fn id :action-expr))
 
       :query
       (eng/->QueryNode
-       id
-       query
-       (:params query)))))
+        id
+        query
+        (:params query)))))
 
 (sc/defn ^:private compile-beta-graph :- {sc/Int sc/Any}
   "Compile the beta description to the nodes used at runtime."
-  [{:keys [id-to-production-node id-to-condition-node id-to-new-bindings forward-edges backward-edges]} :- schema/BetaGraph]
-  (let [;; A local, memoized function that ensures that the same expression of
-        ;; a given node :id is only compiled into a single function.
-        ;; This prevents redundant compilation and avoids having a Rete node
-        ;; :id that has had its expressions compiled into different
-        ;; compiled functions.
-        compile-expr (memoize (fn [id expr] (try-eval expr)))
-
-        ;; Sort the ids to compile based on dependencies.
+  [{:keys [id-to-production-node id-to-condition-node id-to-new-bindings forward-edges backward-edges]} :- schema/BetaGraph
+   expr-fn-lookup :- schema/NodeFnLookup]
+  (let [;; Sort the ids to compile based on dependencies.
         ids-to-compile (loop [pending-ids (into #{} (concat (keys id-to-production-node) (keys id-to-condition-node)))
                               node-deps forward-edges
                               sorted-nodes []]
@@ -1492,10 +1628,9 @@
                          id-to-compile
                          (compile-node node-to-compile
                                        id-to-compile
-                                       ;; 0 is the id of the root node.
-                                       (= #{0} (get backward-edges id-to-compile))
+                                       (root-node? backward-edges id-to-compile)
                                        children
-                                       compile-expr
+                                       expr-fn-lookup
                                        (get id-to-new-bindings id-to-compile))))))
             ;; The node IDs have been determined before now, so we just need to sort the map returned.
             ;; This matters because the engine will left-activate the beta roots with the empty token
@@ -1506,7 +1641,8 @@
 
 (sc/defn to-alpha-graph :- [schema/AlphaNode]
   "Returns a sequence of [condition-fn, [node-ids]] tuples to represent the alpha side of the network."
-  [beta-graph :- schema/BetaGraph]
+  [beta-graph :- schema/BetaGraph
+   create-id-fn :- IFn]
 
   ;; Create a sequence of tuples of conditions + env to beta node ids.
   (let [condition-to-node-ids (for [[id node] (:id-to-condition-node beta-graph)
@@ -1537,37 +1673,25 @@
            :when (:type condition) ; Exclude test conditions.
            ]
 
-       (cond-> {:condition condition
+       (cond-> {:id (create-id-fn)
+                :condition condition
                 :beta-children (distinct node-ids)}
          (seq env) (assoc :env env))))))
 
 
-(sc/defn compile-alpha-nodes :- [{:type sc/Any
+(sc/defn compile-alpha-nodes :- [{:id sc/Int
+                                  :type sc/Any
                                   :alpha-fn sc/Any ;; TODO: is a function...
                                   (sc/optional-key :env) {sc/Keyword sc/Any}
                                   :children [sc/Num]}]
-  [alpha-nodes :- [schema/AlphaNode]]
-  (for [{:keys [condition beta-children env]} alpha-nodes
-        :let [{:keys [type constraints fact-binding args]} condition
-              cmeta (meta condition)
-              alpha-expr (with-meta (compile-condition
-                                      type (first args)  constraints
-                                      fact-binding env)
-                           ;; Remove all metadata but file and line number
-                           ;; to protect from evaluating usafe metadata
-                           ;; See PR 243 for more detailed discussion
-                           (select-keys cmeta [:line :file]))]]
-
-    (with-meta
-      (cond-> {:type (effective-type type)
-               :alpha-fn (binding [*file* (or (:file cmeta) *file*)
-                                   *compile-ctx* {:condition condition
-                                                  :env env
-                                                  :msg "compiling alpha node"}]
-                           (try-eval alpha-expr))
-               :children beta-children}
-        env (assoc :env env))
-      {:alpha-expr alpha-expr})))
+  [alpha-nodes :- [schema/AlphaNode]
+   expr-fn-lookup :- schema/NodeFnLookup]
+  (for [{:keys [id condition beta-children env] :as node} alpha-nodes]
+    (cond-> {:id id
+             :type (effective-type (:type condition))
+             :alpha-fn (first (safe-get expr-fn-lookup [id :alpha-expr]))
+             :children beta-children}
+            env (assoc :env env))))
 
 ;; Wrap the fact-type so that Clojure equality and hashcode semantics are used
 ;; even though this is placed in a Java map.
@@ -1677,7 +1801,8 @@
    fact-type-fn
    ancestors-fn
    activation-group-sort-fn
-   activation-group-fn]
+   activation-group-fn
+   expr-fn-lookup]
 
   (let [beta-nodes (vals id-to-node)
 
@@ -1697,11 +1822,9 @@
                              entry))
 
         ;; type, alpha node tuples.
-        alpha-nodes (for [{:keys [type alpha-fn children env] :as alpha-map} alpha-fns
+        alpha-nodes (for [{:keys [id type alpha-fn children env] :as alpha-map} alpha-fns
                           :let [beta-children (map id-to-node children)]]
-                      [type (with-meta
-                              (eng/->AlphaNode env beta-children alpha-fn)
-                              {:alpha-expr (:alpha-expr (meta alpha-map))})])
+                      [type (eng/->AlphaNode id env beta-children alpha-fn)])
 
         ;; Merge the alpha nodes into a multi-map
         alpha-map (reduce
@@ -1709,6 +1832,11 @@
                      (update-in alpha-map [type] conj alpha-node))
                    {}
                    alpha-nodes)
+
+        ;; Merge the alpha nodes into the id-to-node map
+        id-to-node (into id-to-node
+                         (map (juxt :id identity))
+                         (mapv second alpha-nodes))
 
         get-alphas-fn (create-get-alphas-fn fact-type-fn ancestors-fn alpha-map)]
 
@@ -1721,7 +1849,8 @@
       :id-to-node id-to-node
       :activation-group-sort-fn activation-group-sort-fn
       :activation-group-fn activation-group-fn
-      :get-alphas-fn get-alphas-fn})))
+      :get-alphas-fn get-alphas-fn
+      :node-expr-fn-lookup expr-fn-lookup})))
 
 ;; Cache of sessions for fast reloading.
 (def ^:private session-cache (atom {}))
@@ -1751,6 +1880,37 @@
       productions
       (throw (ex-info (str "Non-unique production names: " non-unique) {:names non-unique})))))
 
+(def forms-per-eval-default
+  "The default max number of forms that will be evaluated together as a single batch.
+   5000 is chosen here due to the way that clojure will evaluate the vector of forms extracted from the nodes.
+   The limiting factor here is the max java method size (64KiB), clojure will compile each form in the vector down into
+   its own class file and generate another class file that will reference each of the other functions and wrap them in
+   a vector inside a static method. For example,
+
+   (eval [(fn one [_] ...) (fn two [_] ...)])
+   would generate 3 classes.
+
+   some_namespace$eval1234
+   some_namespace$eval1234$one_1234
+   some_namespace$eval1234$two_1235
+
+   some_namespace$eval1234$one_1234 and some_namespace$eval1234$two_1235 contian the implementation of the functions,
+   where some_namespace$eval1234 will contain two methods, invoke and invokeStatic.
+   The invokeStatic method breaks down into something similar to a single create array call followed by 2 array set calls
+   with new invocations on the 2 classes the method then returns a new vector created from the array.
+
+   5000 is lower than the absolute max to allow for modifications to how clojure compiles without needing to modify this.
+   The current limit should be 5471, this is derived from the following opcode investigation:
+
+   Array creation:                                                    5B
+   Creating and populating the first 6 elements of the array:        60B
+   Creating and populating the next 122 elements of the array:    1,342B
+   Creating and populating the next 5343 elements of the array:  64,116B
+   Creating the vector and the return statement:                      4B
+
+   This sums to 65,527B just shy of the 65,536B method size limit."
+  5000)
+
 (sc/defn mk-session*
   "Compile the rules into a rete network and return the given session."
   [productions :- #{schema/Production}
@@ -1769,11 +1929,23 @@
                                      productions)
                       ;; Store the name of the custom comparator for durability.
                       {:clara.rules.durability/comparator-name `production-load-order-comp})
-        beta-graph (to-beta-graph productions)
-        beta-tree (compile-beta-graph beta-graph)
+
+        ;; A stateful counter used for unique ids of the nodes of the graph.
+        id-counter (atom 0)
+        create-id-fn (fn [] (swap! id-counter inc))
+
+        forms-per-eval (:forms-per-eval options forms-per-eval-default)
+
+        beta-graph (to-beta-graph productions create-id-fn)
+        alpha-graph (to-alpha-graph beta-graph create-id-fn)
+
+        ;; Extract the expressions from the graphs and evaluate them in a batch manner.
+        ;; This is a performance optimization, see Issue 381 for more information.
+        exprs (compile-exprs (extract-exprs beta-graph alpha-graph) forms-per-eval)
+        beta-tree (compile-beta-graph beta-graph exprs)
         beta-root-ids (-> beta-graph :forward-edges (get 0)) ; 0 is the id of the virtual root node.
         beta-roots (vals (select-keys beta-tree beta-root-ids))
-        alpha-nodes (compile-alpha-nodes (to-alpha-graph beta-graph))
+        alpha-nodes (compile-alpha-nodes alpha-graph exprs)
 
         ;; The fact-type uses Clojure's type function unless overridden.
         fact-type-fn (or (get options :fact-type-fn)
@@ -1791,7 +1963,8 @@
         activation-group-fn (eng/options->activation-group-fn options)
 
         rulebase (build-network beta-tree beta-roots alpha-nodes productions
-                                fact-type-fn ancestors-fn activation-group-sort-fn activation-group-fn)
+                                fact-type-fn ancestors-fn activation-group-sort-fn activation-group-fn
+                                exprs)
 
         get-alphas-fn (:get-alphas-fn rulebase)
 

@@ -524,7 +524,7 @@
 ;; Record representing alpha nodes in the Rete network,
 ;; each of which evaluates a single condition and
 ;; propagates matches to its children.
-(defrecord AlphaNode [env children activation]
+(defrecord AlphaNode [id env children activation]
 
   IAlphaActivate
   (alpha-activate [node facts memory transport listener]
