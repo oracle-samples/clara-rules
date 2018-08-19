@@ -408,31 +408,11 @@
                                "clara/querynodeid")
 
    "clara/alphanode"
-   {:class AlphaNode
-    ;; The writer and reader here work similar to the IRecord implementation.  The only
-    ;; difference is that the record needs to be written with out the compiled clj
-    ;; function on it.  This is due to clj functions not having any convenient format
-    ;; for serialization.  The function is restored by re-eval'ing the function based on
-    ;; its originating code form at read-time.
-    :writer (reify WriteHandler
-              (write [_ w o]
-                (if-let [idx (d/clj-record-fact->idx o)]
-                  (do
-                    (.writeTag w "clara/alphanodeid" 1)
-                    (.writeInt w idx))
-                  (do
-                    (write-record w "clara/alphanode" (assoc o :activation nil))
-                    (d/clj-record-holder-add-fact-idx! o)))))
-    :readers {"clara/alphanodeid"
-              (reify ReadHandler
-                (read [_ rdr tag component-count]
-                  (d/clj-record-idx->fact (.readObject rdr))))
-              "clara/alphanode"
-              (reify ReadHandler
-                (read [_ rdr tag component-count]
-                  (-> rdr
-                      (read-record d/add-alpha-fn)
-                      d/clj-record-holder-add-fact!)))}}
+   (create-cached-node-handler AlphaNode
+                               "clara/alphanodeid"
+                               "clara/alphanode"
+                               #(assoc % :activation nil)
+                               d/add-alpha-fn)
 
    "clara/rootjoinnode"
    (create-cached-node-handler RootJoinNode
@@ -553,10 +533,15 @@
   d/ISessionSerializer
   (serialize [_ session opts]
     (let [{:keys [rulebase memory]} (eng/components session)
+          node-expr-fn-lookup (:node-expr-fn-lookup rulebase)
+          remove-node-fns (fn [expr-lookup]
+                            (zipmap (keys expr-lookup)
+                                    (mapv second (vals expr-lookup))))
           rulebase (assoc rulebase
                           :activation-group-sort-fn nil
                           :activation-group-fn nil
-                          :get-alphas-fn nil)
+                          :get-alphas-fn nil
+                          :node-expr-fn-lookup nil)
           record-holder (IdentityHashMap.)
           do-serialize
           (fn [sources]
@@ -568,12 +553,18 @@
       
       ;; In this case there is nothing to do with memory, so just serialize immediately.
       (if (:rulebase-only? opts)
-        (do-serialize [rulebase])
+        ;; node-expr-fn-lookup is a map with a structure of:
+        ;; {[Int Keyword] [IFn {Keyword Any}]}
+        ;; as fns are not serializable, we must remove them and alter the structure of the map to be
+        ;; {[Int Keyword] {Keyword Any}}
+        ;; during deserialization the compilation-context({Keyword Any}), which contains the unevaluated form,
+        ;; can be used to reconstruct the original map.
+        (do-serialize [(remove-node-fns node-expr-fn-lookup) rulebase])
         
         ;; Otherwise memory needs to have facts extracted to return.
         (let [{:keys [memory indexed-facts internal-indexed-facts]} (d/indexed-session-memory-state memory)
               sources (if (:with-rulebase? opts)
-                        [rulebase internal-indexed-facts memory]
+                        [(remove-node-fns node-expr-fn-lookup) rulebase internal-indexed-facts memory]
                         [internal-indexed-facts memory])]
           
           (do-serialize sources)
@@ -582,21 +573,37 @@
           indexed-facts))))
   
   (deserialize [_ mem-facts opts]
-    
+
     (with-open [^FressianReader rdr (fres/create-reader in-stream :handlers read-handler-lookup)]
-      (let [{:keys [rulebase-only? base-rulebase]} opts
+      (let [{:keys [rulebase-only? base-rulebase forms-per-eval]} opts
             
             record-holder (ArrayList.)
             ;; The rulebase should either be given from the base-session or found in
             ;; the restored session-state.
             maybe-base-rulebase (when (and (not rulebase-only?) base-rulebase)
                                   base-rulebase)
+
+            forms-per-eval (or forms-per-eval com/forms-per-eval-default)
+
+            reconstruct-expressions (fn [expr-lookup]
+                                      ;; Rebuilding the expr-lookup map from the serialized map:
+                                      ;; {[Int Keyword] {Keyword Any}} -> {[Int Keyword] [SExpr {Keyword Any}]}
+                                      (into {}
+                                            (for [[node-key compilation-ctx] expr-lookup]
+                                              [node-key [(-> compilation-ctx (get (nth node-key 1)))
+                                                         compilation-ctx]])))
+
             rulebase (if maybe-base-rulebase
                        maybe-base-rulebase
-                       (let [without-opts-rulebase (pform/thread-local-binding [d/node-id->node-cache (volatile! {})
-                                                                                d/compile-expr-fn (memoize (fn [id expr] (com/try-eval expr)))
-                                                                                d/clj-record-holder record-holder]
-                                                                               (fres/read-object rdr))]
+                       (let [without-opts-rulebase
+                             (pform/thread-local-binding [d/node-id->node-cache (volatile! {})
+                                                          d/clj-record-holder record-holder]
+                                                         (pform/thread-local-binding [d/node-fn-cache (-> (fres/read-object rdr)
+                                                                                                          reconstruct-expressions
+                                                                                                          (com/compile-exprs forms-per-eval))]
+                                                                                     (assoc (fres/read-object rdr)
+                                                                                       :node-expr-fn-lookup
+                                                                                       (.get d/node-fn-cache))))]
                          (d/rulebase->rulebase-with-opts without-opts-rulebase opts)))]
         
         (if rulebase-only?

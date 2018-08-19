@@ -210,9 +210,9 @@
                                   [(:id node) node]))
 
             ;; type, alpha node tuples.
-            alpha-nodes (for [{:keys [type alpha-fn children env]} alpha-fns
+            alpha-nodes (for [{:keys [id type alpha-fn children env]} alpha-fns
                               :let [beta-children (map id-to-node children)]]
-                          [type (eng/->AlphaNode env beta-children alpha-fn)])
+                          [type (eng/->AlphaNode id env beta-children alpha-fn)])
 
             ;; Merge the alpha nodes into a multi-map
             alpha-map (reduce
@@ -329,6 +329,9 @@
         It defaults to checking the :salience property, or 0 if none exists.
       * :activation-group-sort-fn, a comparator function used to sort the values returned by the above :activation-group-fn.
         Defaults to >, so rules with a higher salience are executed first.
+      * :forms-per-eval - The maximum number of expressions that will be evaluated per call to eval.
+        Larger batch sizes should see better performance compared to smaller batch sizes. (Only applicable to Clojure)
+        Defaults to 5000, see clara.rules.compiler/forms-per-eval-default for more information.
 
       This is not supported in ClojureScript, since it requires eval to dynamically build a session. ClojureScript
       users must use pre-defined rule sessions using defsession."
