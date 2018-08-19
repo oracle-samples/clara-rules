@@ -8,21 +8,19 @@
 
 (defrecord AFact [id])
 (defrecord BFact [id])
-(defrecord ParentFact [a-ids b-ids])
+(defrecord ParentFact [a-id b-id])
 
 (def counter (atom {:a-count 0
                     :b-count 0}))
 
 (def-rules-test test-get-in-perf
   {:rules [rule [[[?parent <- ParentFact]
-                  [?as <- (acc/all) :from [AFact (contains? (:a-ids ?parent) id)]]
-                  [?bs <- (acc/all) :from [BFact (contains? (:b-ids ?parent) id)]]]
+                  [?as <- (acc/all) :from [AFact (= (:a-id ?parent) id)]]
+                  [?bs <- (acc/all) :from [BFact (= (:b-id ?parent) id)]]]
                  '(do (swap! counter update :a-count inc))]]
    :sessions [session [rule] {}]}
-  (let [parents (for [_ (range 500)]
-                  (->ParentFact
-                    (set (range 400))
-                    (set (range 400 800))))
+  (let [parents (for [x (range 500)]
+                  (->ParentFact x (inc x)))
         a-facts (for [id (range 800)]
                   (->AFact id))
         b-facts (for [id (range 800)]

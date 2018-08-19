@@ -59,7 +59,7 @@
 
 (def fire-rules-counter (atom 0))
 
-(def-rules-test perfomance-test
+(def-rules-test test-performance-test
   {:rules [rule1 [[[?t <- Temperature (< temperature 0)]]
                   (swap! fire-rules-counter inc)]]
    :queries []

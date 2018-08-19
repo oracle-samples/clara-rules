@@ -4,52 +4,13 @@
             [clara.rules :as r]
             [clara.rules.durability :as dura]
             [clara.rules.durability.fressian :as fres]
-            [clara.rules.accumulators :as acc])
+            [clara.rules.accumulators :as acc]
+            [clara.tools.testing-utils :as utils])
   (:import [java.io ByteArrayOutputStream ByteArrayInputStream]))
 
 (defn filter-fn
   [seed-keyword]
   (= seed-keyword (keyword (gensym))))
-
-(defn time-execution
-  [func]
-  (let [start (System/currentTimeMillis)
-        _ (func)
-        stop (System/currentTimeMillis)]
-    (- stop start)))
-
-(defn execute-tests
-  [func iterations]
-  (let [execution-times (for [_ (range iterations)]
-                          (time-execution func))
-        sum #(reduce + %)
-        mean (/ (sum execution-times) iterations)
-        std (->
-              (into []
-                    (comp
-                      (map #(- % mean))
-                      (map #(Math/pow (double %) 2.0)))
-                    execution-times)
-              sum
-              (/ iterations)
-              Math/sqrt)]
-    {:std (double std)
-     :mean (double mean)}))
-
-(defn run-performance-test
-  "Created as a rudimentary alternative to criterium, due to assumptions made during benchmarking. Specifically, that
-   criterium attempts to reach a steady state of compiled and loaded classes. This fundamentally doesn't work when the
-   metrics needed rely on compilation or evaluation."
-  [form]
-  (let [{:keys [description func iterations mean-assertion]} form
-        {:keys [std mean]} (execute-tests func iterations)]
-    (println (str \newline "Running Performance tests for:"))
-    (println description)
-    (println "==========================================")
-    (println (str "Mean: " mean "ms"))
-    (println (str "Standard Deviation: " std "ms" \newline))
-    (is (mean-assertion mean)
-        (str "Actual mean value: " mean))))
 
 (def base-production
   {:ns-name (symbol (str *ns*))})
@@ -129,7 +90,7 @@
 (deftest compilation-performance-test
   (let [rules (generate-rules-and-opts 500)]
     (testing "Session creation performance"
-      (run-performance-test
+      (utils/run-performance-test
         {:description "Generated Session Compilation"
          :func #(com/mk-session rules)
          :iterations 50
@@ -138,7 +99,7 @@
     (let [session (com/mk-session rules)
           os (ByteArrayOutputStream.)]
       (testing "Session rulebase serialization performance"
-        (run-performance-test
+        (utils/run-performance-test
           {:description "Session rulebase serialization"
            :func #(dura/serialize-rulebase
                     session
@@ -152,7 +113,7 @@
           (fres/create-session-serializer os))
 
         (let [session-bytes (.toByteArray os)]
-          (run-performance-test
+          (utils/run-performance-test
             {:description "Session rulebase deserialization"
              :func #(dura/deserialize-rulebase
                       (fres/create-session-serializer (ByteArrayInputStream. session-bytes)))
