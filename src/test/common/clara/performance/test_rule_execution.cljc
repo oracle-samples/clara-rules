@@ -1,10 +1,13 @@
 (ns clara.performance.test-rule-execution
-  (:require [clara.tools.testing-utils :refer [def-rules-test
-                                               run-performance-test]]
-            [clara.rules.accumulators :as acc]
+  (:require [clara.rules.accumulators :as acc]
             [clara.rules :as r]
-            [clojure.java.io :as io]
-            [clojure.test :refer [is deftest run-tests] :as t]))
+    #?(:clj
+            [clojure.test :refer :all]
+       :cljs [cljs.test :refer-macros [is deftest]])
+    #?(:clj
+            [clara.tools.testing-utils :refer [def-rules-test run-performance-test]]
+       :cljs [clara.tools.testing-utils :refer [run-performance-test]]))
+  #?(:cljs (:require-macros [clara.tools.testing-utils :refer [def-rules-test]])))
 
 (defrecord AFact [id])
 (defrecord BFact [id])
@@ -13,17 +16,19 @@
 (def counter (atom {:a-count 0
                     :b-count 0}))
 
+(def number-of-facts #?(:clj 1500 :cljs 150))
+
 (def-rules-test test-get-in-perf
   {:rules [rule [[[?parent <- ParentFact]
                   [?as <- (acc/all) :from [AFact (= (:a-id ?parent) id)]]
                   [?bs <- (acc/all) :from [BFact (= (:b-id ?parent) id)]]]
                  '(do (swap! counter update :a-count inc))]]
    :sessions [session [rule] {}]}
-  (let [parents (for [x (range 500)]
+  (let [parents (for [x (range number-of-facts)]
                   (->ParentFact x (inc x)))
-        a-facts (for [id (range 800)]
+        a-facts (for [id (range number-of-facts)]
                   (->AFact id))
-        b-facts (for [id (range 800)]
+        b-facts (for [id (range number-of-facts)]
                   (->BFact id))
 
         facts (doall (concat parents
