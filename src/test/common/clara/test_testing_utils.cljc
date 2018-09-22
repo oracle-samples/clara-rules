@@ -1,6 +1,7 @@
 #?(:clj
    (ns clara.test-testing-utils
-     (:require [clara.tools.testing-utils :refer [def-rules-test]]
+     (:require [clara.tools.testing-utils :refer [def-rules-test
+                                                  run-performance-test]]
                [clara.rules :as r]
 
                [clara.rules.testfacts :refer [->Temperature ->Cold]]
@@ -14,7 +15,8 @@
      (:require [clara.rules :as r]
                [clara.rules.testfacts :refer [->Temperature Temperature
                                               ->Cold Cold]]
-               [cljs.test :as t])
+               [cljs.test :as t]
+               [clara.tools.testing-utils :refer [run-performance-test]])
      (:require-macros [clara.tools.testing-utils :refer [def-rules-test]]
                       [cljs.test :refer (is deftest run-tests)])))
 
@@ -54,3 +56,18 @@
                   (r/insert (->Temperature -50 "MCI"))
                   r/fire-rules
                   (r/query query1)))))
+
+(def fire-rules-counter (atom 0))
+
+(def-rules-test test-performance-test
+  {:rules [rule1 [[[?t <- Temperature (< temperature 0)]]
+                  (swap! fire-rules-counter inc)]]
+   :queries []
+   :sessions [session1 [rule1] {}]}
+  (run-performance-test {:description "Simple fire-rules demonstration"
+                         :func #(-> session1
+                                    (r/insert (->Temperature -50 "MCI"))
+                                    r/fire-rules)
+                         :iterations 5
+                         :mean-assertion (partial > 500)})
+  (is (= @fire-rules-counter 5)))

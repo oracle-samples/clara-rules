@@ -19,7 +19,8 @@
             [clara.test-simple-rules]
             [clara.test-rhs-retract]
             [clara.test-bindings]
-            [clara.test-clear-ns-productions]))
+            [clara.test-clear-ns-productions]
+            [clara.performance.test-rule-execution]))
 
 (enable-console-print!)
 
@@ -54,5 +55,6 @@
                     'clara.test-simple-rules
                     'clara.test-rhs-retract
                     'clara.test-bindings
-                    'clara.test-clear-ns-productions)
+                    'clara.test-clear-ns-productions
+                    'clara.performance.test-rule-execution)
     @*successful?*))
