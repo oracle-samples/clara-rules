@@ -749,10 +749,13 @@
 
              constraints (:constraints effective-leaf)
 
-             [bound-variables unbound-variables] (if (= :negation (condition-type leaf-condition))
+             [bound-variables unbound-variables] (if (#{:negation :test} (condition-type leaf-condition))
                                                    ;; Variables used in a negation should be considered
                                                    ;; unbound since they aren't usable in another condition,
-                                                   ;; so label all variables as unbound.
+                                                   ;; so label all variables as unbound.  Similarly, :test
+                                                   ;; conditions can't bind new variables since they don't
+                                                   ;; have any new facts as input.  See:
+                                                   ;; https://github.com/cerner/clara-rules/issues/357
                                                    [#{}
                                                     (apply s/union (classify-variables constraints))]
 

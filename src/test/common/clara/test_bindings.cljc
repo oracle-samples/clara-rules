@@ -343,3 +343,29 @@
                     (fire-rules))]
 
     (is (= [{:?x nil}] (query session test-query)))))
+
+
+;; https://github.com/cerner/clara-rules/issues/357
+(def-rules-test test-accumulator-before-equality-test-in-test-node
+
+  {:queries [cold-query [[]
+                         [[Cold (= ?t temperature)]]]]
+
+   :rules [location-restriction-rule [[[?coldest <- (acc/min :temperature :returns-fact false) :from [Temperature (= ?location location)]]
+                                       [:test (= ?location "LHR")]]
+                                      (insert! (->Cold ?coldest))]]
+
+   :sessions [empty-session [cold-query location-restriction-rule] {}]}
+
+  (is (empty? (-> empty-session
+                  (insert (->Temperature 0 "LGW"))
+                  fire-rules
+                  (query cold-query)))
+      "The query results should be empty if the location fails the :test equality check")
+
+  (is (= [{:?t 0}]
+         (-> empty-session
+             (insert (->Temperature 0 "LHR"))
+             fire-rules
+             (query cold-query)))
+      "The query results should not be empty for a matching location"))
