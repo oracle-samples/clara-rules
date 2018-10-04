@@ -1,8 +1,11 @@
 This is a history of changes to clara-rules.
 
-### 0.19.0-SNAPSHOT
+### 0.19.0
 * Remove a warning about `qualified-keyword?` being replaced when using Clojure 1.9.
-* Batch evaluation of node expressions for better compilation performance. See [issue 381](https://github.com/cerner/clara-rules/issues/381)
+* Batch evaluation of node expressions for better compilation performance. See [issue 381](https://github.com/cerner/clara-rules/issues/381).
+* Remove unneeded use of get-in to improve performance. See [issue 402](https://github.com/cerner/clara-rules/issues/402).
+* Fix issue in test conditions where there is a previous binding. See [issue 357](https://github.com/cerner/clara-rules/issues/357).
+* Fix incorrect unification logic caused by differing equality semantics between Java and Clojure. See [issue 393](https://github.com/cerner/clara-rules/issues/393).
 
 ### 0.18.0
 * Remove unnecessary memory operations from ProductionNode to optimize performance.  Remove :rule-matches in session inspection that did not cause logical insertions and add a new optional feature to return all rule matches, regardless of what their RHS did or whether they were retracted. Add a new listener and tracing method fire-activation!. These changes are moderately non-passive with respect to listening, tracing, and session inspection but are otherwise passive.  See [issue 386](https://github.com/cerner/clara-rules/issues/386) for details.
