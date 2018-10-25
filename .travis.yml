@@ -4,6 +4,7 @@ script:
   - lein test
   - lein test :generative
   - lein with-profile dev,recent-clj test
+  - lein with-profile dev,rc-clojure test
 # Workaround for https://github.com/travis-ci/travis-ci/issues/4691
 sudo: required
 jdk:
