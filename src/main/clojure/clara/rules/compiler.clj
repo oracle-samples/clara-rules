@@ -650,10 +650,9 @@
                    ;; This is an :exists condition, so expand it
                    ;; into an accumulator and a test.
                    (let [exists-count (gensym "?__gen__")]
-                       [{:accumulator '(clara.rules.accumulators/count)
+                       [{:accumulator '(clara.rules.accumulators/exists)
                          :from (second condition)
-                         :result-binding (keyword exists-count)}
-                        {:constraints [(list '> exists-count 0)]}])
+                         :result-binding (keyword exists-count)}])
 
                    ;; This is not an :exists condition, so do not change it.
                    [condition])]

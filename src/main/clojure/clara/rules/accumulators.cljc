@@ -169,6 +169,14 @@
     :retract-fn (fn [count retracted] (dec count))
     :combine-fn +}))
 
+(defn exists
+  "Returns an accumulator that accumulates to true if at least one fact
+   exists and nil otherwise, the latter causing the accumulator condition to not match."
+  []
+  (assoc (count) :convert-return-fn (fn [v]
+                                      (when (pos? v)
+                                        true))))
+
 (defn distinct
   "Returns an accumulator producing a distinct set of facts.
    If given a field, returns a distinct set of values for that field."
