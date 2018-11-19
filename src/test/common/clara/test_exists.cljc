@@ -26,6 +26,7 @@
                                     insert
                                     insert!
                                     insert-all
+                                    insert-unconditional!
                                     retract
                                     query]]
                [clara.rules.testfacts :refer [->Temperature Temperature
