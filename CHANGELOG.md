@@ -1,6 +1,6 @@
 This is a history of changes to clara-rules.
 
-# 0.19.0-SNAPSHOT
+# 0.20.0-SNAPSHOT
 * Added a new field to the clara.rules.engine/Accumulator record.  This could be a breaking change for any user durability implementations with low-level performance optimizations.  See [PR 410](https://github.com/cerner/clara-rules/pull/410) for details.
 
 ### 0.19.0
