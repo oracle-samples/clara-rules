@@ -6,11 +6,12 @@
   :dependencies [[org.clojure/clojure "1.7.0"]
                  [prismatic/schema "1.1.6"]]
   :profiles {:dev {:dependencies [[org.clojure/math.combinatorics "0.1.3"]
-                                  [org.clojure/data.fressian "0.2.1"]]}
+                                  [org.clojure/data.fressian "0.2.1"]
+                                  [javax.xml.bind/jaxb-api "2.3.1"]
+                                  [com.sun.xml.bind/jaxb-impl "2.3.1"]]}
              :provided {:dependencies [[org.clojure/clojurescript "1.7.170"]]}
              :recent-clj {:dependencies [^:replace [org.clojure/clojure "1.9.0"]
-                                         ^:replace [org.clojure/clojurescript "1.9.946"]]}
-             :java9 {:jvm-opts ["--add-modules=java.xml.bind"]}}
+                                         ^:replace [org.clojure/clojurescript "1.9.946"]]}}
   :plugins [[lein-codox "0.10.3" :exclusions [org.clojure/clojure
                                               org.clojure/clojurescript]]
             [lein-javadoc "0.3.0" :exclusions [org.clojure/clojure
