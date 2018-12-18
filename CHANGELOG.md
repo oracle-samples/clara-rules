@@ -2,6 +2,7 @@ This is a history of changes to clara-rules.
 
 # 0.20.0-SNAPSHOT
 * Added a new field to the clara.rules.engine/Accumulator record.  This could be a breaking change for any user durability implementations with low-level performance optimizations.  See [PR 410](https://github.com/cerner/clara-rules/pull/410) for details.
+* Performance improvements for :exists conditions.  See [issue 298](https://github.com/cerner/clara-rules/issues/298).
 
 ### 0.19.0
 * Remove a warning about `qualified-keyword?` being replaced when using Clojure 1.9.

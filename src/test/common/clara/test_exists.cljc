@@ -4,6 +4,7 @@
                [clara.rules :refer [fire-rules
                                     insert
                                     insert-all
+                                    insert-unconditional!
                                     insert!
                                     retract
                                     query]]
@@ -25,6 +26,7 @@
                                     insert
                                     insert!
                                     insert-all
+                                    insert-unconditional!
                                     retract
                                     query]]
                [clara.rules.testfacts :refer [->Temperature Temperature
@@ -165,3 +167,23 @@
              (query cold-query))
          [{:?t nil}])
       "Validate that :exists can match under a boolean :and condition."))
+
+;; Test of the performance optimization in https://github.com/cerner/clara-rules/issues/298
+;; The idea is that if inserting additional items beyond the first causes a retraction and then
+;; rebuilding of the Rete network an unconditional insertion will happen twice.
+(def-rules-test test-additional-item-noop
+
+  {:rules [exists-rule [[[:exists [Temperature (< temperature 0)]]]
+                         (insert-unconditional! (->Cold :freezing))]]
+
+   :queries [cold-query [[] [[Cold (= ?t temperature)]]]]
+
+   :sessions [empty-session [exists-rule cold-query] {}]}
+
+  (is (= [{:?t :freezing}]
+         (-> empty-session
+             (insert (->Temperature -10 "INV"))
+             (fire-rules)
+             (insert (->Temperature -10 "INV"))
+             fire-rules
+             (query cold-query)))))

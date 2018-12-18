@@ -169,6 +169,19 @@
     :retract-fn (fn [count retracted] (dec count))
     :combine-fn +}))
 
+(defn exists
+  "Returns an accumulator that accumulates to true if at least one fact
+   exists and nil otherwise, the latter causing the accumulator condition to not match."
+  []
+  (assoc (count) :convert-return-fn (fn [v]
+                                      ;; This specifically needs to return nil rather than false if the pos? predicate is false so that
+                                      ;; the accumulator condition will fail to match; the accumulator will consider
+                                      ;; boolean false a valid match.  See https://github.com/cerner/clara-rules/issues/182#issuecomment-217142418
+                                      ;; and the following comments for the original discussion around suppressing nil accumulator
+                                      ;; return values but propagating boolean false.
+                                      (when (pos? v)
+                                        true))))
+
 (defn distinct
   "Returns an accumulator producing a distinct set of facts.
    If given a field, returns a distinct set of values for that field."
