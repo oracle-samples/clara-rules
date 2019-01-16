@@ -260,8 +260,10 @@
               s-with-nested [nested-negation-with-prior-bindings object-query] {:ancestors-fn (fn [t]
                                                                                                 (conj (ancestors t) ::any))}]}
 
-  (let [no-system-types? (fn [session]
-                           (is (not-empty (query x object-query))
+  (let [no-system-types? (fn [session facts-expected?]
+                           (is (or
+                                (not facts-expected?)
+                                (not-empty (query session object-query)))
                                "If the object query returns nothing the setup of this test is invalid")
                            (not-any? (fn [fact] #?(:clj (instance? clara.rules.engine.ISystemFact fact)
                                                    :cljs  (isa? :clara.rules.engine/system-type fact)))
@@ -269,84 +271,82 @@
                                        (query x object-query)
                                        (map :?o x))))]
 
-   ;; Should not match when negation is met.
-    (let [end-session (-> s
-                          (insert (->Temperature 10 "MCI")
-                                  (->Cold 10))
-                          (fire-rules))]
-      (is (empty? (query end-session cold-not-match-temp)))
-      (is (no-system-types? end-session)))
+    (testing "Should not match when negation is met."
+      (let [end-session (-> s
+                            (insert (->Temperature 10 "MCI")
+                                    (->Cold 10))
+                            (fire-rules))]
+        (is (empty? (query end-session cold-not-match-temp)))
+        (is (no-system-types? end-session true))))
 
-    ;; Should have result if only a single item matched.
-    (let [end-session (-> s
-                          (insert (->Temperature 10 "MCI"))
-                          (fire-rules))]
-      (is (= [{}]
-             (query end-session cold-not-match-temp)))
-      (is (no-system-types? end-session)))
+    (testing "Should have result if only a single item matched."
+      (let [end-session (-> s
+                            (insert (->Temperature 10 "MCI"))
+                            (fire-rules))]
+        (is (= [{}]
+               (query end-session cold-not-match-temp)))
+        (is (no-system-types? end-session true))))
 
-    ;; Test previous binding is visible.
-    (let [end-session (fire-rules s-with-prior)]
-      (is (empty? (-> s-with-prior
-                      (fire-rules)
-                      (query negation-with-prior-bindings))))
-      (is (no-system-types? end-session)))
+    (testing "Test previous binding is visible."
+      (let [end-session (fire-rules s-with-prior)]
+        (is (empty? (query end-session negation-with-prior-bindings)))
+        (is (no-system-types? end-session false))))
 
-    ;; Should have result since negation does not match.
-    (let [end-session (-> s-with-prior
-                          (insert (->WindSpeed 10 "MCI")
-                                  (->Temperature 10 "ORD")
-                                  (->Cold 10))
-                          (fire-rules))]
-      (is (= [{:?l "MCI"}]
-             (query end-session negation-with-prior-bindings)))
-      (is (no-system-types? end-session)))
+    (testing "Should have result since negation does not match."
+      (let [end-session (-> s-with-prior
+                            (insert (->WindSpeed 10 "MCI")
+                                    (->Temperature 10 "ORD")
+                                    (->Cold 10))
+                            (fire-rules))]
+        (is (= [{:?l "MCI"}]
+               (query end-session negation-with-prior-bindings)))
+        (is (no-system-types? end-session true))))
 
-    ;; No result because negation matches.
-    (let [end-session (-> s-with-prior
-                          (insert (->WindSpeed 10 "MCI")
-                                  (->Temperature 10 "MCI")
-                                  (->Cold 10))
-                          (fire-rules))]
-      (is (empty? (query end-session negation-with-prior-bindings)))
-      (is (no-system-types? end-session)))
+    (testing "No result because negation matches."
+      (let [end-session (-> s-with-prior
+                            (insert (->WindSpeed 10 "MCI")
+                                    (->Temperature 10 "MCI")
+                                    (->Cold 10))
+                            (fire-rules))]
+        (is (empty? (query end-session negation-with-prior-bindings)))
+        (is (no-system-types? end-session true))))
 
-    ;; Has nothing because the cold does not match the nested negation,
-    ;; so the :and is true and is negated at the top level.
-    (let [end-session (-> s-with-nested
-                          (insert (->WindSpeed 10 "MCI")
-                                  (->Temperature 10 "MCI")
-                                  (->Cold 20))
-                          (fire-rules))]
-      (is (empty?
-           (query end-session nested-negation-with-prior-bindings)))
-      (is (no-system-types? end-session)))
-
-    ;; Match the nested negation, which is then negated again at the higher level,
-    ;; so this rule matches.
-    (let [end-session (-> s-with-nested
-                          (insert (->WindSpeed 10 "MCI")
-                                  (->Temperature 10 "MCI")
-                                  (->Cold 10))
-                          (fire-rules))]
-      (is (= [{:?l "MCI"}]
+    (testing "Has nothing because the cold does not match the nested negation,
+      so the :and is true and is negated at the top level."
+      (let [end-session (-> s-with-nested
+                            (insert (->WindSpeed 10 "MCI")
+                                    (->Temperature 10 "MCI")
+                                    (->Cold 20))
+                            (fire-rules))]
+        (is (empty?
              (query end-session nested-negation-with-prior-bindings)))
-      (is (no-system-types? end-session)))
+        (is (no-system-types? end-session true))))
 
-    ;; Match the nested negation for location ORD but not for MCI.
-    ;; See https://github.com/cerner/clara-rules/issues/304
-    (let [end-session (-> s-with-nested
-                          (insert
-                           (->WindSpeed 10 "MCI")
-                           (->Temperature 10 "MCI")
-                           (->Cold 20)
-                           (->WindSpeed 20 "ORD")
-                           (->Temperature 20 "ORD"))
-                          (fire-rules))]
+    (testing "Match the nested negation, which is then negated again at the higher level,
+    so this rule matches."
+      (let [end-session (-> s-with-nested
+                            (insert (->WindSpeed 10 "MCI")
+                                    (->Temperature 10 "MCI")
+                                    (->Cold 10))
+                            (fire-rules))]
+        (is (= [{:?l "MCI"}]
+               (query end-session nested-negation-with-prior-bindings)))
+        (is (no-system-types? end-session true))))
 
-      (is (= [{:?l "ORD"}]
-             (query end-session nested-negation-with-prior-bindings)))
-      (is (no-system-types? end-session)))))
+    (testing "Match the nested negation for location ORD but not for MCI.
+    See https://github.com/cerner/clara-rules/issues/304"
+      (let [end-session (-> s-with-nested
+                            (insert
+                             (->WindSpeed 10 "MCI")
+                             (->Temperature 10 "MCI")
+                             (->Cold 20)
+                             (->WindSpeed 20 "ORD")
+                             (->Temperature 20 "ORD"))
+                            (fire-rules))]
+
+        (is (= [{:?l "ORD"}]
+               (query end-session nested-negation-with-prior-bindings)))
+        (is (no-system-types? end-session true))))))
 
 (def-rules-test test-complex-negation-custom-type
 
