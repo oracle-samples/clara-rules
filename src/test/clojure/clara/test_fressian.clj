@@ -18,11 +18,11 @@
               ^FressianWriter wtr (fres/create-writer os :handlers df/write-handler-lookup)]
     ;; Write
     (pform/thread-local-binding [d/node-id->node-cache (volatile! {})
-                                 d/clj-record-holder (java.util.IdentityHashMap.)]
+                                 d/clj-struct-holder (java.util.IdentityHashMap.)]
                                 (fres/write-object wtr x))
     ;; Read
     (let [data (.toByteArray os)]
-      (pform/thread-local-binding [d/clj-record-holder (java.util.ArrayList.)]
+      (pform/thread-local-binding [d/clj-struct-holder (java.util.ArrayList.)]
                                   (with-open [is (java.io.ByteArrayInputStream. data)
                                               ^FressianReader rdr (fres/create-reader is :handlers df/read-handler-lookup)]
                                     (fres/read-object rdr))))))
@@ -107,4 +107,15 @@
         (is (thrown? Exception
                      (serde (with-meta sm-custom {})))
             "cannot serialized custom sort comparators without name given in metadata")))))
+
+(deftest test-handler-identity
+  (let [v [1 2 3]
+        l (list 4 5 6)
+        m {:a 1 :b 2}
+        s #{:a :b :c}
+        r (serde (->Tester [v v l l m m s s]))]
+    (doseq [[x y] (partition 2 (:x r))]
+      (testing (str "Serde preserves identity for " (type x))
+        (is (identical? x y)
+            "preserving object references")))))
 
