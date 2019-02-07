@@ -196,8 +196,8 @@
    tag
    read-fn
    write-fn]
-  (let [indexed-tag (str tag "idx")]
-    ;; Write an object a single time per object reference to that record.  The object is then "cached"
+  (let [indexed-tag (str tag "-idx")]
+    ;; Write an object a single time per object reference to that object.  The object is then "cached"
     ;; with the IdentityHashMap `d/clj-struct-holder`.  If another reference to this object instance
     ;; is encountered later, only the "index" of the object in the map will be written.
     {:class clazz
