@@ -1966,8 +1966,11 @@
         retain-compile-ctx (:retain-compile-ctx options retain-compile-ctx-default)
         exprs (if retain-compile-ctx
                 exprs
-                (zipmap (keys exprs)
-                        (mapv (juxt first #(dissoc (second %) :compile-ctx)) (vals exprs))))
+                (into {}
+                      (map
+                        (fn [[k [expr ctx]]]
+                          [k [expr (dissoc ctx :compile-ctx)]]))
+                      exprs))
 
         beta-tree (compile-beta-graph beta-graph exprs)
         beta-root-ids (-> beta-graph :forward-edges (get 0)) ; 0 is the id of the virtual root node.
