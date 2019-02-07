@@ -114,3 +114,48 @@
                          (first))]
     (.-trace ^PersistentTracingListener listener)
     (throw (ex-info "No tracing listener attached to session." {:session session}))))
+
+(defn ^:private node-id->productions
+  "Given a session and a node ID return a list of the rule and query names associated
+   with the node."
+  [session id]
+  (let [node (-> session eng/components :rulebase :id-to-node (get id))]
+    (into []
+          (comp
+           (map second)
+           cat
+           (map second))
+          (eng/get-conditions-and-rule-names node))))
+
+(defn ranked-productions
+  "Given a session with tracing enabled, return a map of rule and query names
+  to a numerical index that represents an approximation of the proportional
+  amount of times Clara performed processing related to this rule.  This
+  is not intended to have a precise meaning, and is intended solely as a means
+  to provide a rough guide to which rules and queries should be considered
+  the first suspects when diagnosing  performance problems in rules sessions.
+  It is possible for a relatively small number of interactions to take a long
+  time if those interactions are particularly costly.  It is expected that
+  the results may change between different versions when Clara's internals change,
+  for example to optimize the rules network.  Nevertheless, it is anticipated
+  that this will provide useful information for a first pass at rules
+  performance problem debugging.  This should not be used to drive user logic.
+
+  This currently returns a Clojure array map in order to conveniently have the rules
+  with the most interactions printed first in the string representation of the map."
+  [session]
+  (let [node-ids (->> session
+                      get-trace
+                      (map :node-id))
+
+        production-names (into []
+                               (comp
+                                (map (partial node-id->productions session))
+                                cat)
+                               node-ids)
+
+        production-name->interactions (frequencies  production-names)
+
+        ranked-tuples (reverse (sort-by second production-name->interactions))]
+
+    (apply array-map (into [] cat ranked-tuples))))

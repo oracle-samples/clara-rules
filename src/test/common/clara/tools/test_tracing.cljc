@@ -30,6 +30,7 @@
                                                ->TemperatureHistory TemperatureHistory
                                                ->Hot Hot
                                                ->Cold Cold
+                                               ->ColdAndWindy ColdAndWindy
                                                ->WindSpeed WindSpeed]])
       (:require-macros [clara.tools.testing-utils :refer [def-rules-test]]
                        [cljs.test :refer [is deftest run-tests testing use-fixtures]])))
@@ -157,3 +158,49 @@
    ;; Ensure only the expected fact was indicated as retracted.
    (let [retraction (first (filter #(= :retract-facts-logical (:type %)) session-trace))]
      (is (= [(->Cold 10)] (:facts retraction))))))
+
+(def-rules-test test-ranked-productions
+  {:rules [temperature-rule [[[Temperature (= ?temperature temperature) (< temperature 20)]]
+                             (insert! (->Cold ?temperature))]
+
+           cold-and-windy-rule [[[ColdAndWindy (= ?temperature temperature) (< temperature 20)]]
+                                (insert! (->Cold ?temperature))]]
+
+   :sessions [empty-session [temperature-rule cold-and-windy-rule] {}]}
+
+  (let [mostly-temp (-> empty-session
+                        t/with-tracing
+                        (insert (->Temperature 10 "MCI"))
+                        fire-rules
+                        (insert (->Temperature 10 "MCI"))
+                        fire-rules
+                        (insert (->ColdAndWindy 10 10))
+                        fire-rules)
+
+        mostly-temp-counts (t/ranked-productions mostly-temp)
+
+        mostly-cold-and-windy (-> empty-session
+                                  t/with-tracing
+                                  (insert (->Temperature 10 "MCI"))
+                                  fire-rules
+                                  (insert (->ColdAndWindy 10 10))
+                                  fire-rules
+                                  (insert (->ColdAndWindy 10 10))
+                                  fire-rules)
+
+        mostly-cold-and-windy-counts (t/ranked-productions mostly-cold-and-windy)]
+
+    (is (= (keys mostly-temp-counts)
+           ["temperature-rule" "cold-and-windy-rule"]))
+
+    (is (= (keys mostly-cold-and-windy-counts)
+           ["cold-and-windy-rule" "temperature-rule"]))
+
+    ;; Since the exact number of interactions is subject to change based on Clara's internal implementation details
+    ;; we instead test the ratio of interaction counts instead, which should be more stable.  The pattern above
+    ;; of inserting and firing a single fact at a time prevents fact batching from impacting these ratios.
+    (is (= (mostly-temp-counts "temperature-rule")
+           (* 2 (mostly-temp-counts "cold-and-windy-rule"))))
+
+    (is  (= (mostly-cold-and-windy-counts "cold-and-windy-rule")
+            (* 2 (mostly-cold-and-windy-counts "temperature-rule"))))))
