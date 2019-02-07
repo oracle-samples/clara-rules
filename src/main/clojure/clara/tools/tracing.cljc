@@ -119,7 +119,7 @@
   "Given a session and a node ID return a list of the rule and query names associated
    with the node."
   [session id]
-  (let [node (-> session .-rulebase :id-to-node (get id))]
+  (let [node (-> session eng/components :rulebase :id-to-node (get id))]
     (into []
           (comp
            (map second)
@@ -127,7 +127,7 @@
            (map second))
           (eng/get-conditions-and-rule-names node))))
 
-(defn traced-session->ranked-productions
+(defn ranked-productions
   "Given a session with tracing enabled, return a map of rule and query names
   to a numerical index that represents an approximation of the proportional
   amount of times Clara performed processing related to this rule.  This
@@ -141,7 +141,7 @@
   that this will provide useful information for a first pass at rules
   performance problem debugging.  This should not be used to drive user logic.
 
-  This currently returns a Clojure array map currently in order to conveniently have the rules
+  This currently returns a Clojure array map in order to conveniently have the rules
   with the most interactions printed first in the string representation of the map."
   [session]
   (let [node-ids (->> session

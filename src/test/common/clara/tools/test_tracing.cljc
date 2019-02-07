@@ -159,7 +159,7 @@
    (let [retraction (first (filter #(= :retract-facts-logical (:type %)) session-trace))]
      (is (= [(->Cold 10)] (:facts retraction))))))
 
-(def-rules-test test-traced-session->ranked-productions
+(def-rules-test test-ranked-productions
   {:rules [temperature-rule [[[Temperature (= ?temperature temperature) (< temperature 20)]]
                              (insert! (->Cold ?temperature))]
 
@@ -177,7 +177,7 @@
                         (insert (->ColdAndWindy 10 10))
                         fire-rules)
 
-        mostly-temp-counts (t/traced-session->ranked-productions mostly-temp)
+        mostly-temp-counts (t/ranked-productions mostly-temp)
 
         mostly-cold-and-windy (-> empty-session
                                   t/with-tracing
@@ -188,7 +188,7 @@
                                   (insert (->ColdAndWindy 10 10))
                                   fire-rules)
 
-        mostly-cold-and-windy-counts (t/traced-session->ranked-productions mostly-cold-and-windy)]
+        mostly-cold-and-windy-counts (t/ranked-productions mostly-cold-and-windy)]
 
     (is (= (keys mostly-temp-counts)
            ["temperature-rule" "cold-and-windy-rule"]))
