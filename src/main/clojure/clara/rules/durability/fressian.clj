@@ -194,8 +194,8 @@
 (defn- create-identity-based-handler
   [clazz
    tag
-   read-fn
-   write-fn]
+   write-fn
+   read-fn]
   (let [indexed-tag (str tag "-idx")]
     ;; Write an object a single time per object reference to that object.  The object is then "cached"
     ;; with the IdentityHashMap `d/clj-struct-holder`.  If another reference to this object instance
@@ -208,6 +208,9 @@
                      (.writeTag w indexed-tag 1)
                      (.writeInt w idx))
                    (do
+                     ;; We are writing all nested objects prior to adding the original object to the cache here as
+                     ;; this will be the order that will occur on read, ie, the reader will have traverse to the bottom
+                     ;; of the struct before rebuilding the object.
                      (write-fn w tag o)
                      (d/clj-struct-holder-add-fact-idx! o)))))
      ;; When reading the first time a reference to an object instance is found, the entire object will
@@ -243,26 +246,26 @@
    (create-identity-based-handler
      clojure.lang.APersistentSet
      "clj/set"
-     (fn clj-set-reader [rdr] (read-with-meta rdr set))
-     write-with-meta)
+     write-with-meta
+     (fn clj-set-reader [rdr] (read-with-meta rdr set)))
 
    "clj/vector"
    (create-identity-based-handler
      clojure.lang.APersistentVector
      "clj/vector"
-     (fn clj-vec-reader [rdr] (read-with-meta rdr vec))
-     write-with-meta)
+     write-with-meta
+     (fn clj-vec-reader [rdr] (read-with-meta rdr vec)))
 
    "clj/list"
    (create-identity-based-handler
      clojure.lang.PersistentList
      "clj/list"
-     (fn clj-list-reader [rdr] (read-with-meta rdr #(apply list %)))
-     write-with-meta)
+     write-with-meta
+     (fn clj-list-reader [rdr] (read-with-meta rdr #(apply list %))))
 
    "clj/emptylist"
    ;; Not using the identity based handler as this will always be identical anyway
-   ;; then meta data will be appended in the reader
+   ;; then meta data will be added in the reader
    {:class clojure.lang.PersistentList$EmptyList
     :writer (reify WriteHandler
               (write [_ w o]
@@ -283,35 +286,27 @@
    (create-identity-based-handler
      clojure.lang.ASeq
      "clj/aseq"
-     (fn clj-seq-reader [rdr] (read-with-meta rdr sequence))
-     write-with-meta)
+     write-with-meta
+     (fn clj-seq-reader [rdr] (read-with-meta rdr sequence)))
 
    "clj/lazyseq"
    (create-identity-based-handler
      clojure.lang.LazySeq
      "clj/lazyseq"
-     (fn clj-lazy-seq-reader [rdr] (read-with-meta rdr sequence))
-     write-with-meta)
+     write-with-meta
+     (fn clj-lazy-seq-reader [rdr] (read-with-meta rdr sequence)))
 
    "clj/map"
    (create-identity-based-handler
      clojure.lang.APersistentMap
      "clj/map"
-     (fn clj-map-reader [rdr] (read-with-meta rdr #(into {} %)))
-     (fn clj-map-writer [wtr tag m] (write-with-meta wtr tag m write-map)))
+     (fn clj-map-writer [wtr tag m] (write-with-meta wtr tag m write-map))
+     (fn clj-map-reader [rdr] (read-with-meta rdr #(into {} %))))
 
    "clj/treeset"
    (create-identity-based-handler
      clojure.lang.PersistentTreeSet
      "clj/treeset"
-     (fn clj-treeset-reader [^Reader rdr]
-       (let [c (some-> rdr .readObject resolve deref)
-             m (.readObject rdr)
-             s (-> (.readObject rdr)
-                   (d/seq->sorted-set c))]
-         (if m
-           (with-meta s m)
-           s)))
      (fn clj-treeset-writer [^Writer wtr tag s]
        (let [cname (d/sorted-comparator-name s)]
          (.writeTag wtr tag 3)
@@ -322,19 +317,20 @@
          (if-let [m (meta s)]
            (.writeObject wtr m)
            (.writeNull wtr))
-         (.writeList wtr s))))
+         (.writeList wtr s)))
+     (fn clj-treeset-reader [^Reader rdr]
+       (let [c (some-> rdr .readObject resolve deref)
+             m (.readObject rdr)
+             s (-> (.readObject rdr)
+                   (d/seq->sorted-set c))]
+         (if m
+           (with-meta s m)
+           s))))
 
    "clj/treemap"
    (create-identity-based-handler
      clojure.lang.PersistentTreeMap
      "clj/treemap"
-     (fn clj-treemap-reader [^Reader rdr]
-       (let [c (some-> rdr .readObject resolve deref)
-             m (.readObject rdr)
-             s (d/seq->sorted-map (.readObject rdr) c)]
-         (if m
-           (with-meta s m)
-           s)))
      (fn clj-treemap-writer [^Writer wtr tag o]
        (let [cname (d/sorted-comparator-name o)]
          (.writeTag wtr tag 3)
@@ -345,19 +341,26 @@
          (if-let [m (meta o)]
            (.writeObject wtr m)
            (.writeNull wtr))
-         (write-map wtr o))))
+         (write-map wtr o)))
+     (fn clj-treemap-reader [^Reader rdr]
+       (let [c (some-> rdr .readObject resolve deref)
+             m (.readObject rdr)
+             s (d/seq->sorted-map (.readObject rdr) c)]
+         (if m
+           (with-meta s m)
+           s))))
 
    "clj/mapentry"
    (create-identity-based-handler
      clojure.lang.MapEntry
      "clj/mapentry"
-     (fn clj-mapentry-reader [^Reader rdr]
-       (d/create-map-entry (.readObject rdr)
-                           (.readObject rdr)))
      (fn clj-mapentry-writer [^Writer wtr tag o]
        (.writeTag wtr tag 2)
        (.writeObject wtr (key o) true)
-       (.writeObject wtr (val o))))
+       (.writeObject wtr (val o)))
+     (fn clj-mapentry-reader [^Reader rdr]
+       (d/create-map-entry (.readObject rdr)
+                           (.readObject rdr))))
 
    ;; Have to redefine both Symbol and IRecord to support metadata as well
    ;; as identity-based caching for the IRecord case.
@@ -366,11 +369,6 @@
    (create-identity-based-handler
      clojure.lang.Symbol
      "clj/sym"
-     (fn clj-sym-reader [^Reader rdr]
-       (let [s (symbol (.readObject rdr) (.readObject rdr))
-             m (read-meta rdr)]
-         (cond-> s
-                 m (with-meta m))))
      (fn clj-sym-writer [^Writer wtr tag o]
        ;; Mostly copied from private fres/write-named, except the metadata part.
        (.writeTag wtr tag 3)
@@ -378,14 +376,19 @@
        (.writeObject wtr (name o) true)
        (if-let [m (meta o)]
          (.writeObject wtr m)
-         (.writeNull wtr))))
+         (.writeNull wtr)))
+     (fn clj-sym-reader [^Reader rdr]
+       (let [s (symbol (.readObject rdr) (.readObject rdr))
+             m (read-meta rdr)]
+         (cond-> s
+                 m (with-meta m)))))
 
    "clj/record"
    (create-identity-based-handler
      clojure.lang.IRecord
      "clj/record"
-     read-record
-     write-record)
+     write-record
+     read-record)
 
    "clara/productionnode"
    (create-cached-node-handler ProductionNode

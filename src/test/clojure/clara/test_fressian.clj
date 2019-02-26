@@ -111,9 +111,13 @@
 (deftest test-handler-identity
   (let [v [1 2 3]
         l (list 4 5 6)
+        ls (map inc [1 2 3])
         m {:a 1 :b 2}
         s #{:a :b :c}
-        r (serde (->Tester [v v l l m m s s]))]
+        sym 'a
+        os (sorted-set "a" "c" "b")
+        om (sorted-map "a" 1 "c" 3 "b" 2)
+        r (serde (->Tester [v v l l ls ls m m s s sym sym os os om om]))]
     (doseq [[x y] (partition 2 (:x r))]
       (testing (str "Serde preserves identity for " (type x))
         (is (identical? x y)
