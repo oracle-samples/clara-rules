@@ -191,6 +191,43 @@
                       (read-record add-node-expr-fn)
                       d/cache-node)))}}))
 
+(defn- create-identity-based-handler
+  [clazz
+   tag
+   write-fn
+   read-fn]
+  (let [indexed-tag (str tag "-idx")]
+    ;; Write an object a single time per object reference to that object.  The object is then "cached"
+    ;; with the IdentityHashMap `d/clj-struct-holder`.  If another reference to this object instance
+    ;; is encountered later, only the "index" of the object in the map will be written.
+    {:class clazz
+     :writer (reify WriteHandler
+               (write [_ w o]
+                 (if-let [idx (d/clj-struct->idx o)]
+                   (do
+                     (.writeTag w indexed-tag 1)
+                     (.writeInt w idx))
+                   (do
+                     ;; We are writing all nested objects prior to adding the original object to the cache here as
+                     ;; this will be the order that will occur on read, ie, the reader will have traverse to the bottom
+                     ;; of the struct before rebuilding the object.
+                     (write-fn w tag o)
+                     (d/clj-struct-holder-add-fact-idx! o)))))
+     ;; When reading the first time a reference to an object instance is found, the entire object will
+     ;; need to be constructed.  It is then put into indexed cache.  If more references to this object
+     ;; instance are encountered later, they will be in the form of a numeric index into this cache.
+     ;; This is guaranteed by the semantics of the corresponding WriteHandler.
+     :readers {indexed-tag
+               (reify ReadHandler
+                 (read [_ rdr _ _]
+                   (d/clj-struct-idx->obj (.readInt rdr))))
+               tag
+               (reify ReadHandler
+                 (read [_ rdr _ _]
+                   (-> rdr
+                       read-fn
+                       d/clj-struct-holder-add-obj!)))}}))
+
 (def handlers
   "A structure tying together the custom Fressian write and read handlers used
    by FressianSessionSerializer's."
@@ -206,36 +243,29 @@
                   (resolve (.readObject rdr))))}}
 
    "clj/set"
-   {:class clojure.lang.APersistentSet
-    :writer (reify WriteHandler
-              (write [_ w o]
-                (write-with-meta w "clj/set" o)))
-    :readers {"clj/set"
-              (reify ReadHandler
-                (read [_ rdr tag component-count]
-                  (read-with-meta rdr set)))}}
+   (create-identity-based-handler
+     clojure.lang.APersistentSet
+     "clj/set"
+     write-with-meta
+     (fn clj-set-reader [rdr] (read-with-meta rdr set)))
 
    "clj/vector"
-   {:class clojure.lang.APersistentVector
-    :writer (reify WriteHandler
-              (write [_ w o]
-                (write-with-meta w "clj/vector" o)))
-    :readers {"clj/vector"
-              (reify ReadHandler
-                (read [_ rdr tag component-count]
-                  (read-with-meta rdr vec)))}}
+   (create-identity-based-handler
+     clojure.lang.APersistentVector
+     "clj/vector"
+     write-with-meta
+     (fn clj-vec-reader [rdr] (read-with-meta rdr vec)))
 
    "clj/list"
-   {:class clojure.lang.PersistentList
-    :writer (reify WriteHandler
-              (write [_ w o]
-                (write-with-meta w "clj/list" o)))
-    :readers {"clj/list"
-              (reify ReadHandler
-                (read [_ rdr tag component-count]
-                  (read-with-meta rdr #(apply list %))))}}
+   (create-identity-based-handler
+     clojure.lang.PersistentList
+     "clj/list"
+     write-with-meta
+     (fn clj-list-reader [rdr] (read-with-meta rdr #(apply list %))))
 
    "clj/emptylist"
+   ;; Not using the identity based handler as this will always be identical anyway
+   ;; then meta data will be added in the reader
    {:class clojure.lang.PersistentList$EmptyList
     :writer (reify WriteHandler
               (write [_ w o]
@@ -253,147 +283,112 @@
                             m (with-meta m)))))}}
 
    "clj/aseq"
-   {:class clojure.lang.ASeq
-    :writer (reify WriteHandler
-              (write [_ w o]
-                (write-with-meta w "clj/aseq" o)))
-    :readers {"clj/aseq"
-              (reify ReadHandler
-                (read [_ rdr tag component-count]
-                  (read-with-meta rdr sequence)))}}
+   (create-identity-based-handler
+     clojure.lang.ASeq
+     "clj/aseq"
+     write-with-meta
+     (fn clj-seq-reader [rdr] (read-with-meta rdr sequence)))
 
    "clj/lazyseq"
-   {:class clojure.lang.LazySeq
-    :writer (reify WriteHandler
-              (write [_ w o]
-                (write-with-meta w "clj/lazyseq" o)))
-    :readers {"clj/lazyseq"
-              (reify ReadHandler
-                (read [_ rdr tag component-count]
-                  (read-with-meta rdr sequence)))}}
+   (create-identity-based-handler
+     clojure.lang.LazySeq
+     "clj/lazyseq"
+     write-with-meta
+     (fn clj-lazy-seq-reader [rdr] (read-with-meta rdr sequence)))
 
    "clj/map"
-   {:class clojure.lang.APersistentMap
-    :writer (reify WriteHandler
-              (write [_ w o]
-                (write-with-meta w "clj/map" o write-map)))
-    :readers {"clj/map"
-              (reify ReadHandler
-                (read [_ rdr tag component-count]
-                  (read-with-meta rdr #(into {} %))))}}
+   (create-identity-based-handler
+     clojure.lang.APersistentMap
+     "clj/map"
+     (fn clj-map-writer [wtr tag m] (write-with-meta wtr tag m write-map))
+     (fn clj-map-reader [rdr] (read-with-meta rdr #(into {} %))))
 
    "clj/treeset"
-   {:class clojure.lang.PersistentTreeSet
-    :writer (reify WriteHandler
-              (write [_ w o]
-                (let [cname (d/sorted-comparator-name o)]
-                  (.writeTag w "clj/treeset" 3)
-                  (if cname
-                    (.writeObject w cname true)
-                    (.writeNull w))
-                  ;; Preserve metadata.
-                  (if-let [m (meta o)]
-                    (.writeObject w m)
-                    (.writeNull w))
-                  (.writeList w o))))
-    :readers {"clj/treeset"
-              (reify ReadHandler
-                (read [_ rdr tag component-count]
-                  (let [c (some-> rdr .readObject resolve deref)
-                        m (.readObject rdr)
-                        s (-> (.readObject rdr)
-                              (d/seq->sorted-set c))]
-                    (if m
-                      (with-meta s m)
-                      s))))}}
+   (create-identity-based-handler
+     clojure.lang.PersistentTreeSet
+     "clj/treeset"
+     (fn clj-treeset-writer [^Writer wtr tag s]
+       (let [cname (d/sorted-comparator-name s)]
+         (.writeTag wtr tag 3)
+         (if cname
+           (.writeObject wtr cname true)
+           (.writeNull wtr))
+         ;; Preserve metadata.
+         (if-let [m (meta s)]
+           (.writeObject wtr m)
+           (.writeNull wtr))
+         (.writeList wtr s)))
+     (fn clj-treeset-reader [^Reader rdr]
+       (let [c (some-> rdr .readObject resolve deref)
+             m (.readObject rdr)
+             s (-> (.readObject rdr)
+                   (d/seq->sorted-set c))]
+         (if m
+           (with-meta s m)
+           s))))
 
    "clj/treemap"
-   {:class clojure.lang.PersistentTreeMap
-    :writer (reify WriteHandler
-              (write [_ w o]
-                (let [cname (d/sorted-comparator-name o)]
-                  (.writeTag w "clj/treemap" 3)
-                  (if cname
-                    (.writeObject w cname true)
-                    (.writeNull w))
-                  ;; Preserve metadata.
-                  (if-let [m (meta o)]
-                    (.writeObject w m)
-                    (.writeNull w))
-                  (write-map w o))))
-    :readers {"clj/treemap"
-              (reify ReadHandler
-                (read [_ rdr tag component-count]
-                  (let [c (some-> rdr .readObject resolve deref)
-                        m (.readObject rdr)
-                        s (d/seq->sorted-map (.readObject rdr) c)]
-                    (if m
-                      (with-meta s m)
-                      s))))}}
+   (create-identity-based-handler
+     clojure.lang.PersistentTreeMap
+     "clj/treemap"
+     (fn clj-treemap-writer [^Writer wtr tag o]
+       (let [cname (d/sorted-comparator-name o)]
+         (.writeTag wtr tag 3)
+         (if cname
+           (.writeObject wtr cname true)
+           (.writeNull wtr))
+         ;; Preserve metadata.
+         (if-let [m (meta o)]
+           (.writeObject wtr m)
+           (.writeNull wtr))
+         (write-map wtr o)))
+     (fn clj-treemap-reader [^Reader rdr]
+       (let [c (some-> rdr .readObject resolve deref)
+             m (.readObject rdr)
+             s (d/seq->sorted-map (.readObject rdr) c)]
+         (if m
+           (with-meta s m)
+           s))))
 
    "clj/mapentry"
-   {:class clojure.lang.MapEntry
-    :writer (reify WriteHandler
-              (write [_ w o]
-                (.writeTag w "clj/mapentry" 2)
-                (.writeObject w (key o) true)
-                (.writeObject w (val o))))
-    :readers {"clj/mapentry"
-              (reify ReadHandler
-                (read [_ rdr tag component-count]
-                  (d/create-map-entry (.readObject rdr)
-                                      (.readObject rdr))))}}
+   (create-identity-based-handler
+     clojure.lang.MapEntry
+     "clj/mapentry"
+     (fn clj-mapentry-writer [^Writer wtr tag o]
+       (.writeTag wtr tag 2)
+       (.writeObject wtr (key o) true)
+       (.writeObject wtr (val o)))
+     (fn clj-mapentry-reader [^Reader rdr]
+       (d/create-map-entry (.readObject rdr)
+                           (.readObject rdr))))
 
    ;; Have to redefine both Symbol and IRecord to support metadata as well
    ;; as identity-based caching for the IRecord case.
 
    "clj/sym"
-   {:class clojure.lang.Symbol
-    :writer (reify WriteHandler
-              (write [_ w o]
-                ;; Mostly copied from private fres/write-named, except the metadata part.
-                (.writeTag w "clj/sym" 3)
-                (.writeObject w (namespace o) true)
-                (.writeObject w (name o) true)
-                (if-let [m (meta o)]
-                  (.writeObject w m)
-                  (.writeNull w))))
-    :readers {"clj/sym"
-              (reify ReadHandler
-                (read [_ rdr tag component-count]
-                  (let [s (symbol (.readObject rdr) (.readObject rdr))
-                        m (read-meta rdr)]
-                    (cond-> s
-                            m (with-meta m)))))}}
+   (create-identity-based-handler
+     clojure.lang.Symbol
+     "clj/sym"
+     (fn clj-sym-writer [^Writer wtr tag o]
+       ;; Mostly copied from private fres/write-named, except the metadata part.
+       (.writeTag wtr tag 3)
+       (.writeObject wtr (namespace o) true)
+       (.writeObject wtr (name o) true)
+       (if-let [m (meta o)]
+         (.writeObject wtr m)
+         (.writeNull wtr)))
+     (fn clj-sym-reader [^Reader rdr]
+       (let [s (symbol (.readObject rdr) (.readObject rdr))
+             m (read-meta rdr)]
+         (cond-> s
+                 m (with-meta m)))))
 
    "clj/record"
-   {:class clojure.lang.IRecord
-    ;; Write a record a single time per object reference to that record.  The record is then "cached"
-    ;; with the IdentityHashMap `d/clj-record-holder`.  If another reference to this record instance
-    ;; is encountered later, only the "index" of the record in the map will be written.
-    :writer (reify WriteHandler
-              (write [_ w rec]
-                (if-let [idx (d/clj-record-fact->idx rec)]
-                  (do
-                    (.writeTag w "clj/recordidx" 1)
-                    (.writeInt w idx))
-                  (do
-                    (write-record w "clj/record" rec)
-                    (d/clj-record-holder-add-fact-idx! rec)))))
-    ;; When reading the first time a reference to a record instance is found, the entire record will
-    ;; need to be constructed.  It is then put into indexed cache.  If more references to this record
-    ;; instance are encountered later, they will be in the form of a numeric index into this cache.
-    ;; This is guaranteed by the semantics of the corresponding WriteHandler.
-    :readers {"clj/recordidx"
-              (reify ReadHandler
-                (read [_ rdr tag component-count]
-                  (d/clj-record-idx->fact (.readInt rdr))))
-              "clj/record"
-              (reify ReadHandler
-                (read [_ rdr tag component-count]
-                  (-> rdr
-                      read-record
-                      d/clj-record-holder-add-fact!)))}}
+   (create-identity-based-handler
+     clojure.lang.IRecord
+     "clj/record"
+     write-record
+     read-record)
 
    "clara/productionnode"
    (create-cached-node-handler ProductionNode
@@ -548,7 +543,7 @@
             (with-open [^FressianWriter wtr
                         (fres/create-writer out-stream :handlers write-handler-lookup)]
               (pform/thread-local-binding [d/node-id->node-cache (volatile! {})
-                                           d/clj-record-holder record-holder]
+                                           d/clj-struct-holder record-holder]
                                           (doseq [s sources] (fres/write-object wtr s)))))]
       
       ;; In this case there is nothing to do with memory, so just serialize immediately.
@@ -597,7 +592,7 @@
                        maybe-base-rulebase
                        (let [without-opts-rulebase
                              (pform/thread-local-binding [d/node-id->node-cache (volatile! {})
-                                                          d/clj-record-holder record-holder]
+                                                          d/clj-struct-holder record-holder]
                                                          (pform/thread-local-binding [d/node-fn-cache (-> (fres/read-object rdr)
                                                                                                           reconstruct-expressions
                                                                                                           (com/compile-exprs forms-per-eval))]
@@ -609,7 +604,7 @@
         (if rulebase-only?
           rulebase
           (d/assemble-restored-session rulebase
-                                       (pform/thread-local-binding [d/clj-record-holder record-holder
+                                       (pform/thread-local-binding [d/clj-struct-holder record-holder
                                                                     d/mem-facts mem-facts]
                                                                    ;; internal memory contains facts provided by mem-facts
                                                                    ;; thus mem-facts must be bound before the call to read
