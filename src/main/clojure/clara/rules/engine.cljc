@@ -1719,7 +1719,7 @@
 
 (defn fire-rules*
   "Fire rules for the given nodes."
-  [rulebase nodes transient-memory transport listener get-alphas-fn update-cache]
+  [rulebase nodes transient-memory transport listener get-alphas-fn update-cache max-cycles]
   (binding [*current-session* {:rulebase rulebase
                                :transient-memory transient-memory
                                :transport transport
@@ -1729,7 +1729,12 @@
                                :listener listener}]
 
     (loop [next-group (mem/next-activation-group transient-memory)
-           last-group nil]
+           last-group nil
+           flushed-updates-count 0]
+
+      (when (> flushed-updates-count max-cycles)
+        (throw (ex-info "It appears that the rules are in an infinite loop."  {:clara-rules/infinite-loop-suspected true})))
+                        
 
       (if next-group
 
@@ -1739,7 +1744,7 @@
           ;; group before continuing.
           (do
             (flush-updates *current-session*)
-            (recur (mem/next-activation-group transient-memory) next-group))
+            (recur (mem/next-activation-group transient-memory) next-group (inc flushed-updates-count)))
 
           (do
 
@@ -1817,15 +1822,15 @@
                   (when (some-> node :production :props :no-loop)
                     (flush-updates *current-session*)))))
 
-            (recur (mem/next-activation-group transient-memory) next-group)))
+            (recur (mem/next-activation-group transient-memory) next-group flushed-updates-count)))
 
         ;; There were no items to be activated, so flush any pending
         ;; updates and recur with a potential new activation group
         ;; since a flushed item may have triggered one.
         (when (flush-updates *current-session*)
-          (recur (mem/next-activation-group transient-memory) next-group))))))
+          (recur (mem/next-activation-group transient-memory) next-group (inc flushed-updates-count)))))))
 
-(deftype LocalSession [rulebase memory transport listener get-alphas-fn pending-operations]
+(deftype LocalSession [rulebase memory transport listener get-alphas-fn pending-operations max-cycles]
   ISession
   (insert [session facts]
 
@@ -1844,7 +1849,8 @@
                      transport
                      listener
                      get-alphas-fn
-                     new-pending-operations)))
+                     new-pending-operations
+                     max-cycles)))
 
   (retract [session facts]
 
@@ -1859,7 +1865,8 @@
                      transport
                      listener
                      get-alphas-fn
-                     new-pending-operations)))
+                     new-pending-operations
+                     max-cycles)))
 
   ;; Prior to issue 249 we only had a one-argument fire-rules method.  clara.rules/fire-rules will always call the two-argument method now
   ;; but we kept a one-argument version of the fire-rules in case anyone is calling the fire-rules protocol function or method on the session directly.
@@ -1912,7 +1919,8 @@
                        transport
                        transient-listener
                        get-alphas-fn
-                       (uc/get-ordered-update-cache)))
+                       (uc/get-ordered-update-cache)
+                       max-cycles))
 
         #?(:cljs (throw (ex-info "The :cancelling option is not supported in ClojureScript"
                                  {:session session :opts opts}))
@@ -1961,14 +1969,16 @@
                                  get-alphas-fn
                                  ;; This continues to use the cancelling cache after the first batch of insertions and retractions.
                                  ;; If this is suboptimal for some workflows we can revisit this.
-                                 update-cache)))))
+                                 update-cache
+                                 max-cycles)))))
 
       (LocalSession. rulebase
                      (mem/to-persistent! transient-memory)
                      transport
                      (l/to-persistent! transient-listener)
                      get-alphas-fn
-                     [])))
+                     []
+                     max-cycles)))
 
   (query [session query params]
     (let [query-node (get-in rulebase [:query-nodes query])]
@@ -1994,7 +2004,8 @@
      :listeners (if (l/null-listener? listener)
                   []
                   (l/get-children listener))
-     :get-alphas-fn get-alphas-fn}))
+     :get-alphas-fn get-alphas-fn
+     :max-cycles max-cycles}))
 
 (defn assemble
   "Assembles a session from the given components, which must be a map
@@ -2006,7 +2017,7 @@
    :listeners A vector of listeners implementing the clara.rules.listener/IPersistentListener protocol
    :get-alphas-fn The function used to return the alpha nodes for a fact of the given type."
 
-  [{:keys [rulebase memory transport listeners get-alphas-fn]}]
+  [{:keys [rulebase memory transport listeners get-alphas-fn max-cycles]}]
   (LocalSession. rulebase
                  memory
                  transport
@@ -2014,7 +2025,8 @@
                    (l/delegating-listener listeners)
                    l/default-listener)
                  get-alphas-fn
-                 []))
+                 []
+                 max-cycles))
 
 (defn with-listener
   "Return a new session with the listener added to the provided session,
