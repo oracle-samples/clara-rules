@@ -1968,9 +1968,6 @@
         ;; where internal-salience is considered after the rule-salience and is assigned automatically by the compiler.
         activation-group-fn (eng/options->activation-group-fn options)
 
-        max-cycles (or (:max-cycles options)
-                       600000)
-
         rulebase (build-network beta-tree beta-roots alpha-nodes productions
                                 fact-type-fn ancestors-fn activation-group-sort-fn activation-group-fn
                                 exprs)
@@ -1983,8 +1980,7 @@
                    :memory (eng/local-memory rulebase transport activation-group-sort-fn activation-group-fn get-alphas-fn)
                    :transport transport
                    :listeners (get options :listeners  [])
-                   :get-alphas-fn get-alphas-fn
-                   :max-cycles max-cycles})))
+                   :get-alphas-fn get-alphas-fn})))
 
 (defn add-production-load-order
   "Adds ::rule-load-order to metadata of productions. Custom DSL's may need to use this if

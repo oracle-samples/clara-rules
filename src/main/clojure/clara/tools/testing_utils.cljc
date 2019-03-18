@@ -152,3 +152,20 @@
         (str "Actual mean value: " mean))
     {:mean mean
      :std std}))
+
+#?(:clj
+   (defn ex-data-maps
+     "Given a Throwable, return in order the ExceptionInfo data maps for all items in the
+      chain that implement IExceptionInfo and have nonempty data maps."
+     [t]
+     (let [throwables  ((fn append-self
+                          [prior t1]
+                          (if t1
+                            (append-self (conj prior t1) (.getCause ^Throwable t1))
+                            prior))
+                        []
+                        t)]
+       (into []
+             (comp (map ex-data)
+                   (filter not-empty))
+             throwables))))

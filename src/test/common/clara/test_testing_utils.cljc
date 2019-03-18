@@ -1,7 +1,8 @@
 #?(:clj
    (ns clara.test-testing-utils
      (:require [clara.tools.testing-utils :refer [def-rules-test
-                                                  run-performance-test]]
+                                                  run-performance-test
+                                                  ex-data-maps]]
                [clara.rules :as r]
 
                [clara.rules.testfacts :refer [->Temperature ->Cold]]
@@ -71,3 +72,9 @@
                          :iterations 5
                          :mean-assertion (partial > 500)})
   (is (= @fire-rules-counter 5)))
+
+#?(:clj
+   (deftest test-ex-data-maps
+     (let [exception (ex-info  "Top" {:level :top} (IllegalArgumentException. "" (ex-info "Bottom" {:level :bottom})))]
+       (is  (= (ex-data-maps exception)
+               [{:level :top} {:level :bottom}])))))

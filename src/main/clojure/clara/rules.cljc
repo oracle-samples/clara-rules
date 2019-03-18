@@ -35,6 +35,12 @@
 
    This take an additional map of options as a second argument.  Current options:
 
+   :max-cycles (positive integer): Each time Clara determines that there are no more insertions process in a given activation group (rules with the same salience)
+    it records that one cycle of processing rules has been performed.  When the max-cycles limit is reached Clara throws an exception indicating that the rules
+    are in an infinite loop.  This exception can be regarded as analogous to a StackOverflowError.  The default is 600000, which is a level at which it is unlikely that
+    most users will encounter this error in cases where the rules actually would eventually terminate.  See issue 275 for details on how this level was chosen.
+    Nevertheless, it is possible that such cases exist, and so an option is provided to increase the limit.  Furthermore, some infinite loop scenarios will cause memory
+    errors before this ceiling is reached, and so users who do not expect to need a large number of rule cycles may wish to lower this limit.
    :cancelling true (EXPERIMENTAL, subject to change/removal.  Not supported in ClojureScript.):  
     Simultaneously propagate insertions and retractions through the rules network, at every step using the insertion and retractions of equals facts to cancel each
     other out and avoid operations deeper in the rules network.  The behavior of unconditional insertions and RHS (right-hand side) retractions

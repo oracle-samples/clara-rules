@@ -1733,7 +1733,20 @@
            flushed-updates-count 0]
 
       (when (> flushed-updates-count max-cycles)
-        (throw (ex-info "It appears that the rules are in an infinite loop."  {:clara-rules/infinite-loop-suspected true})))
+        (throw (ex-info
+                (str "It appears that the rules are in an infinite loop."
+                     " Incorrect use of truth maintenance is a frequent source of such loops; see the website."
+                     " If the rules are not in fact in a loop it is possible to increase the ceiling by use of the :max-cycles setting."
+                     " See the clara.rules/fire-rules docstring for details.")
+                {:clara-rules/infinite-loop-suspected true
+                 :listeners (try
+                              (let [p-listener (l/to-persistent! listener)]
+                                (if (l/null-listener? p-listener)
+                                  []
+                                  (l/get-children p-listener)))
+                              (catch #?(:clj Exception :cljs :default)
+                                  listener-exception
+                                listener-exception))})))
                         
 
       (if next-group
@@ -1830,7 +1843,7 @@
         (when (flush-updates *current-session*)
           (recur (mem/next-activation-group transient-memory) next-group (inc flushed-updates-count)))))))
 
-(deftype LocalSession [rulebase memory transport listener get-alphas-fn pending-operations max-cycles]
+(deftype LocalSession [rulebase memory transport listener get-alphas-fn pending-operations]
   ISession
   (insert [session facts]
 
@@ -1849,8 +1862,7 @@
                      transport
                      listener
                      get-alphas-fn
-                     new-pending-operations
-                     max-cycles)))
+                     new-pending-operations)))
 
   (retract [session facts]
 
@@ -1865,8 +1877,7 @@
                      transport
                      listener
                      get-alphas-fn
-                     new-pending-operations
-                     max-cycles)))
+                     new-pending-operations)))
 
   ;; Prior to issue 249 we only had a one-argument fire-rules method.  clara.rules/fire-rules will always call the two-argument method now
   ;; but we kept a one-argument version of the fire-rules in case anyone is calling the fire-rules protocol function or method on the session directly.
@@ -1874,7 +1885,8 @@
   (fire-rules [session opts]
 
     (let [transient-memory (mem/to-transient memory)
-          transient-listener (l/to-transient listener)]
+          transient-listener (l/to-transient listener)
+          max-cycles (get opts :max-cycles 600000)]
 
       (if-not (:cancelling opts)
         ;; We originally performed insertions and retractions immediately after the insert and retract calls,
@@ -1977,8 +1989,7 @@
                      transport
                      (l/to-persistent! transient-listener)
                      get-alphas-fn
-                     []
-                     max-cycles)))
+                     [])))
 
   (query [session query params]
     (let [query-node (get-in rulebase [:query-nodes query])]
@@ -2004,8 +2015,7 @@
      :listeners (if (l/null-listener? listener)
                   []
                   (l/get-children listener))
-     :get-alphas-fn get-alphas-fn
-     :max-cycles max-cycles}))
+     :get-alphas-fn get-alphas-fn}))
 
 (defn assemble
   "Assembles a session from the given components, which must be a map
@@ -2017,7 +2027,7 @@
    :listeners A vector of listeners implementing the clara.rules.listener/IPersistentListener protocol
    :get-alphas-fn The function used to return the alpha nodes for a fact of the given type."
 
-  [{:keys [rulebase memory transport listeners get-alphas-fn max-cycles]}]
+  [{:keys [rulebase memory transport listeners get-alphas-fn]}]
   (LocalSession. rulebase
                  memory
                  transport
@@ -2025,8 +2035,7 @@
                    (l/delegating-listener listeners)
                    l/default-listener)
                  get-alphas-fn
-                 []
-                 max-cycles))
+                 []))
 
 (defn with-listener
   "Return a new session with the listener added to the provided session,
