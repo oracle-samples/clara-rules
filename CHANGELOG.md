@@ -1,9 +1,10 @@
 This is a history of changes to clara-rules.
 
-# 0.20.0-SNAPSHOT
+# 0.19.1
 * Added a new field to the clara.rules.engine/Accumulator record.  This could be a breaking change for any user durability implementations with low-level performance optimizations.  See [PR 410](https://github.com/cerner/clara-rules/pull/410) for details.
 * Performance improvements for :exists conditions.  See [issue 298](https://github.com/cerner/clara-rules/issues/298).
 * Decrease memory usage post deserialization (Durability). See [Issue 419](https://github.com/cerner/clara-rules/issues/419)
+* Added a new function that returns the number of times a rule was interacted with as a proxy for rules that may be the cause of performance problems.  This function requires information from the [tracing listener](http://www.clara-rules.org/docs/listeners/) to work.  See [issue 344](https://github.com/cerner/clara-rules/issues/344) for details.
 
 ### 0.19.0
 * Remove a warning about `qualified-keyword?` being replaced when using Clojure 1.9.
