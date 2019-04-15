@@ -174,8 +174,10 @@
                                                      ;; that a rule wouldn't, or at least shouldn't for
                                                      ;; clarity, start the names of other locals or vars
                                                      ;; with "?".
-                                                     (mapv (comp symbol name) all-bindings))]
-              (com/compile-action all-bindings
+                                                     (mapv (comp symbol name) (:bindings beta-node)))]
+              ;; using the :bindings defined on the beta-node rather than `all-bindings`, as all-bindings
+              ;; does not account for bindings that reside within expression join nodes
+              (com/compile-action (:bindings beta-node)
                                   ;; Using private function for now as a workaround.
                                   (if (:ns-name production)
                                     (if (com/compiling-cljs?)
