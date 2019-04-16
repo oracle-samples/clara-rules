@@ -12,7 +12,7 @@
                                     query]]
 
                [clara.rules.testfacts :refer [->Temperature ->Cold ->WindSpeed
-                                              ->ColdAndWindy]]
+                                              ->ColdAndWindy ->WindChill]]
                [clojure.test :refer [is deftest run-tests testing use-fixtures]]
                [clara.rules.accumulators :as acc]
                [schema.test :as st])
@@ -20,6 +20,7 @@
                Temperature
                Cold
                WindSpeed
+               WindChill
                ColdAndWindy]))
 
    :cljs
@@ -33,6 +34,7 @@
                [clara.rules.testfacts :refer [->Temperature Temperature
                                               ->Cold Cold
                                               ->WindSpeed WindSpeed
+                                              ->WindChill WindChill
                                               ->ColdAndWindy ColdAndWindy]]
                [clara.rules.accumulators :as acc]
                [cljs.test]
@@ -369,3 +371,70 @@
              fire-rules
              (query cold-query)))
       "The query results should not be empty for a matching location"))
+
+;; https://github.com/cerner/clara-rules/issues/426
+;; A join binding used in the same condition but different constraint will fail to compile.
+(defn calc-wind-chill
+  [temp wind-speed]
+  (+ 35.74
+     (- (* 0.6215 temp)
+        (* 35.75
+           (Math/pow wind-speed 0.16)))
+     (* 0.4275 temp (Math/pow wind-speed 0.16))))
+
+(def-rules-test test-join-binding-followed-by-usage
+  {:rules [cold-windy-rule [[[Temperature
+                              (= ?t temperature)
+                              (= ?loc location)]
+                            [WindSpeed
+                             (= location ?loc)
+                             (= ?wc (calc-wind-chill ?t windspeed))
+                             (<= ?wc 32)]]
+                            (insert! (->WindChill ?t ?loc ?wc))]]
+   :queries [wind-chill-query [[]
+                               [[WindChill
+                                 (= ?t temperature)
+                                 (= ?wind-chill wind-chill)
+                                 (= ?loc location)]]]]
+   :sessions [empty-session [cold-windy-rule wind-chill-query] {}]}
+  ;; The overall intent of this test is to prove that the rules above compile and
+  ;; operate as expected.
+  (is (= [{:?loc "LHR"
+           :?t 36
+           :?wind-chill (calc-wind-chill 36 7)}]
+         (-> empty-session
+             (insert (->Temperature 36 "LHR"))
+             (insert (->WindSpeed 7 "LHR"))
+             fire-rules
+             (query wind-chill-query)))
+      ;; Not the intent of the test, but a distinct message in the event the test fails.
+      "The query should return the wind-chill for the given location since the wind chill is under 32 degrees"))
+
+;; https://github.com/cerner/clara-rules/issues/426
+;; Due to the way we compile the beta-network for cljs this test would fail for cljs because the binding
+;; expression join node(?wc) would not be recognised correctly in the production node. Thus ?wc would be
+;; assumed to be a variable defined in this ns and would resolve to nil at runtime.
+(def-rules-test test-join-binding-used-in-a-produciton-node
+  {:rules [cold-windy-rule [[[Temperature
+                              (= ?t temperature)
+                              (= ?loc location)]
+                             [WindSpeed
+                              (= location ?loc)
+                              (= ?wc (calc-wind-chill ?t windspeed))]]
+                            (insert! (->WindChill ?t ?loc ?wc))]]
+   :queries [wind-chill-query [[]
+                               [[WindChill
+                                 (= ?t temperature)
+                                 (= ?wind-chill wind-chill)
+                                 (= ?loc location)]]]]
+   :sessions [empty-session [cold-windy-rule wind-chill-query] {}]}
+  (is (= [{:?loc "LHR"
+           :?t 36
+           :?wind-chill (calc-wind-chill 36 7)}]
+         (-> empty-session
+             (insert (->Temperature 36 "LHR"))
+             (insert (->WindSpeed 7 "LHR"))
+             fire-rules
+             (query wind-chill-query)))
+      ;; Not the intent of the test, but a distinct message in the event the test fails.
+      "The query should return the wind-chill for the given location since there is a Temperature and WindSpeed"))

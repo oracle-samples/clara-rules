@@ -5,6 +5,7 @@
 ;; place them here as leiningen won't AOT compile test resources.
 (defrecord Temperature [temperature location])
 (defrecord WindSpeed [windspeed location])
+(defrecord WindChill [temperature location wind-chill])
 (defrecord Cold [temperature])
 (defrecord Hot [temperature])
 (defrecord ColdAndWindy [temperature windspeed])

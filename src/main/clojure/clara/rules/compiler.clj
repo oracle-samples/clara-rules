@@ -9,7 +9,6 @@
             [clojure.core.reducers :as r]
             [clojure.reflect :as reflect]
             [clojure.set :as s]
-            [clojure.set :as set]
             [clojure.string :as string]
             [clojure.walk :as walk]
             [schema.core :as sc]
@@ -803,8 +802,8 @@
 
         ;; Unsatisfied conditions remain, so find ones we can satisfy.
         (let [satisfied? (fn [classified-condition]
-                           (clojure.set/subset? (:unbound classified-condition)
-                                                bound-variables))
+                           (s/subset? (:unbound classified-condition)
+                                      bound-variables))
 
               ;; Find non-accumulator conditions that are satisfied. We defer
               ;; accumulators until later in the rete network because they
@@ -812,8 +811,8 @@
               ;; in the network are satisfied.
               satisfied-non-accum? (fn [classified-condition]
                                      (and (not (:is-accumulator classified-condition))
-                                          (clojure.set/subset? (:unbound classified-condition)
-                                                               bound-variables)))
+                                          (s/subset? (:unbound classified-condition)
+                                                     bound-variables)))
 
               has-satisfied-non-accum (some satisfied-non-accum? remaining-conditions)
 
@@ -825,16 +824,16 @@
                                   (remove satisfied-non-accum? remaining-conditions)
                                   (remove satisfied? remaining-conditions))
 
-              updated-bindings (apply clojure.set/union bound-variables
+              updated-bindings (apply s/union bound-variables
                                       (map :bound newly-satisfied))]
 
           ;; If no existing variables can be satisfied then the production is invalid.
           (when (empty? newly-satisfied)
 
             ;; Get the subset of variables that cannot be satisfied.
-            (let [unsatisfiable (clojure.set/difference
-                                 (apply clojure.set/union (map :unbound still-unsatisfied))
-                                 bound-variables)]
+            (let [unsatisfiable (s/difference
+                                  (apply s/union (map :unbound still-unsatisfied))
+                                  bound-variables)]
               (throw (ex-info (str "Using variable that is not previously bound. This can happen "
                                    "when an expression uses a previously unbound variable, "
                                    "or if a variable is referenced in a nested part of a parent "
@@ -855,11 +854,30 @@
 (defn- non-equality-unifications
   "Returns a set of unifications that do not use equality-based checks."
   [constraints]
-  (let [[bound-variables unbound-variables] (classify-variables constraints)]
-    (into #{}
-          (for [constraint constraints
-                :when (non-equality-unification? constraint bound-variables)]
-            constraint))))
+  (let [[bound-variables _] (classify-variables constraints)]
+    (loop [[cur & more] constraints
+           constraints #{}
+           bound-variables bound-variables]
+      (if cur
+        (let [non-equity? (non-equality-unification? cur bound-variables)
+
+              ;; In the event that the unification is also a binding, then we will need to remove
+              ;; the bound variable from the previously bound variables. This prevents further constraints
+              ;; that use this variable from being considered "equality-unifications".
+              ;; See https://github.com/cerner/clara-rules/issues/426 for more info.
+              bound-variables (if (and non-equity?
+                                       (seq cur)
+                                       (equality-expression? cur))
+                                (s/difference bound-variables
+                                              (into #{}
+                                                    (filter is-variable?)
+                                                    cur))
+                                bound-variables)
+              constraints (if non-equity?
+                            (conj constraints cur)
+                            constraints)]
+          (recur more constraints bound-variables))
+        constraints))))
 
 (sc/defn condition-to-node :- schema/ConditionNode
   "Converts a condition to a node structure."
@@ -917,7 +935,7 @@
                         constraint-bindings)
 
         new-bindings (s/difference (variables-as-keywords (:constraints condition))
-                                             parent-bindings)
+                                   parent-bindings)
 
         join-filter-bindings (if join-filter-expressions
                                (variables-as-keywords join-filter-expressions)
@@ -1018,7 +1036,7 @@
           ;; have the necessary bindings. 
           ;; See https://github.com/cerner/clara-rules/issues/304 for more details
           ;; and a case that behaves incorrectly without this check.
-          ancestor-bindings-in-negation-expr (set/intersection
+          ancestor-bindings-in-negation-expr (s/intersection
                                               (variables-as-keywords negation-expr)
                                               ancestor-bindings)
 
@@ -1224,8 +1242,8 @@
                           ;; for use in descendent nodes.
                           {:beta-graph (:beta-graph new-result)
                            :new-ids (into (:new-ids previous-result) (:new-ids new-result))
-                           :bindings (set/union (:bindings previous-result)
-                                                (:bindings new-result))}))
+                           :bindings (s/union (:bindings previous-result)
+                                              (:bindings new-result))}))
 
                       ;; Initial reduce value, combining previous graph, parent ids, and ancestor variable bindings.
                       {:beta-graph beta-with-negations
