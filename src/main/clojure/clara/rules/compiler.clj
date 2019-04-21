@@ -1917,14 +1917,14 @@
    This sums to 65,527B just shy of the 65,536B method size limit."
   5000)
 
-(def retain-compile-ctx-default
+(def omit-compile-ctx-default
   "During construction of the Session there is data maintained such that if the underlying expressions fail to compile
-   then this data can be used to explain the failure and the constraints of the rule whos expression is being evaluated.
+   then this data can be used to explain the failure and the constraints of the rule who's expression is being evaluated.
    The default behavior will be to discard this data, as there will be no use unless the session will be serialized and
    deserialized into a dissimilar environment, ie function or symbols might be unresolvable. In those sorts of scenarios
-   it would be possible to construct the original Session with the `retain-compile-ctx` flag set to true, then the compile
+   it would be possible to construct the original Session with the `omit-compile-ctx` flag set to false, then the compile
    context should aid in debugging the compilation failure on deserialization."
-  false)
+  true)
 
 (sc/defn mk-session*
   "Compile the rules into a rete network and return the given session."
@@ -1958,13 +1958,13 @@
         ;; This is a performance optimization, see Issue 381 for more information.
         exprs (compile-exprs (extract-exprs beta-graph alpha-graph) forms-per-eval)
 
-        ;; If we have made it to this, it means that we have succeeded in compiling all expressions
+        ;; If we have made it to this point, it means that we have succeeded in compiling all expressions
         ;; thus we can free the :compile-ctx used for troubleshooting compilation failures.
         ;; The reason that this flag exists is in the event that this session will be serialized with an
         ;; uncertain deserialization environment and this sort of troubleshooting information would be useful
         ;; in diagnosing compilation errors in specific rules.
-        retain-compile-ctx (:retain-compile-ctx options retain-compile-ctx-default)
-        exprs (if retain-compile-ctx
+        omit-compile-ctx (:omit-compile-ctx options omit-compile-ctx-default)
+        exprs (if-not omit-compile-ctx
                 exprs
                 (into {}
                       (map

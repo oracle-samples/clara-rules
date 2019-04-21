@@ -167,7 +167,7 @@
                         (every? nil? (map s/check items tuple-vals))))
                  "tuple"))
 
-(def NodeComplilationValue
+(def NodeCompilationValue
   (s/constrained {s/Keyword s/Any}
                  (fn [compilation]
                    (let [expr-keys #{:alpha-expr :action-expr :join-filter-expr :test-expr :accum-expr}]
@@ -175,7 +175,7 @@
                  "node-compilation-value"))
 
 (def NodeCompilationContext
-  (s/constrained NodeComplilationValue
+  (s/constrained NodeCompilationValue
                  (fn [compilation]
                    (let [xor #(and (or %1 %2)
                                    (not (and %1 %2)))]
@@ -191,7 +191,7 @@
   ;; but during serde it might be either as :compile-ctx is only used for compilation failures
   ;; and can be disabled post compilation.
   {(tuple s/Int s/Keyword) (tuple SExpr (s/conditional :compile-ctx NodeCompilationContext
-                                                       :else NodeComplilationValue))})
+                                                       :else NodeCompilationValue))})
 
 ;; An evaluated version of the schema mentioned above.
 (def NodeFnLookup
@@ -200,4 +200,4 @@
   ;; deserialization. In such events the compile-ctx would only be valuable when the environment
   ;; where the Session is being deserialized doesn't match that of the serialization, ie functions
   ;; and symbols cannot be resolved on the deserialization side.
-  {(tuple s/Int s/Keyword) (tuple (s/pred ifn? "ifn?") NodeComplilationValue)})
+  {(tuple s/Int s/Keyword) (tuple (s/pred ifn? "ifn?") NodeCompilationValue)})

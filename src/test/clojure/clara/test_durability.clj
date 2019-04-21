@@ -9,7 +9,8 @@
             [clara.rules.testfacts :refer :all]
             [schema.test :as st]
             [clojure.java.io :as jio]
-            [clojure.test :refer :all])
+            [clojure.test :refer :all]
+            [clara.rules.compiler :as com])
   (:import [clara.rules.testfacts
             Temperature]))
 
@@ -379,3 +380,27 @@
 
     (testing "restoring with memory"
       (test-assemble orig true))))
+
+;; Issue 422 (https://github.com/cerner/clara-rules/issues/422)
+;; A test to demonstrate the difference in error messages provided when compilation context is omitted
+(deftest test-compilation-ctx
+  (def some-var 123)
+  (let [rule (dsl/parse-rule [[Long (== this some-var)]]
+                             (println "here"))
+        without-compile-ctx (com/mk-session [[rule]])
+        with-compile-ctx (com/mk-session [[rule] :omit-compile-ctx false])]
+    (ns-unmap 'clara.test-durability 'some-var)
+    (try
+      (rb-serde without-compile-ctx nil)
+      (is false "Error not thrown when deserializing the rulebase without ctx")
+      (catch Exception e
+        (is (= (.getMessage e)
+               "Failed compiling.\n{:expr (clojure.core/fn [?__fact__ ?__env__] (clojure.core/let [this ?__fact__ ?__bindings__ (clojure.core/atom {})] (if (== this clara.test-durability/some-var) (clojure.core/deref ?__bindings__) nil)))}\n"))))
+
+    (try
+      (rb-serde with-compile-ctx nil)
+      (is false "Error not thrown when deserializing the rulebase with ctx")
+      (catch Exception e
+        (is (= (.getMessage e)
+               ;; With ctx the original condition and type of node is retained for the exception.
+               "Failed compiling alpha node\n{:expr (clojure.core/fn [?__fact__ ?__env__] (clojure.core/let [this ?__fact__ ?__bindings__ (clojure.core/atom {})] (if (== this clara.test-durability/some-var) (clojure.core/deref ?__bindings__) nil))), :condition {:type java.lang.Long, :constraints [(== this clara.test-durability/some-var)]}, :env nil}\n"))))))
