@@ -266,7 +266,8 @@
                                   (seq variables))
 
            ;; if we intend on binding any variables at this level of the
-           ;; expression then future layers should not be able to rebind them
+           ;; expression then future layers should not be able to rebind them.
+           ;; see https://github.com/cerner/clara-rules/issues/417 for more info
            equality-only-variables (if binds-variables?
                                      (into equality-only-variables
                                            variables)

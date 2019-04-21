@@ -373,17 +373,40 @@
 ;; https://github.com/cerner/clara-rules/issues/417
 (def-rules-test test-duplicate-unification
 
-  {:queries [duplcate-unifications [[]
-                                    [[?temp <- Temperature (= ?t temperature)
-                                      (= ?t -10)]]]]
+  {:queries [single-condition [[]
+                               [[?temp <- Temperature (= ?t temperature)
+                                 (= ?t -10)]]]
+             multi-condition-expression [[]
+                                         [[?temp <- Temperature (= ?t temperature)
+                                           (= ?t -10)]
+                                          [ColdAndWindy (< ?t temperature)]]]
 
-   :sessions [empty-session [duplcate-unifications] {}]}
+             multi-condition-equality [[]
+                                       [[?temp <- Temperature (= ?t temperature)
+                                         (= ?t -14)]
+                                        [ColdAndWindy (= ?t temperature)]]]]
+
+   :sessions [empty-session [single-condition
+                             multi-condition-expression
+                             multi-condition-equality] {}]}
 
   (let [session (-> empty-session
                     (insert (->Temperature -10 "MCI"))
                     (insert (->Temperature 10 "LAX"))
                     (insert (->Temperature 30 "ATL"))
-                    fire-rules)]
-    (is (every? (comp #(= -10 %) :temperature :?temp)
-                (query session duplcate-unifications))
-        "The query should only ever return temps equal to -10")))
+                    fire-rules)
+
+        multi-condition (-> empty-session
+                            (insert (->Temperature -10 "ATL"))
+                            (insert (->Temperature -14 "MCI"))
+                            (insert (->ColdAndWindy -9 "ATL"))
+                            (insert (->ColdAndWindy -14 "MCI"))
+                            fire-rules)]
+    (is (= [(->Temperature -10 "MCI")]
+           (map :?temp (query session single-condition))))
+
+    (is (= [(->Temperature -10 "ATL")]
+           (map :?temp (query multi-condition multi-condition-expression))))
+
+    (is (= [(->Temperature -14 "MCI")]
+           (map :?temp (query multi-condition multi-condition-equality))))))
