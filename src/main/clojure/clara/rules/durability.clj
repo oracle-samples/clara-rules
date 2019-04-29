@@ -72,48 +72,48 @@
     (vswap! (.get node-id->node-cache) assoc node-id node))
   node)
 
-(def ^:internal ^ThreadLocal clj-record-holder
+(def ^:internal ^ThreadLocal clj-struct-holder
   "A cache for writing and reading Clojure records.  At write time, an IdentityHashMap can be
-   used to keep track of repeated references to the same record object instance occurring in
+   used to keep track of repeated references to the same object instance occurring in
    the serialization stream.  At read time, a plain ArrayList (mutable and indexed for speed)
    can be used to add records to when they are first seen, then look up repeated occurrences
    of references to the same record instance later."
   (ThreadLocal.))
 
-(defn clj-record-fact->idx
-  "Gets the numeric index for the given fact from the clj-record-holder."
+(defn clj-struct->idx
+  "Gets the numeric index for the given struct from the clj-struct-holder."
   [fact]
-  (-> clj-record-holder
+  (-> clj-struct-holder
     ^Map (.get)
     (.get fact)))
 
-(defn clj-record-holder-add-fact-idx!
-  "Adds the fact to the clj-record-holder with a new index.  This can later be retrieved
-   with clj-record-fact->idx."
+(defn clj-struct-holder-add-fact-idx!
+  "Adds the fact to the clj-struct-holder with a new index.  This can later be retrieved
+   with clj-struct->idx."
   [fact]
   ;; Note the values will be int type here.  This shouldn't be a problem since they
   ;; will be read later as longs and both will be compatible with the index lookup
   ;; at read-time.  This could have a cast to long here, but it would waste time
   ;; unnecessarily.
-  (-> clj-record-holder
+  (-> clj-struct-holder
     ^Map (.get)
-    (.put fact (-> clj-record-holder
+    (.put fact (-> clj-struct-holder
                  ^Map (.get)
                  (.size)))))
 
-(defn clj-record-idx->fact
-  "The reverse of clj-record-fact->idx.  Returns a fact for the given index found
-   in clj-record-holder."
+(defn clj-struct-idx->obj
+  "The reverse of clj-struct->idx.  Returns an object for the given index found
+   in clj-struct-holder."
   [id]
-  (-> clj-record-holder
+  (-> clj-struct-holder
     ^List (.get)
     (.get id)))
 
-(defn clj-record-holder-add-fact!
-  "The reverse of clj-record-holder-add-fact-idx!.  Adds the fact to the clj-record-holder
+(defn clj-struct-holder-add-obj!
+  "The reverse of clj-struct-holder-add-fact-idx!.  Adds the object to the clj-struct-holder
    at the next available index."
   [fact]
-  (-> clj-record-holder
+  (-> clj-struct-holder
     ^List (.get)
     (.add fact))
   fact)
