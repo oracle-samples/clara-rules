@@ -255,7 +255,6 @@
    (if (empty? exp-seq)
      `(deref ~'?__bindings__)
      (let [ [exp & rest-exp] exp-seq
-            compiled-rest (compile-constraints rest-exp equality-only-variables)
             variables (into #{}
                             (filter (fn [item]
                                       (and (symbol? item)
@@ -264,7 +263,17 @@
                                     exp))
             expression-values (remove variables (rest exp))
             binds-variables? (and (equality-expression? exp)
-                                  (seq variables))]
+                                  (seq variables))
+
+           ;; if we intend on binding any variables at this level of the
+           ;; expression then future layers should not be able to rebind them.
+           ;; see https://github.com/cerner/clara-rules/issues/417 for more info
+           equality-only-variables (if binds-variables?
+                                     (into equality-only-variables
+                                           variables)
+                                     equality-only-variables)
+
+           compiled-rest (compile-constraints rest-exp equality-only-variables)]
 
        (when (and binds-variables?
                   (empty? expression-values))

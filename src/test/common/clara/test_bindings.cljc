@@ -369,3 +369,44 @@
              fire-rules
              (query cold-query)))
       "The query results should not be empty for a matching location"))
+
+;; https://github.com/cerner/clara-rules/issues/417
+(def-rules-test test-duplicate-unification
+
+  {:queries [single-condition [[]
+                               [[?temp <- Temperature (= ?t temperature)
+                                 (= ?t -10)]]]
+             multi-condition-expression [[]
+                                         [[?temp <- Temperature (= ?t temperature)
+                                           (= ?t -10)]
+                                          [ColdAndWindy (< ?t temperature)]]]
+
+             multi-condition-equality [[]
+                                       [[?temp <- Temperature (= ?t temperature)
+                                         (= ?t -14)]
+                                        [ColdAndWindy (= ?t temperature)]]]]
+
+   :sessions [empty-session [single-condition
+                             multi-condition-expression
+                             multi-condition-equality] {}]}
+
+  (let [session (-> empty-session
+                    (insert (->Temperature -10 "MCI"))
+                    (insert (->Temperature 10 "LAX"))
+                    (insert (->Temperature 30 "ATL"))
+                    fire-rules)
+
+        multi-condition (-> empty-session
+                            (insert (->Temperature -10 "ATL"))
+                            (insert (->Temperature -14 "MCI"))
+                            (insert (->ColdAndWindy -9 "ATL"))
+                            (insert (->ColdAndWindy -14 "MCI"))
+                            fire-rules)]
+    (is (= [(->Temperature -10 "MCI")]
+           (map :?temp (query session single-condition))))
+
+    (is (= [(->Temperature -10 "ATL")]
+           (map :?temp (query multi-condition multi-condition-expression))))
+
+    (is (= [(->Temperature -14 "MCI")]
+           (map :?temp (query multi-condition multi-condition-equality))))))
