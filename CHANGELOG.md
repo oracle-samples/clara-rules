@@ -1,5 +1,8 @@
 This is a history of changes to clara-rules.
 
+# 0.20.0 SNAPSHOT
+* Correct duplicate bindings within the same condition. See [issue 417](https://github.com/cerner/clara-rules/issues/417)
+
 # 0.19.1
 * Added a new field to the clara.rules.engine/Accumulator record.  This could be a breaking change for any user durability implementations with low-level performance optimizations.  See [PR 410](https://github.com/cerner/clara-rules/pull/410) for details.
 * Performance improvements for :exists conditions.  See [issue 298](https://github.com/cerner/clara-rules/issues/298).
