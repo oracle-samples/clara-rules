@@ -1964,13 +1964,13 @@
         ;; uncertain deserialization environment and this sort of troubleshooting information would be useful
         ;; in diagnosing compilation errors in specific rules.
         omit-compile-ctx (:omit-compile-ctx options omit-compile-ctx-default)
-        exprs (if-not omit-compile-ctx
-                exprs
+        exprs (if omit-compile-ctx
                 (into {}
                       (map
                         (fn [[k [expr ctx]]]
                           [k [expr (dissoc ctx :compile-ctx)]]))
-                      exprs))
+                      exprs)
+                exprs)
 
         beta-tree (compile-beta-graph beta-graph exprs)
         beta-root-ids (-> beta-graph :forward-edges (get 0)) ; 0 is the id of the virtual root node.

@@ -384,23 +384,23 @@
 ;; Issue 422 (https://github.com/cerner/clara-rules/issues/422)
 ;; A test to demonstrate the difference in error messages provided when compilation context is omitted
 (deftest test-compilation-ctx
-  (def some-var 123)
-  (let [rule (dsl/parse-rule [[Long (== this some-var)]]
+  (def test-compilation-ctx-var 123)
+  (let [rule (dsl/parse-rule [[Long (== this test-compilation-ctx-var)]]
                              (println "here"))
         without-compile-ctx (com/mk-session [[rule]])
         with-compile-ctx (com/mk-session [[rule] :omit-compile-ctx false])]
-    (ns-unmap 'clara.test-durability 'some-var)
+    (ns-unmap 'clara.test-durability 'test-compilation-ctx-var)
     (try
       (rb-serde without-compile-ctx nil)
       (is false "Error not thrown when deserializing the rulebase without ctx")
       (catch Exception e
-        (is (= (.getMessage e)
-               "Failed compiling.\n{:expr (clojure.core/fn [?__fact__ ?__env__] (clojure.core/let [this ?__fact__ ?__bindings__ (clojure.core/atom {})] (if (== this clara.test-durability/some-var) (clojure.core/deref ?__bindings__) nil)))}\n"))))
+        ;; In the event that the compilation context is not retained the original condition of the node will not be present
+        (is (nil? (:condition (ex-data e))))))
 
     (try
       (rb-serde with-compile-ctx nil)
       (is false "Error not thrown when deserializing the rulebase with ctx")
       (catch Exception e
-        (is (= (.getMessage e)
-               ;; With ctx the original condition and type of node is retained for the exception.
-               "Failed compiling alpha node\n{:expr (clojure.core/fn [?__fact__ ?__env__] (clojure.core/let [this ?__fact__ ?__bindings__ (clojure.core/atom {})] (if (== this clara.test-durability/some-var) (clojure.core/deref ?__bindings__) nil))), :condition {:type java.lang.Long, :constraints [(== this clara.test-durability/some-var)]}, :env nil}\n"))))))
+        (is (= (:condition (ex-data e))
+               {:type  Long
+                :constraints ['(== this clara.test-durability/test-compilation-ctx-var)]}))))))
