@@ -152,3 +152,54 @@
         (str "Actual mean value: " mean))
     {:mean mean
      :std std}))
+
+#?(:clj
+   (defn ex-data-search [^Exception e edata]
+     (loop [non-matches []
+            e e]
+       (cond
+         ;; Found match.
+         (= edata
+            (select-keys (ex-data e)
+                         (keys edata)))
+         :success
+
+         ;; Keep searching, record any non-matching ex-data.
+         (.getCause e)
+         (recur (if-let [ed (ex-data e)]
+                  (conj non-matches ed)
+                  non-matches)
+                (.getCause e))
+
+         ;; Can't find a match.
+         :else
+         non-matches))))
+
+#?(:clj
+   (defn get-all-ex-data
+     "Walk a Throwable chain and return a sequence of all data maps
+  from any ExceptionInfo instances in that chain."
+     [e]
+     (let [get-ex-chain (fn get-ex-chain [e]
+                          (if-let [cause (.getCause e)]
+                            (conj (get-ex-chain cause) e)
+                            [e]))]
+
+       (map ex-data
+            (filter (partial instance? clojure.lang.IExceptionInfo)
+                    (get-ex-chain e))))))
+
+#?(:clj
+   (defmacro assert-ex-data [expected-ex-data form]
+     `(try
+        ~form
+        (is false
+            (str "Exception expected to be thrown when evaluating: " \newline
+                 '~form))
+        (catch Exception e#
+          (let [res# (ex-data-search e# ~expected-ex-data)]
+            (is (= :success res#)
+                (str "Exception msg found: " \newline
+                     e# \newline
+                     "Non matches found: " \newline
+                     res#)))))))

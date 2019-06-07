@@ -10,7 +10,8 @@
             [schema.test :as st]
             [clojure.java.io :as jio]
             [clojure.test :refer :all]
-            [clara.rules.compiler :as com])
+            [clara.rules.compiler :as com]
+            [clara.tools.testing-utils :as tu])
   (:import [clara.rules.testfacts
             Temperature]))
 
@@ -389,18 +390,24 @@
                              (println "here"))
         without-compile-ctx (com/mk-session [[rule]])
         with-compile-ctx (com/mk-session [[rule] :omit-compile-ctx false])]
+    ;; Simulate deserializing in an environment without this var by unmapping it.
     (ns-unmap 'clara.test-durability 'test-compilation-ctx-var)
     (try
       (rb-serde without-compile-ctx nil)
       (is false "Error not thrown when deserializing the rulebase without ctx")
       (catch Exception e
-        ;; In the event that the compilation context is not retained the original condition of the node will not be present
-        (is (nil? (:condition (ex-data e))))))
+        ;; In the event that the compilation context is not retained the original condition of the node will not be present.
+        (is (some #(and (not (contains? % :condition))
+                        ;; Validate that the exception is related to the Clara compilation failure (and so the check above is valid).
+                        (:expr %))
+                  (tu/get-all-ex-data e)))))
 
     (try
       (rb-serde with-compile-ctx nil)
       (is false "Error not thrown when deserializing the rulebase with ctx")
       (catch Exception e
-        (is (= (:condition (ex-data e))
-               {:type  Long
-                :constraints ['(== this clara.test-durability/test-compilation-ctx-var)]}))))))
+
+        (is (some #(= (select-keys (:condition %) [:type :constraints])
+                      {:type  Long
+                       :constraints ['(== this clara.test-durability/test-compilation-ctx-var)]})
+                  (tu/get-all-ex-data e)))))))
