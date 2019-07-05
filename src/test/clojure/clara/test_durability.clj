@@ -9,7 +9,9 @@
             [clara.rules.testfacts :refer :all]
             [schema.test :as st]
             [clojure.java.io :as jio]
-            [clojure.test :refer :all])
+            [clojure.test :refer :all]
+            [clara.rules.compiler :as com]
+            [clara.tools.testing-utils :as tu])
   (:import [clara.rules.testfacts
             Temperature]))
 
@@ -379,3 +381,33 @@
 
     (testing "restoring with memory"
       (test-assemble orig true))))
+
+;; Issue 422 (https://github.com/cerner/clara-rules/issues/422)
+;; A test to demonstrate the difference in error messages provided when compilation context is omitted
+(deftest test-compilation-ctx
+  (def test-compilation-ctx-var 123)
+  (let [rule (dsl/parse-rule [[Long (== this test-compilation-ctx-var)]]
+                             (println "here"))
+        without-compile-ctx (com/mk-session [[rule]])
+        with-compile-ctx (com/mk-session [[rule] :omit-compile-ctx false])]
+    ;; Simulate deserializing in an environment without this var by unmapping it.
+    (ns-unmap 'clara.test-durability 'test-compilation-ctx-var)
+    (try
+      (rb-serde without-compile-ctx nil)
+      (is false "Error not thrown when deserializing the rulebase without ctx")
+      (catch Exception e
+        ;; In the event that the compilation context is not retained the original condition of the node will not be present.
+        (is (some #(and (not (contains? % :condition))
+                        ;; Validate that the exception is related to the Clara compilation failure (and so the check above is valid).
+                        (:expr %))
+                  (tu/get-all-ex-data e)))))
+
+    (try
+      (rb-serde with-compile-ctx nil)
+      (is false "Error not thrown when deserializing the rulebase with ctx")
+      (catch Exception e
+
+        (is (some #(= (select-keys (:condition %) [:type :constraints])
+                      {:type  Long
+                       :constraints ['(== this clara.test-durability/test-compilation-ctx-var)]})
+                  (tu/get-all-ex-data e)))))))

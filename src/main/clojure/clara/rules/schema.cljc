@@ -167,23 +167,37 @@
                         (every? nil? (map s/check items tuple-vals))))
                  "tuple"))
 
-(def NodeCompilationContext
+(def NodeCompilationValue
   (s/constrained {s/Keyword s/Any}
-                 (fn [ctx]
-                   (let [expr-keys #{:alpha-expr :action-expr :join-filter-expr :test-expr :accum-expr}
-                         xor #(and (or %1 %2)
+                 (fn [compilation]
+                   (let [expr-keys #{:alpha-expr :action-expr :join-filter-expr :test-expr :accum-expr}]
+                     (some expr-keys (keys compilation))))
+                 "node-compilation-value"))
+
+(def NodeCompilationContext
+  (s/constrained NodeCompilationValue
+                 (fn [compilation]
+                   (let [xor #(and (or %1 %2)
                                    (not (and %1 %2)))]
-                     (and (some expr-keys (keys ctx))
-                          (contains? ctx :compile-ctx)
-                          (contains? (:compile-ctx ctx) :msg)
-                          (xor (contains? (:compile-ctx ctx) :condition)
-                               (contains? (:compile-ctx ctx) :production)))))
+                     (and (contains? compilation :compile-ctx)
+                          (contains? (:compile-ctx compilation) :msg)
+                          (xor (contains? (:compile-ctx compilation) :condition)
+                               (contains? (:compile-ctx compilation) :production)))))
                  "node-compilation-context"))
 
 ;; A map of [<node-id> <field-name>] to SExpression, used in compilation of the rulebase.
 (def NodeExprLookup
-  {(tuple s/Int s/Keyword) (tuple SExpr NodeCompilationContext)})
+  ;; schema should be NodeCompilationContext in standard compilation,
+  ;; but during serde it might be either as :compile-ctx is only used for compilation failures
+  ;; and can be disabled post compilation.
+  {(tuple s/Int s/Keyword) (tuple SExpr (s/conditional :compile-ctx NodeCompilationContext
+                                                       :else NodeCompilationValue))})
 
 ;; An evaluated version of the schema mentioned above.
 (def NodeFnLookup
-  {(tuple s/Int s/Keyword) (tuple (s/pred ifn? "ifn?") NodeCompilationContext)})
+  ;; This schema uses a relaxed version of NodeCompilationContext as once the expressions
+  ;; have been eval'd there is technically no need for compile-ctx to be maintained except for
+  ;; deserialization. In such events the compile-ctx would only be valuable when the environment
+  ;; where the Session is being deserialized doesn't match that of the serialization, ie functions
+  ;; and symbols cannot be resolved on the deserialization side.
+  {(tuple s/Int s/Keyword) (tuple (s/pred ifn? "ifn?") NodeCompilationValue)})

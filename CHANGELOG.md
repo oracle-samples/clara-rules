@@ -1,6 +1,7 @@
 This is a history of changes to clara-rules.
 
 # 0.20.0 SNAPSHOT
+* Add a flag to omit compilation context (used by the durability layer) after Session compilation to save space when not needed. Defaults to true. [issue 422](https://github.com/cerner/clara-rules/issues/422)
 * Correct duplicate bindings within the same condition. See [issue 417](https://github.com/cerner/clara-rules/issues/417)
 
 # 0.19.1

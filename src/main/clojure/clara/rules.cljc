@@ -332,6 +332,12 @@
       * :forms-per-eval - The maximum number of expressions that will be evaluated per call to eval.
         Larger batch sizes should see better performance compared to smaller batch sizes. (Only applicable to Clojure)
         Defaults to 5000, see clara.rules.compiler/forms-per-eval-default for more information.
+      * :omit-compile-ctx - When false Clara, in Clojure, retains additional information to improve error messages during
+        session deserialization at the cost of additional memory use.
+        By default this information is retained until the session is initially compiled and then will be discarded. This
+        information might prove useful for debugging compilation errors within the rulebase, eg. rulebase serialization
+        (ie. via Clara's durability support).
+        Defaults to true, see clara.rules.compiler/omit-compile-ctx-default for more information.
 
       This is not supported in ClojureScript, since it requires eval to dynamically build a session. ClojureScript
       users must use pre-defined rule sessions using defsession."

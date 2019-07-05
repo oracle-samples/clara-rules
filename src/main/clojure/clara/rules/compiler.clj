@@ -1926,6 +1926,15 @@
    This sums to 65,527B just shy of the 65,536B method size limit."
   5000)
 
+(def omit-compile-ctx-default
+  "During construction of the Session there is data maintained such that if the underlying expressions fail to compile
+   then this data can be used to explain the failure and the constraints of the rule who's expression is being evaluated.
+   The default behavior will be to discard this data, as there will be no use unless the session will be serialized and
+   deserialized into a dissimilar environment, ie function or symbols might be unresolvable. In those sorts of scenarios
+   it would be possible to construct the original Session with the `omit-compile-ctx` flag set to false, then the compile
+   context should aid in debugging the compilation failure on deserialization."
+  true)
+
 (sc/defn mk-session*
   "Compile the rules into a rete network and return the given session."
   [productions :- #{schema/Production}
@@ -1957,6 +1966,21 @@
         ;; Extract the expressions from the graphs and evaluate them in a batch manner.
         ;; This is a performance optimization, see Issue 381 for more information.
         exprs (compile-exprs (extract-exprs beta-graph alpha-graph) forms-per-eval)
+
+        ;; If we have made it to this point, it means that we have succeeded in compiling all expressions
+        ;; thus we can free the :compile-ctx used for troubleshooting compilation failures.
+        ;; The reason that this flag exists is in the event that this session will be serialized with an
+        ;; uncertain deserialization environment and this sort of troubleshooting information would be useful
+        ;; in diagnosing compilation errors in specific rules.
+        omit-compile-ctx (:omit-compile-ctx options omit-compile-ctx-default)
+        exprs (if omit-compile-ctx
+                (into {}
+                      (map
+                        (fn [[k [expr ctx]]]
+                          [k [expr (dissoc ctx :compile-ctx)]]))
+                      exprs)
+                exprs)
+
         beta-tree (compile-beta-graph beta-graph exprs)
         beta-root-ids (-> beta-graph :forward-edges (get 0)) ; 0 is the id of the virtual root node.
         beta-roots (vals (select-keys beta-tree beta-root-ids))
