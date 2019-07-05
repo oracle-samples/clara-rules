@@ -1730,9 +1730,9 @@
 
     (loop [next-group (mem/next-activation-group transient-memory)
            last-group nil
-           flushed-updates-count 0]
+           group-change-count 0]
 
-      (when (> flushed-updates-count max-cycles)
+      (when (> group-change-count max-cycles)
         (throw (ex-info
                 (str "It appears that the rules are in an infinite loop."
                      " Incorrect use of truth maintenance is a frequent source of such loops; see the website."
@@ -1757,7 +1757,7 @@
           ;; group before continuing.
           (do
             (flush-updates *current-session*)
-            (recur (mem/next-activation-group transient-memory) next-group (inc flushed-updates-count)))
+            (recur (mem/next-activation-group transient-memory) next-group (inc group-change-count)))
 
           (do
 
@@ -1835,13 +1835,20 @@
                   (when (some-> node :production :props :no-loop)
                     (flush-updates *current-session*)))))
 
-            (recur (mem/next-activation-group transient-memory) next-group flushed-updates-count)))
+            ;; If the activation group changed, then the updates will be flushed after the loop statement
+            ;; and we will recur again, this time with the group-change-count incremented.  It is expected
+            ;; that changes between activation groups will be less numerous than each single activation
+            ;; of a rule, and the former can remain constant even for large numbers of facts.  That is,
+            ;; it is more dependent on the logical structure of fact flow than the simple volume.
+            ;; Therefore counting only upon activation groups changes will reduce the likelihood of a false
+            ;; positive in infinite cycle detection.
+            (recur (mem/next-activation-group transient-memory) next-group group-change-count)))
 
         ;; There were no items to be activated, so flush any pending
         ;; updates and recur with a potential new activation group
         ;; since a flushed item may have triggered one.
         (when (flush-updates *current-session*)
-          (recur (mem/next-activation-group transient-memory) next-group (inc flushed-updates-count)))))))
+          (recur (mem/next-activation-group transient-memory) next-group (inc group-change-count)))))))
 
 (deftype LocalSession [rulebase memory transport listener get-alphas-fn pending-operations]
   ISession
