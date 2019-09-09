@@ -194,3 +194,31 @@
     (is (has-fact? (:cold @side-effect-holder) (->Temperature -10 "MCI") ))
 
     (is (has-fact? (:subzero @side-effect-holder) (->Temperature -10 "MCI")))))
+
+
+;; A test to validate that nodes of different parents will not be shared.
+;; See issue 433 for more information
+(def-rules-test test-or-sharing-same-condition
+  {:rules [or-rule [[[:or
+                      [::a]
+                      [::b]]
+                     [::d]]
+                    (insert! {:fact-type ::c})]
+
+           other-rule [[[::a]
+                        [::d]]
+                       (insert! {:fact-type ::e})]]
+   :queries [c-query [[] [[?c <- ::c]]]
+             e-query [[] [[?e <- ::e]]]]
+
+   :sessions [empty-session [or-rule other-rule c-query e-query] {:fact-type-fn :fact-type}]}
+  (let [session (-> empty-session
+                    (insert {:fact-type ::b})
+                    (insert {:fact-type ::d})
+                    fire-rules)]
+
+    (is (= (set (query session c-query))
+           #{{:?c {:fact-type ::c}}}))
+
+    (is (= (set (query session e-query))
+           #{}))))

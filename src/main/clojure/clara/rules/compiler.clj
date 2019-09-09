@@ -1124,6 +1124,8 @@
 
             id-to-condition-nodes (:id-to-condition-node beta-graph)
 
+            backward-edges (:backward-edges beta-graph)
+
             ;; Since we require that id-to-condition-nodes have an equal value to "node" under the ID
             ;; for this to be used. In any possible edge cases where there are equal nodes under different IDs,
             ;; maintaining the lowest node id will add determinism.
@@ -1138,10 +1140,13 @@
             ;; will out perform equivalence checks.
             update-node->id (fn [m id]
                               (let [node (get id-to-condition-nodes id)
-                                    prev (get m node)]
+                                    ;; appending parents to allow for identical conditions that do not share the same
+                                    ;; parents, see Issue 433 for more information
+                                    node-with-parents (assoc node :parents (get backward-edges id))
+                                    prev (get m node-with-parents)]
                                 (if prev
-                                  (assoc! m node (min prev id))
-                                  (assoc! m node id))))
+                                  (assoc! m node-with-parents (min prev id))
+                                  (assoc! m node-with-parents id))))
 
             node->id (-> (reduce update-node->id
                                  (transient {})
@@ -1149,7 +1154,7 @@
                          persistent!)
 
             ;; Use the existing id or create a new one.
-            node-id (or (get node->id node)
+            node-id (or (get node->id (assoc node :parents (set parent-ids)))
                         (create-id-fn))
 
             graph-with-node (add-node beta-graph parent-ids node-id node)]
