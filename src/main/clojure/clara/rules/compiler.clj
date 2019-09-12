@@ -1124,8 +1124,6 @@
 
             id-to-condition-nodes (:id-to-condition-node beta-graph)
 
-            backward-edges (:backward-edges beta-graph)
-
             ;; Since we require that id-to-condition-nodes have an equal value to "node" under the ID
             ;; for this to be used. In any possible edge cases where there are equal nodes under different IDs,
             ;; maintaining the lowest node id will add determinism.
@@ -1140,21 +1138,29 @@
             ;; will out perform equivalence checks.
             update-node->id (fn [m id]
                               (let [node (get id-to-condition-nodes id)
-                                    ;; appending parents to allow for identical conditions that do not share the same
-                                    ;; parents, see Issue 433 for more information
-                                    node-with-parents (assoc node :parents (get backward-edges id))
-                                    prev (get m node-with-parents)]
+                                    prev (get m node)]
                                 (if prev
-                                  (assoc! m node-with-parents (min prev id))
-                                  (assoc! m node-with-parents id))))
+                                  ;; There might be nodes with multiple representation under the same parent, this would
+                                  ;; likely be due to nodes that have the same condition but do not share all the same
+                                  ;; parents, see Issue 433 for more information
+                                  (assoc! m node (conj prev id))
+                                  (assoc! m node [id]))))
 
-            node->id (-> (reduce update-node->id
-                                 (transient {})
-                                 forward-edges)
-                         persistent!)
+            node->ids (-> (reduce update-node->id
+                                  (transient {})
+                                  forward-edges)
+                          persistent!)
+
+            backward-edges (:backward-edges beta-graph)
 
             ;; Use the existing id or create a new one.
-            node-id (or (get node->id (assoc node :parents (set parent-ids)))
+            node-id (or (when-let [common-nodes (get node->ids node)]
+                          ;; We need to validate that the node we intend on sharing shares the same parents as the
+                          ;; current node we are creating. See Issue 433 for more information
+                          (some #(when (= (get backward-edges %)
+                                          (set parent-ids))
+                                   %)
+                                common-nodes))
                         (create-id-fn))
 
             graph-with-node (add-node beta-graph parent-ids node-id node)]
