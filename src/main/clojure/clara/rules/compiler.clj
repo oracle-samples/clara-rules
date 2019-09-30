@@ -1136,20 +1136,33 @@
             ;; all of the old children for a prior match, for each additional child added we incur the assoc but the hash code
             ;; has already been cached by prior iterations of add-conjunctions. In these cases we have seen that the hashing
             ;; will out perform equivalence checks.
-            update-node->id (fn [m id]
-                              (let [node (get id-to-condition-nodes id)
-                                    prev (get m node)]
-                                (if prev
-                                  (assoc! m node (min prev id))
-                                  (assoc! m node id))))
+            update-node->ids (fn [m id]
+                               (let [node (get id-to-condition-nodes id)
+                                     prev (get m node)]
+                                 (if prev
+                                   ;; There might be nodes with multiple representation under the same parent, this would
+                                   ;; likely be due to nodes that have the same condition but do not share all the same
+                                   ;; parents, see Issue 433 for more information
+                                   (assoc! m node (conj prev id))
+                                   (assoc! m node [id]))))
 
-            node->id (-> (reduce update-node->id
-                                 (transient {})
-                                 forward-edges)
-                         persistent!)
+            node->ids (-> (reduce update-node->ids
+                                  (transient {})
+                                  forward-edges)
+                          persistent!)
+
+            backward-edges (:backward-edges beta-graph)
+
+            parent-ids-set (set parent-ids)
 
             ;; Use the existing id or create a new one.
-            node-id (or (get node->id node)
+            node-id (or (when-let [common-nodes (get node->ids node)]
+                          ;; We need to validate that the node we intend on sharing shares the same parents as the
+                          ;; current node we are creating. See Issue 433 for more information
+                          (some #(when (= (get backward-edges %)
+                                          parent-ids-set)
+                                   %)
+                                common-nodes))
                         (create-id-fn))
 
             graph-with-node (add-node beta-graph parent-ids node-id node)]
