@@ -36,7 +36,8 @@
                                               ->ColdAndWindy ColdAndWindy]]
                [clara.rules.accumulators]
                [cljs.test]
-               [schema.test :as st])
+               [schema.test :as st]
+               [clara.tools.testing-utils :as tu])
      (:require-macros [clara.tools.testing-utils :refer [def-rules-test]]
                       [cljs.test :refer [is deftest run-tests testing use-fixtures]])))
 
