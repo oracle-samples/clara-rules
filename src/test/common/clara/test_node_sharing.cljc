@@ -22,7 +22,7 @@
                WindSpeed]))
 
    :cljs
-   (ns clara.test-exists
+   (ns clara.test-node-sharing
      (:require [clara.rules :refer [fire-rules
                                     insert
                                     insert!
