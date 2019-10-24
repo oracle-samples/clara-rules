@@ -291,13 +291,3 @@
   ;; It is possible that this would be change in the future if we decided to use lazy evaluation,
   ;; but in any case it should not be more than 1.
   (is (= @tu/side-effect-holder 1) "The constraints on WindSpeed should be evaluated exactly once"))
-
-
-
-           
-
-
-
-
-             
-                         
