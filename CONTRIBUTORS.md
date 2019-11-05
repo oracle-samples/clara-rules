@@ -21,3 +21,4 @@ Community
 [@sparkofreason]: https://github.com/sparkofreason
 [@bfontaine]: https://github.com/bfontaine
 [@sunilgunisetty]: https://github.com/sunilgunisetty
+[@eraserhd]: https://github.com/eraserhd
