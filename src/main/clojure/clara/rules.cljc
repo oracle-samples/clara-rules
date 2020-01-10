@@ -338,6 +338,8 @@
         information might prove useful for debugging compilation errors within the rulebase, eg. rulebase serialization
         (ie. via Clara's durability support).
         Defaults to true, see clara.rules.compiler/omit-compile-ctx-default for more information.
+      * :blacklist, a vector of qualified namespace rules that will be blacklisted from the created session.
+        Defaults to [], all the rules provided will be considered.
 
       This is not supported in ClojureScript, since it requires eval to dynamically build a session. ClojureScript
       users must use pre-defined rule sessions using defsession."
