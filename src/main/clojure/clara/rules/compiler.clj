@@ -2038,11 +2038,13 @@
 
 
 (defn remove-blacklisted-rules
-  "If an option :blacklist was provided by the user, we filter out the rules indicated."
-  [options rules]
+  "If an option :blacklist was provided by the user, we filter out the production names indicated."
+  [options productions]
   (let [blacklist (set (map str (:blacklist options)))
         not-contains? (complement contains?)]
-    (filter #(not-contains? blacklist (:name %)) rules)))
+    (if (empty? blacklist)
+      productions
+      (filter #(not-contains? blacklist (:name %)) productions))))
 
 (defn mk-session
   "Creates a new session using the given rule source. The resulting session
