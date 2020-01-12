@@ -132,7 +132,7 @@
 
     ;; Ensure expected events occur in order.
    (is (= [:add-facts :alpha-activate :right-activate :left-activate
-           :add-activations :fire-activation :add-facts-logical]
+           :add-activations :fire-activation :add-facts-logical :activation-group-transition]
            (map :type (t/get-trace session))))))
 
 (def-rules-test test-insert-and-retract-trace
@@ -151,8 +151,9 @@
        session-trace (t/get-trace session)]
 
     ;; Ensure expected events occur in order.
-   (is (= [:add-facts :alpha-activate :right-activate :left-activate :add-activations :fire-activation :add-facts-logical
-           :retract-facts :alpha-retract :right-retract :left-retract :remove-activations :retract-facts-logical]
+   (is (= [:add-facts :alpha-activate :right-activate :left-activate :add-activations :fire-activation
+           :add-facts-logical :activation-group-transition :retract-facts :alpha-retract :right-retract
+           :left-retract :remove-activations :retract-facts-logical]
           (map :type session-trace)))
 
    ;; Ensure only the expected fact was indicated as retracted.

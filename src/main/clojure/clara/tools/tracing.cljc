@@ -69,6 +69,9 @@
   (fire-rules! [listener node]
     (append-trace listener {:type :fire-rules :node-id (:id node)}))
 
+  (activation-group-transition! [listener previous-group new-group]
+    (append-trace listener {:type :activation-group-transition :new-group new-group :previous-group previous-group}))
+
   (to-persistent! [listener]
     (PersistentTracingListener. @trace)))
 

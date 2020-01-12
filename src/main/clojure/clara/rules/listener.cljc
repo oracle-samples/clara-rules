@@ -23,6 +23,7 @@
   (remove-activations! [listener node activations])
   (fire-activation! [listener activation resulting-operations])
   (fire-rules! [listener node])
+  (activation-group-transition! [listener original-group new-group])
   (to-persistent! [listener]))
 
 ;; A listener that does nothing.
@@ -59,6 +60,8 @@
   (fire-activation! [listener activation resulting-operations]
     listener)
   (fire-rules! [listener node]
+    listener)
+  (activation-group-transition! [listener original-group new-group]
     listener)
   (to-persistent! [listener]
     listener)
@@ -135,6 +138,10 @@
   (fire-rules! [listener node]
     (doseq [child children]
       (fire-rules! child node)))
+
+  (activation-group-transition! [listener original-group new-group]
+    (doseq [child children]
+      (activation-group-transition! child original-group new-group)))
 
   (to-persistent! [listener]
     (delegating-listener (map to-persistent! children))))
