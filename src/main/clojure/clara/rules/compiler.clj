@@ -31,7 +31,8 @@
             Accumulator
             ISystemFact]
            [java.beans
-            PropertyDescriptor]
+            PropertyDescriptor
+            IndexedPropertyDescriptor]
            [clojure.lang
             IFn]))
 
@@ -179,10 +180,13 @@
         ;; Iterate through the bean properties, returning tuples and the corresponding methods.
         (for [^PropertyDescriptor property (seq (.. java.beans.Introspector
                                                     (getBeanInfo cls)
-                                                    (getPropertyDescriptors)))]
-
-          [(symbol (string/replace (.. property (getName)) #"_" "-")) ; Replace underscore with idiomatic dash.
-           (symbol (str "." (.. property (getReadMethod) (getName))))])))
+                                                    (getPropertyDescriptors)))
+              :let [read-method (.getReadMethod property)]
+              ;; In the event that there the class has an indexed property without a basic accessor we will simply skip
+              ;; the accessor as we will not know how to retrieve the value. see https://github.com/cerner/clara-rules/issues/446
+              :when read-method]
+          [(symbol (string/replace (.getName property) #"_" "-")) ; Replace underscore with idiomatic dash.
+           (symbol (str "." (.getName read-method)))])))
 
 (defn effective-type [type]
   (if (compiling-cljs?)

@@ -78,6 +78,9 @@
                                             (some->> x :ns ns-name str (re-matches (re-pattern (apply str patterns)))))))
                    :generative (fn [x] (some->> x :ns ns-name str (re-matches #"^clara\.generative.*")))
                    :performance (fn [x] (some->> x :ns ns-name str (re-matches #"^clara\.performance.*")))}
+
+  ;; Remove any "Test Facts" from being included in the jar.
+  :jar-exclusions [#".*TestFact\.(java|class)"]
   
   :scm {:name "git"
         :url "https://github.com/cerner/clara-rules"}
