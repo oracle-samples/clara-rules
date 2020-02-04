@@ -1852,7 +1852,7 @@
         ;; type, alpha node tuples.
         alpha-nodes (for [{:keys [id type alpha-fn children env] :as alpha-map} alpha-fns
                           :let [beta-children (map id-to-node children)]]
-                      [type (eng/->AlphaNode id env beta-children alpha-fn)])
+                      [type (eng/->AlphaNode id env beta-children alpha-fn type)])
 
         ;; Merge the alpha nodes into a multi-map
         alpha-map (reduce
