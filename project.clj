@@ -6,7 +6,9 @@
   :dependencies [[org.clojure/clojure "1.7.0"]
                  [prismatic/schema "1.1.6"]]
   :profiles {:dev {:dependencies [[org.clojure/math.combinatorics "0.1.3"]
-                                  [org.clojure/data.fressian "0.2.1"]]}
+                                  [org.clojure/data.fressian "0.2.1"]]
+                   :java-source-paths ["src/main/java"
+                                       "src/test/java"]}
              :provided {:dependencies [[org.clojure/clojurescript "1.7.170"]]}
              :recent-clj {:dependencies [^:replace [org.clojure/clojure "1.9.0"]
                                          ^:replace [org.clojure/clojurescript "1.9.946"]]}
@@ -78,9 +80,6 @@
                                             (some->> x :ns ns-name str (re-matches (re-pattern (apply str patterns)))))))
                    :generative (fn [x] (some->> x :ns ns-name str (re-matches #"^clara\.generative.*")))
                    :performance (fn [x] (some->> x :ns ns-name str (re-matches #"^clara\.performance.*")))}
-
-  ;; Remove any "Test Facts" from being included in the jar.
-  :jar-exclusions [#".*TestFact\.(java|class)"]
   
   :scm {:name "git"
         :url "https://github.com/cerner/clara-rules"}
