@@ -3,17 +3,11 @@
    This is the Clara rules compiler, translating raw data structures into compiled versions and functions.
    Most users should use only the clara.rules namespace."
   (:require [clara.rules.engine :as eng]
-            [clara.rules.listener :as listener]
-            [clara.rules.platform :as platform]
             [clara.rules.schema :as schema]
-            [clojure.core.reducers :as r]
-            [clojure.reflect :as reflect]
-            [clojure.set :as s]
             [clojure.set :as set]
             [clojure.string :as string]
             [clojure.walk :as walk]
-            [schema.core :as sc]
-            [schema.macros :as sm])
+            [schema.core :as sc])
   (:import [clara.rules.engine
             ProductionNode
             QueryNode
@@ -27,12 +21,10 @@
             AccumulateNode
             AccumulateWithJoinFilterNode
             LocalTransport
-            LocalSession
             Accumulator
             ISystemFact]
            [java.beans
-            PropertyDescriptor
-            IndexedPropertyDescriptor]
+            PropertyDescriptor]
            [clojure.lang
             IFn]))
 
@@ -769,7 +761,7 @@
                                                    ;; have any new facts as input.  See:
                                                    ;; https://github.com/cerner/clara-rules/issues/357
                                                    [#{}
-                                                    (apply s/union (classify-variables constraints))]
+                                                    (apply set/union (classify-variables constraints))]
 
                                                    ;; It is not a negation, so simply classify variables.
                                                    (classify-variables constraints))
@@ -779,10 +771,10 @@
                                           (:result-binding leaf-condition) (conj (symbol (name (:result-binding leaf-condition)))))
 
              ;; All variables bound in this condition.
-             all-bound (s/union bound bound-with-result-bindings)
+             all-bound (set/union bound bound-with-result-bindings)
 
              ;; Unbound variables, minus those that have been bound elsewhere in this condition.
-             all-unbound (s/difference (s/union unbound-variables unbound) all-bound)]
+             all-unbound (set/difference (set/union unbound-variables unbound) all-bound)]
 
          {:bound all-bound
           :unbound all-unbound
@@ -816,8 +808,8 @@
 
         ;; Unsatisfied conditions remain, so find ones we can satisfy.
         (let [satisfied? (fn [classified-condition]
-                           (clojure.set/subset? (:unbound classified-condition)
-                                                bound-variables))
+                           (set/subset? (:unbound classified-condition)
+                                        bound-variables))
 
               ;; Find non-accumulator conditions that are satisfied. We defer
               ;; accumulators until later in the rete network because they
@@ -825,8 +817,8 @@
               ;; in the network are satisfied.
               satisfied-non-accum? (fn [classified-condition]
                                      (and (not (:is-accumulator classified-condition))
-                                          (clojure.set/subset? (:unbound classified-condition)
-                                                               bound-variables)))
+                                          (set/subset? (:unbound classified-condition)
+                                                       bound-variables)))
 
               has-satisfied-non-accum (some satisfied-non-accum? remaining-conditions)
 
@@ -838,16 +830,16 @@
                                   (remove satisfied-non-accum? remaining-conditions)
                                   (remove satisfied? remaining-conditions))
 
-              updated-bindings (apply clojure.set/union bound-variables
+              updated-bindings (apply set/union bound-variables
                                       (map :bound newly-satisfied))]
 
           ;; If no existing variables can be satisfied then the production is invalid.
           (when (empty? newly-satisfied)
 
             ;; Get the subset of variables that cannot be satisfied.
-            (let [unsatisfiable (clojure.set/difference
-                                 (apply clojure.set/union (map :unbound still-unsatisfied))
-                                 bound-variables)]
+            (let [unsatisfiable (set/difference
+                                  (apply set/union (map :unbound still-unsatisfied))
+                                  bound-variables)]
               (throw (ex-info (str "Using variable that is not previously bound. This can happen "
                                    "when an expression uses a previously unbound variable, "
                                    "or if a variable is referenced in a nested part of a parent "
@@ -929,7 +921,7 @@
                         (conj constraint-bindings (:fact-binding condition))
                         constraint-bindings)
 
-        new-bindings (s/difference (variables-as-keywords (:constraints condition))
+        new-bindings (set/difference (variables-as-keywords (:constraints condition))
                                              parent-bindings)
 
         join-filter-bindings (if join-filter-expressions
@@ -940,12 +932,12 @@
             {:node-type node-type
              :condition condition
              :new-bindings new-bindings
-             :used-bindings (s/union cond-bindings join-filter-bindings)}
+             :used-bindings (set/union cond-bindings join-filter-bindings)}
 
           (seq env) (assoc :env env)
 
           ;; Add the join bindings to join, accumulator or negation nodes.
-          (#{:join :negation :accumulator} node-type) (assoc :join-bindings (s/intersection cond-bindings parent-bindings))
+          (#{:join :negation :accumulator} node-type) (assoc :join-bindings (set/intersection cond-bindings parent-bindings))
 
           accumulator (assoc :accumulator accumulator)
 
@@ -953,7 +945,7 @@
 
           join-filter-expressions (assoc :join-filter-expressions join-filter-expressions)
 
-          join-filter-bindings (assoc :join-filter-join-bindings (s/intersection join-filter-bindings parent-bindings)))))
+          join-filter-bindings (assoc :join-filter-join-bindings (set/intersection join-filter-bindings parent-bindings)))))
 
 (sc/defn ^:private add-node :- schema/BetaGraph
   "Adds a node to the beta graph."
@@ -1032,8 +1024,8 @@
           ;; See https://github.com/cerner/clara-rules/issues/304 for more details
           ;; and a case that behaves incorrectly without this check.
           ancestor-bindings-in-negation-expr (set/intersection
-                                              (variables-as-keywords negation-expr)
-                                              ancestor-bindings)
+                                               (variables-as-keywords negation-expr)
+                                               ancestor-bindings)
 
           ancestor-bindings-insertion-form (into {}
                                                  (map (fn [binding]
@@ -1109,7 +1101,7 @@
 
             {:keys [result-binding fact-binding]} expression
 
-            all-bindings (cond-> (s/union bindings (:used-bindings node))
+            all-bindings (cond-> (set/union bindings (:used-bindings node))
                            result-binding (conj result-binding)
                            fact-binding (conj fact-binding))
 
@@ -1630,9 +1622,9 @@
                                                              pending-id))
 
                                  updated-edges (into {} (for [[dependent-id dependencies]  node-deps]
-                                                          [dependent-id (s/difference dependencies newly-satisfied-ids)]))]
+                                                          [dependent-id (set/difference dependencies newly-satisfied-ids)]))]
 
-                             (recur (s/difference pending-ids newly-satisfied-ids)
+                             (recur (set/difference pending-ids newly-satisfied-ids)
                                     updated-edges
                                     (concat sorted-nodes newly-satisfied-ids)))))]
 
