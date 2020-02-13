@@ -29,6 +29,7 @@ public class BeanTestFact {
     }
 
     // Partial Indexed property accessor, ie. no standard accessor
+    // See https://github.com/cerner/clara-rules/issues/446 for more details
     public void setRoadConditions(int pos, String condition) {
         roadConditions[pos] = condition;
     }
