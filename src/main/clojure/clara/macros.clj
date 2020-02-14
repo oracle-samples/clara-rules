@@ -96,7 +96,8 @@
               ~id
               '~condition
               ~(com/compile-join-filter id
-                                        "ExpressionJoinNode"
+                                        ;; EJN stands for ExpressionJoinNode
+                                        "EJN"
                                         (:join-filter-expressions beta-node)
                                         (:join-filter-join-bindings beta-node)
                                         (:new-bindings beta-node)
@@ -115,7 +116,8 @@
               ~id
               '~condition
               ~(com/compile-join-filter id
-                                        "NegationWithJoinFilterNode"
+                                        ;; NJFN stands for NegationWithJoinFilterNode
+                                        "NJFN"
                                         (:join-filter-expressions beta-node)
                                         (:join-filter-join-bindings beta-node)
                                         (:new-bindings beta-node)
@@ -142,7 +144,8 @@
                :from '~condition}
               ~(:accumulator beta-node)
               ~(com/compile-join-filter id
-                                        "AccumulateWithJoinFilterNode"
+                                        ;; AJFN stands for AccumulateWithJoinFilterNode
+                                        "AJFN"
                                         (:join-filter-expressions beta-node)
                                         (:join-filter-join-bindings beta-node)
                                         (:new-bindings beta-node)

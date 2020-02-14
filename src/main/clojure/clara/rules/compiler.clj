@@ -399,7 +399,8 @@
         initial-bindings (if result-binding {result-binding '?__fact__}  {})
 
         ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-condition' to be used for this scenario
-        fn-name (mk-node-fn-name "AlphaNode" node-id "AlphaExpr")]
+        ;; AN will stand for AlphaNode and AE will stand for AlphaExpr
+        fn-name (mk-node-fn-name "AN" node-id "AE")]
 
     `(fn ~fn-name [~(add-meta '?__fact__ type)
           ~destructured-env] ;; TODO: add destructured environment parameter...
@@ -419,7 +420,8 @@
         assignments (mapcat build-token-assignment binding-keys)
 
         ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-test' to be used for this scenario
-        fn-name (mk-node-fn-name "TestNode" node-id "TestExpr")]
+        ;; TN will stand for TestNode and TE will stand for TestExpr
+        fn-name (mk-node-fn-name "TN" node-id "TE")]
 
     `(fn ~fn-name [~'?__token__]
        (let [~@assignments]
@@ -449,7 +451,8 @@
                            '?__env__)
 
         ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-action' to be used for this scenario
-        fn-name (mk-node-fn-name "ProductionNode" node-id "ActionExpr")]
+        ;; PN will stand for ProductionNode and AE will stand for ActionExpr
+        fn-name (mk-node-fn-name "PN" node-id "AE")]
     `(fn ~fn-name [~'?__token__  ~destructured-env]
        (let [~@assignments]
          ~rhs))))
@@ -462,7 +465,8 @@
           {:keys (mapv #(symbol (name %)) (keys env))}
           '?__env__)
 
-        fn-name (mk-node-fn-name node-type node-id "AccumExpr")]
+        ;; AccE will stand for AccumExpr
+        fn-name (mk-node-fn-name node-type node-id "AccE")]
     `(fn ~fn-name [~destructured-env]
        ~accum)))
 
@@ -513,7 +517,8 @@
         equality-only-variables (into #{} (for [binding ancestor-bindings]
                                             (symbol (name (keyword binding)))))
 
-        fn-name (mk-node-fn-name node-type node-id "JoinFilterExpr")]
+        ;; JFE will stand for JoinFilterExpr
+        fn-name (mk-node-fn-name node-type node-id "JFE")]
 
     `(fn ~fn-name
        [~'?__token__
@@ -1396,7 +1401,8 @@
                     prev
                     (handle-expr prev
                                  (compile-join-filter id
-                                                      "ExpressionJoinNode"
+                                                      ;; EJN stands for ExpressionJoinNode
+                                                      "EJN"
                                                       (:join-filter-expressions beta-node)
                                                       (:join-filter-join-bindings beta-node)
                                                       (:new-bindings beta-node)
@@ -1410,7 +1416,8 @@
             :negation (if (:join-filter-expressions beta-node)
                         (handle-expr prev
                                      (compile-join-filter id
-                                                          "NegationWithJoinFilterNode"
+                                                          ;; NJFN stands for NegationWithJoinFilterNode
+                                                          "NJFN"
                                                           (:join-filter-expressions beta-node)
                                                           (:join-filter-join-bindings beta-node)
                                                           (:new-bindings beta-node)
@@ -1432,8 +1439,10 @@
             :accumulator (cond-> (handle-expr prev
                                               (compile-accum id
                                                              (if (:join-filter-expressions beta-node)
-                                                               "AccumulateWithJoinFilterNode"
-                                                               "AccumulateNode")
+                                                               ;; AJFN stands for AccumulateWithJoinFilterNode
+                                                               "AJFN"
+                                                               ;; AccN stands for AccumulateNode
+                                                               "AccN")
                                                              (:accumulator beta-node)
                                                              (:env beta-node))
                                               id
@@ -1445,7 +1454,8 @@
 
                                  (:join-filter-expressions beta-node)
                                  (handle-expr (compile-join-filter id
-                                                                   "AccumulateWithJoinFilterNode"
+                                                                   ;; AJFN stands for AccumulateWithJoinFilterNode
+                                                                   "AJFN"
                                                                    (:join-filter-expressions beta-node)
                                                                    (:join-filter-join-bindings beta-node)
                                                                    (:new-bindings beta-node)
