@@ -7,8 +7,8 @@
                  [prismatic/schema "1.1.6"]]
   :profiles {:dev {:dependencies [[org.clojure/math.combinatorics "0.1.3"]
                                   [org.clojure/data.fressian "0.2.1"]]
-                   :java-source-paths ["src/main/java"
-                                       "src/test/java"]}
+                   :java-source-paths ["src/test/java"]
+                   :global-vars {*warn-on-reflection* true}}
              :provided {:dependencies [[org.clojure/clojurescript "1.7.170"]]}
              :recent-clj {:dependencies [^:replace [org.clojure/clojure "1.9.0"]
                                          ^:replace [org.clojure/clojurescript "1.9.946"]]}
