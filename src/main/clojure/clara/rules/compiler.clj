@@ -5,6 +5,7 @@
   (:require [clara.rules.engine :as eng]
             [clara.rules.listener :as listener]
             [clara.rules.platform :as platform]
+            [clara.rules.logger :as logger]
             [clara.rules.schema :as schema]
             [clojure.core.reducers :as r]
             [clojure.reflect :as reflect]
@@ -2059,6 +2060,8 @@
                                       (conj! previous new-production)))
                                   (transient #{}))
                           persistent!)]
+
+     (logger/warn-unused-bindings! productions)
 
      (if-let [session (get @session-cache [productions options])]
        session
