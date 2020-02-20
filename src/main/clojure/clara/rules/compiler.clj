@@ -5,8 +5,9 @@
   (:require [clara.rules.engine :as eng]
             [clara.rules.listener :as listener]
             [clara.rules.platform :as platform]
-            [clara.rules.logger :as logger]
             [clara.rules.schema :as schema]
+            [clara.rules.analysis :as analysis]
+            [clara.rules.analysis-utils :refer [is-variable?]]
             [clojure.core.reducers :as r]
             [clojure.reflect :as reflect]
             [clojure.set :as s]
@@ -14,7 +15,8 @@
             [clojure.string :as string]
             [clojure.walk :as walk]
             [schema.core :as sc]
-            [schema.macros :as sm])
+            [schema.macros :as sm]
+            [clara.rules.testfacts :as tf])
   (:import [clara.rules.engine
             ProductionNode
             QueryNode
@@ -69,8 +71,8 @@
                         query-nodes :- {sc/Any QueryNode}
                         ;; Map of id to one of the  alpha or beta nodes (join, accumulate, etc).
                         id-to-node :- {sc/Num (sc/conditional
-                                                :activation AlphaNode
-                                                :else BetaNode)}
+                                               :activation AlphaNode
+                                               :else BetaNode)}
                         ;; Function for sorting activation groups of rules for firing.
                         activation-group-sort-fn
                         ;; Function that takes a rule and returns its activation group.
@@ -79,12 +81,6 @@
                         get-alphas-fn
                         ;; A map of [node-id field-name] to function.
                         node-expr-fn-lookup :- schema/NodeFnLookup])
-
-(defn- is-variable?
-  "Returns true if the given expression is a variable (a symbol prefixed by ?)"
-  [expr]
-  (and (symbol? expr)
-       (.startsWith (name expr) "?")))
 
 (def ^:private reflector
   "For some reason (bug?) the default reflector doesn't use the
@@ -2061,7 +2057,7 @@
                                   (transient #{}))
                           persistent!)]
 
-     (logger/warn-unused-bindings! productions)
+     (analysis/warn-unused-bindings! productions)
 
      (if-let [session (get @session-cache [productions options])]
        session
@@ -2073,3 +2069,42 @@
 
          ;; Return the session.
          session)))))
+
+(comment
+  (require '[clara.rules :as rl])
+  (require '[clara.rules.accumulators :as acc])
+  (require '[clara.rules.testfacts :as tf])
+  (import clara.rules.testfacts.ColdAndWindy)
+  (import clara.rules.testfacts.Temperature)
+
+  (defrecord CurrentTemperature [temperature])
+
+
+  (rl/defrule rule-testing
+    [?cold <- ColdAndWindy (= ?w windspeed) (< temperature 10)
+     (= ?w 20)]
+    =>
+    (println ?cold)
+    (println "All bindings used"))
+
+  (rl/defrule rule-testing-warning
+    [?cold <- ColdAndWindy (= ?w windspeed) (< temperature 10)]
+    =>
+    (println "Warning, ?w not used"))
+
+  (def newest-temp (acc/max :timestamp :returns-fact true))
+
+  (rl/defrule get-current-temperature
+    [?current-temp <- newest-temp :from [Temperature (= ?location location)]]
+    =>
+    (rl/insert! (->CurrentTemperature ?current-temp))
+    )
+
+  (rl/mk-session `rule-testing
+                 `rule-testing-warning
+                 `get-current-temperature
+                 )
+
+  
+
+  )
