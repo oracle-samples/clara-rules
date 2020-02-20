@@ -5,18 +5,23 @@
    * explain-activations, which uses inspect and prints a human-readable description covering
      why each rule activation or query match occurred."
   (:require #?(:clj [clara.rules.engine :as eng])
-            #?(:cljs [clara.rules.engine :as eng :refer [RootJoinNode
-                                                         HashJoinNode
-                                                         ExpressionJoinNode
-                                                         NegationNode
-                                                         NegationWithJoinFilterNode]])
-            [clara.rules.schema :as schema]
-            [clara.rules.memory :as mem]
-            [clara.tools.internal.inspect :as i]
-            #?(:cljs [goog.string :as gstr])
-            [schema.core :as s])
+    #?(:cljs [clara.rules.engine :as eng :refer [RootJoinNode
+                                                 HashJoinNode
+                                                 ExpressionJoinNode
+                                                 NegationNode
+                                                 NegationWithJoinFilterNode
+                                                 ProductionNode]])
+    [clara.rules.schema :as schema]
+    [clara.rules.memory :as mem]
+    [clara.tools.internal.inspect :as i]
+    #?(:cljs [goog.string :as gstr])
+    #?(:clj
+    [clojure.main :refer [demunge]])
+    [schema.core :as s]
+    [clojure.string :as str])
   #?(:clj
     (:import [clara.rules.engine
+              ProductionNode
               RootJoinNode
               HashJoinNode
               ExpressionJoinNode
@@ -300,3 +305,53 @@
         (println "  qualified because")
         (explain-activation explanation "    "))
       (println))))
+
+(let [inverted-type-lookup (zipmap (vals eng/node-type->abbreviated-type)
+                                   (keys eng/node-type->abbreviated-type))]
+  (defn node-fn-name->production-name
+    [session node-fn]
+    (let [fn-name-str (cond
+                        (string? node-fn)
+                        node-fn
+
+                        (fn? node-fn)
+                        #?(:clj (str node-fn)
+                           :cljs (.-name node-fn) )
+
+                        (symbol? node-fn)
+                        (str node-fn)
+
+                        :else
+                        (throw (ex-info "Unsupported type for 'node-fn-name->production-name'"
+                                        {:type (type node-fn)
+                                         :supported-types ["string" "symbol" "fn"]})))
+          fn-name-str (-> fn-name-str demunge (str/split #"/") last)
+
+          simple-fn-name #?(:clj
+                            (-> (or (re-find #"(.+)--\d+" fn-name-str) ;; anonymous function
+                                    (re-find #"(.+)" fn-name-str)) ;; regular function
+                                last)
+                            :cljs
+                            fn-name-str)
+
+          [node-abr node-id _] (str/split simple-fn-name #"-")]
+      ;; used as a sanity check that the fn provided is in the form expected, ie. <NodeAbr>-<NodeId>-<FnType>
+      (if (contains? inverted-type-lookup node-abr)
+        (if-let [node (-> (eng/components session)
+                          :rulebase
+                          :id-to-node
+                          (get #?(:clj (Long/valueOf ^String node-id)
+                                  :cljs (js/parseInt node-id))))]
+          (if (= ProductionNode (type node))
+            [(-> node :production :name)]
+            (if-let [production-names (seq (eng/node-rule-names (some-fn :production :query) node))]
+              production-names
+              ;; This should be un-reachable but i am leaving it here in the event that the rulebase is somehow corrupted
+              (throw (ex-info "Unable to determine suitable name from node"
+                              {:node node}))))
+          (throw (ex-info "Node-id not found in rulebase"
+                          {:node-id node-id
+                           :simple-name simple-fn-name})))
+        (throw (ex-info "Unable to determine node from function"
+                        {:name node-fn
+                         :simple-name simple-fn-name}))))))

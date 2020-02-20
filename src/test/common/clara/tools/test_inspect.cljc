@@ -1,11 +1,16 @@
 (ns clara.tools.test-inspect
   (:require [clara.tools.testing-utils :as tu]
-            [clara.tools.inspect :refer [inspect map->Explanation explain-activations with-full-logging without-full-logging]]
+            [clara.tools.inspect :refer [inspect map->Explanation
+                                         explain-activations
+                                         with-full-logging
+                                         without-full-logging
+                                         node-fn-name->production-name]]
             [clara.rules :refer [insert fire-rules insert! insert-unconditional! retract query]]
             [clara.rules.accumulators :as acc]
             [schema.test :as st]
             [clojure.walk :as w]
     #?(:cljs [goog.string :as gstr])
+    #?(:cljs [cljs.core :refer [ExceptionInfo]])
     #?(:clj [clojure.test :refer [is deftest run-tests testing use-fixtures]]
        :cljs [cljs.test :refer-macros [is deftest run-tests testing use-fixtures]])
     #?(:clj [clara.rules.testfacts :refer :all]
@@ -19,7 +24,9 @@
   #?(:clj
      (:import [clara.rules.testfacts Temperature TemperatureHistory
                                      WindSpeed Cold Hot ColdAndWindy LousyWeather
-                                     First Second Third Fourth])))
+                                     First Second Third Fourth]
+              [clojure.lang
+               ExceptionInfo])))
 
 (use-fixtures :once schema.test/validate-schemas)
 
@@ -576,3 +583,56 @@
     (is (empty?  (-> fired-with-listening inspect :rule-matches (get cold-rule))))
     (is (empty?  (-> fired-disabled-listening inspect :rule-matches (get cold-rule))))))
 
+(tu/def-rules-test test-node-fn-name->production-name
+  {:rules [cold-rule [[[Cold]]
+                      (insert-unconditional! (->LousyWeather))]]
+   :sessions [base-session [cold-rule] {}]}
+  (testing "Happy Path"
+    (let [prod-name-using-str (first (node-fn-name->production-name base-session
+                                                                    ;; This is an arbitrary name, we are taking advantage of
+                                                                    ;; the fact that there is only one rule in the session and
+                                                                    ;; there would likely be a node with an id of 1. It is not
+                                                                    ;; likely to be an alpha node, but the function only validates
+                                                                    ;; that it follows the pattern.
+                                                                    "clara.tools.test-inspect/AN_1_AE"))
+          prod-name-using-sym (first (node-fn-name->production-name base-session
+                                                                    'clara.tools.test-inspect/AN_1_AE))
+
+          prod-name-using-fn (first (node-fn-name->production-name base-session
+                                                                   ;; it doesn't really matter what the fn does, just that it is named
+                                                                   ;; correctly
+                                                                   (fn AN-1-AE [] 42)))]
+      (is (= prod-name-using-str "cold-rule"))
+      (is (= prod-name-using-sym "cold-rule"))
+      (is (= prod-name-using-fn "cold-rule"))))
+
+  (testing "unrecognized input"
+    (try
+      (node-fn-name->production-name base-session
+                                     ;; maps aren't supported
+                                     {:name "clara.tools.test-inspect/AN_1_AE"})
+      (is false "Exception should be thrown")
+      (catch ExceptionInfo exc
+        (is (= (ex-data exc)
+               {:type (type {})
+                :supported-types ["string" "symbol" "fn"]})))))
+
+  (testing "Invalid function name format"
+    (try
+      (node-fn-name->production-name base-session
+                                     "clara.tools.test-inspect/NOTAREALNODE_1_AE")
+      (is false "Exception should be thrown")
+      (catch ExceptionInfo exc
+        (is (= (ex-data exc)
+               {:name "clara.tools.test-inspect/NOTAREALNODE_1_AE"
+                :simple-name "NOTAREALNODE-1-AE"})))))
+
+  (testing "unable to find node in rulebase"
+    (try
+      (node-fn-name->production-name base-session
+                                     "clara.tools.test-inspect/AN_9001_AE")
+      (is false "Exception should be thrown")
+      (catch ExceptionInfo exc
+        (is (= (ex-data exc)
+               {:node-id "9001"
+                :simple-name "AN-9001-AE"}))))))

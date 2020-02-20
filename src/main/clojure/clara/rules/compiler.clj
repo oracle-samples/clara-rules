@@ -366,14 +366,19 @@
 (defn- mk-node-fn-name
   "A simple helper function to maintain a consistent pattern for naming anonymous functions in the rulebase.
 
-   node-type - expected to align with one of the types of nodes defined in clara.rules.engine
+   node-type - expected to align with one of the types of nodes defined in clara.rules.engine, and node-type->abbreviated-type.
    node-id - expected to be an integer
    fn-type - an identifier for what the function means to the node
 
    fn-type is required as some nodes might have multiple functions associated to them, ex. Accumulator nodes containing
    filter functions."
   [node-type node-id fn-type]
-  (symbol (str node-type "-" node-id "-" fn-type)))
+  (if-let [abbreviated-node-type (get eng/node-type->abbreviated-type node-type)]
+    (symbol (str abbreviated-node-type "-" node-id "-" fn-type))
+    (throw (ex-info "Unrecognized node type"
+                    {:node-type node-type
+                     :node-id node-id
+                     :fn-type fn-type}))))
 
 (defn compile-condition
   "Returns a function definition that can be used in alpha nodes to test the condition."
@@ -399,8 +404,7 @@
         initial-bindings (if result-binding {result-binding '?__fact__}  {})
 
         ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-condition' to be used for this scenario
-        ;; AN will stand for AlphaNode and AE will stand for AlphaExpr
-        fn-name (mk-node-fn-name "AN" node-id "AE")]
+        fn-name (mk-node-fn-name "AlphaNode" node-id "AE")]
 
     `(fn ~fn-name [~(add-meta '?__fact__ type)
           ~destructured-env] ;; TODO: add destructured environment parameter...
@@ -420,8 +424,7 @@
         assignments (mapcat build-token-assignment binding-keys)
 
         ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-test' to be used for this scenario
-        ;; TN will stand for TestNode and TE will stand for TestExpr
-        fn-name (mk-node-fn-name "TN" node-id "TE")]
+        fn-name (mk-node-fn-name "TestNode" node-id "TE")]
 
     `(fn ~fn-name [~'?__token__]
        (let [~@assignments]
@@ -451,8 +454,7 @@
                            '?__env__)
 
         ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-action' to be used for this scenario
-        ;; PN will stand for ProductionNode and AE will stand for ActionExpr
-        fn-name (mk-node-fn-name "PN" node-id "AE")]
+        fn-name (mk-node-fn-name "ProductionNode" node-id "AE")]
     `(fn ~fn-name [~'?__token__  ~destructured-env]
        (let [~@assignments]
          ~rhs))))
@@ -1401,8 +1403,7 @@
                     prev
                     (handle-expr prev
                                  (compile-join-filter id
-                                                      ;; EJN stands for ExpressionJoinNode
-                                                      "EJN"
+                                                      "ExpressionJoinNode"
                                                       (:join-filter-expressions beta-node)
                                                       (:join-filter-join-bindings beta-node)
                                                       (:new-bindings beta-node)
@@ -1416,8 +1417,7 @@
             :negation (if (:join-filter-expressions beta-node)
                         (handle-expr prev
                                      (compile-join-filter id
-                                                          ;; NJFN stands for NegationWithJoinFilterNode
-                                                          "NJFN"
+                                                          "NegationWithJoinFilterNode"
                                                           (:join-filter-expressions beta-node)
                                                           (:join-filter-join-bindings beta-node)
                                                           (:new-bindings beta-node)
@@ -1439,10 +1439,8 @@
             :accumulator (cond-> (handle-expr prev
                                               (compile-accum id
                                                              (if (:join-filter-expressions beta-node)
-                                                               ;; AJFN stands for AccumulateWithJoinFilterNode
-                                                               "AJFN"
-                                                               ;; AccN stands for AccumulateNode
-                                                               "AccN")
+                                                               "AccumulateWithJoinFilterNode"
+                                                               "AccumulateNode")
                                                              (:accumulator beta-node)
                                                              (:env beta-node))
                                               id
@@ -1454,8 +1452,7 @@
 
                                  (:join-filter-expressions beta-node)
                                  (handle-expr (compile-join-filter id
-                                                                   ;; AJFN stands for AccumulateWithJoinFilterNode
-                                                                   "AJFN"
+                                                                   "AccumulateWithJoinFilterNode"
                                                                    (:join-filter-expressions beta-node)
                                                                    (:join-filter-join-bindings beta-node)
                                                                    (:new-bindings beta-node)
