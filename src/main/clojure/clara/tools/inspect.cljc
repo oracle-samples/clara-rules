@@ -309,6 +309,18 @@
 (let [inverted-type-lookup (zipmap (vals eng/node-type->abbreviated-type)
                                    (keys eng/node-type->abbreviated-type))]
   (defn node-fn-name->production-name
+    "A helper function for retrieving the name or names of rules that a generated function belongs to.
+
+     'session' - a LocalSession from which a function was retrieved
+     'node-fn' - supports the following types:
+        1. String   - expected to be in the format '<namespace>/<Node abbreviation>_<NodeId>_<Function abbreviation>'.
+                      Expected use-case for string would be in the event that a user copy pasted this function identifier
+                      from an external tool, ex. a jvm profiler
+        2. Symbol   - expected to be in the format '<namespace>/<Node abbreviation>_<NodeId>_<Function abbreviation>.
+                      Has the same use-case as string, just adds flexibility to the type.
+        3. Function - expected to be the actual function from the Session
+                      This covers a use-case where the user can capture the function being used and programmatically
+                      trace it back to the rules being executed."
     [session node-fn]
     (let [fn-name-str (cond
                         (string? node-fn)
