@@ -53,6 +53,7 @@
                        {:id "advanced"
                         :source-paths ["src/test/clojurescript" "src/test/common"]
                         :compiler {:output-to "target/js/advanced.js"
+                                   :anon-fn-naming-policy :mapped
                                    :optimizations :advanced}}]
 
               :test-commands {"phantom-simple" ["phantomjs"

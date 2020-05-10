@@ -1702,6 +1702,18 @@
       (filter (fn [fact] (join-filter-fn token fact fact-bindings {}))
               unfiltered-facts))))
 
+;; This lives here as it is both close to the node that it represents, and is accessible to both clj and cljs
+(def node-type->abbreviated-type
+  "To minimize function name length and attempt to prevent issues with filename length we can use these abbreviations to
+  shorten the node types. Used during compilation of the rules network."
+  {"AlphaNode" "AN"
+   "TestNode" "TN"
+   "AccumulateNode" "AccN"
+   "AccumulateWithJoinFilterNode" "AJFN"
+   "ProductionNode" "PN"
+   "NegationWithJoinFilterNode" "NJFN"
+   "ExpressionJoinNode" "EJN"})
+
 (defn variables-as-keywords
   "Returns symbols in the given s-expression that start with '?' as keywords"
   [expression]

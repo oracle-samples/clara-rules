@@ -95,7 +95,9 @@
             `(eng/->ExpressionJoinNode
               ~id
               '~condition
-              ~(com/compile-join-filter (:join-filter-expressions beta-node)
+              ~(com/compile-join-filter id
+                                        "ExpressionJoinNode"
+                                        (:join-filter-expressions beta-node)
                                         (:join-filter-join-bindings beta-node)
                                         (:new-bindings beta-node)
                                         {})
@@ -112,7 +114,9 @@
             `(eng/->NegationWithJoinFilterNode
               ~id
               '~condition
-              ~(com/compile-join-filter (:join-filter-expressions beta-node)
+              ~(com/compile-join-filter id
+                                        "NegationWithJoinFilterNode"
+                                        (:join-filter-expressions beta-node)
                                         (:join-filter-join-bindings beta-node)
                                         (:new-bindings beta-node)
                                         {})
@@ -127,7 +131,7 @@
           :test
           `(eng/->TestNode
             ~id
-            ~(com/compile-test (:constraints condition))
+            ~(com/compile-test id (:constraints condition))
             ~(gen-beta-network child-ids beta-graph all-bindings))
 
           :accumulator
@@ -137,7 +141,9 @@
               {:accumulator '~(:accumulator beta-node)
                :from '~condition}
               ~(:accumulator beta-node)
-              ~(com/compile-join-filter (:join-filter-expressions beta-node)
+              ~(com/compile-join-filter id
+                                        "AccumulateWithJoinFilterNode"
+                                        (:join-filter-expressions beta-node)
                                         (:join-filter-join-bindings beta-node)
                                         (:new-bindings beta-node)
                                         {})
@@ -175,7 +181,8 @@
                                                      ;; clarity, start the names of other locals or vars
                                                      ;; with "?".
                                                      (mapv (comp symbol name) all-bindings))]
-              (com/compile-action all-bindings
+              (com/compile-action id
+                                  all-bindings
                                   ;; Using private function for now as a workaround.
                                   (if (:ns-name production)
                                     (if (com/compiling-cljs?)
@@ -201,7 +208,7 @@
 
      {:id id
       :type (com/effective-type type)
-      :alpha-fn (com/compile-condition type (first args) constraints fact-binding env)
+      :alpha-fn (com/compile-condition type id (first args) constraints fact-binding env)
       :children (vec beta-children)})))
 
 (defn productions->session-assembly-form

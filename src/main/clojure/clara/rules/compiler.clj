@@ -359,12 +359,28 @@
       (vary-meta fact-symbol assoc :tag (symbol (.getName ^Class fact-type)))
       fact-symbol)))
 
+(defn- mk-node-fn-name
+  "A simple helper function to maintain a consistent pattern for naming anonymous functions in the rulebase.
+
+   node-type - expected to align with one of the types of nodes defined in clara.rules.engine, and node-type->abbreviated-type.
+   node-id - expected to be an integer
+   fn-type - an identifier for what the function means to the node
+
+   fn-type is required as some nodes might have multiple functions associated to them, ex. Accumulator nodes containing
+   filter functions."
+  [node-type node-id fn-type]
+  (if-let [abbreviated-node-type (get eng/node-type->abbreviated-type node-type)]
+    (symbol (str abbreviated-node-type "-" node-id "-" fn-type))
+    (throw (ex-info "Unrecognized node type"
+                    {:node-type node-type
+                     :node-id node-id
+                     :fn-type fn-type}))))
+
 (defn compile-condition
   "Returns a function definition that can be used in alpha nodes to test the condition."
-  [type destructured-fact constraints result-binding env]
+  [type node-id destructured-fact constraints result-binding env]
   (let [;; Get a map of fieldnames to access function symbols.
         accessors (field-name->accessors-used type constraints)
-        binding-keys (variables-as-keywords constraints)
         ;; The assignments should use the argument destructuring if provided, or default to accessors otherwise.
         assignments (if destructured-fact
                       ;; Simply destructure the fact if arguments are provided.
@@ -381,9 +397,12 @@
                            '?__env__)
 
         ;; Initial bindings used in the return of the compiled condition expresion.
-        initial-bindings (if result-binding {result-binding '?__fact__}  {})]
+        initial-bindings (if result-binding {result-binding '?__fact__}  {})
 
-    `(fn [~(add-meta '?__fact__ type)
+        ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-condition' to be used for this scenario
+        fn-name (mk-node-fn-name "AlphaNode" node-id "AE")]
+
+    `(fn ~fn-name [~(add-meta '?__fact__ type)
           ~destructured-env] ;; TODO: add destructured environment parameter...
        (let [~@assignments
              ~'?__bindings__ (atom ~initial-bindings)]
@@ -396,18 +415,21 @@
         (list `-> '?__token__ :bindings binding-key)))
 
 ;; FIXME: add env...
-(defn compile-test [tests]
+(defn compile-test [node-id tests]
   (let [binding-keys (variables-as-keywords tests)
-        assignments (mapcat build-token-assignment binding-keys)]
+        assignments (mapcat build-token-assignment binding-keys)
 
-    `(fn [~'?__token__]
+        ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-test' to be used for this scenario
+        fn-name (mk-node-fn-name "TestNode" node-id "TE")]
+
+    `(fn ~fn-name [~'?__token__]
        (let [~@assignments]
 
         (and ~@tests)))))
 
 (defn compile-action
   "Compile the right-hand-side action of a rule, returning a function to execute it."
-  [binding-keys rhs env]
+  [node-id binding-keys rhs env]
   (let [;; Avoid creating let bindings in the compile code that aren't actually used in the body.
         ;; The bindings only exist in the scope of the RHS body, not in any code called by it,
         ;; so this scanning strategy will detect all possible uses of binding variables in the RHS.
@@ -425,19 +447,25 @@
         ;; The destructured environment, if any.
         destructured-env (if (> (count env) 0)
                            {:keys (mapv #(symbol (name %)) (keys env))}
-                           '?__env__)]
-    `(fn [~'?__token__  ~destructured-env]
+                           '?__env__)
+
+        ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-action' to be used for this scenario
+        fn-name (mk-node-fn-name "ProductionNode" node-id "AE")]
+    `(fn ~fn-name [~'?__token__  ~destructured-env]
        (let [~@assignments]
          ~rhs))))
 
 (defn compile-accum
   "Used to create accumulators that take the environment into account."
-  [accum env]
+  [node-id node-type accum env]
   (let [destructured-env
         (if (> (count env) 0)
           {:keys (mapv #(symbol (name %)) (keys env))}
-          '?__env__)]
-    `(fn [~destructured-env]
+          '?__env__)
+
+        ;; AccE will stand for AccumExpr
+        fn-name (mk-node-fn-name node-type node-id "AccE")]
+    `(fn ~fn-name [~destructured-env]
        ~accum)))
 
 (defn compile-join-filter
@@ -450,7 +478,7 @@
    * an environment
 
    The function created here returns truthy if the given fact satisfies the criteria."
-  [{:keys [type constraints args] :as unification-condition} ancestor-bindings element-bindings env]
+  [node-id node-type {:keys [type constraints args] :as unification-condition} ancestor-bindings element-bindings env]
   (let [accessors (field-name->accessors-used type constraints)
 
         destructured-env (if (> (count env) 0)
@@ -485,9 +513,13 @@
                      new-binding-assignments)
 
         equality-only-variables (into #{} (for [binding ancestor-bindings]
-                                            (symbol (name (keyword binding)))))]
+                                            (symbol (name (keyword binding)))))
 
-    `(fn [~'?__token__
+        ;; JFE will stand for JoinFilterExpr
+        fn-name (mk-node-fn-name node-type node-id "JFE")]
+
+    `(fn ~fn-name
+       [~'?__token__
          ~(add-meta '?__fact__ type)
          ~'?__element-bindings__
          ~destructured-env]
@@ -1312,7 +1344,7 @@
                                     cmeta (meta condition)]
                                 (handle-expr prev
                                              (with-meta (compile-condition
-                                                          type (first args) constraints
+                                                          type id (first args) constraints
                                                           fact-binding env)
                                                         ;; Remove all metadata but file and line number
                                                         ;; to protect from evaluating unsafe metadata
@@ -1329,7 +1361,8 @@
         id->expr (reduce-kv (fn [prev id production-node]
                              (let [production (-> production-node :production)]
                                (handle-expr prev
-                                            (with-meta (compile-action (:bindings production-node)
+                                            (with-meta (compile-action id
+                                                                       (:bindings production-node)
                                                                        (:rhs production)
                                                                        (:env production))
                                                        (meta (:rhs production)))
@@ -1365,7 +1398,9 @@
                     ;; to capture.
                     prev
                     (handle-expr prev
-                                 (compile-join-filter (:join-filter-expressions beta-node)
+                                 (compile-join-filter id
+                                                      "ExpressionJoinNode"
+                                                      (:join-filter-expressions beta-node)
                                                       (:join-filter-join-bindings beta-node)
                                                       (:new-bindings beta-node)
                                                       (:env beta-node))
@@ -1377,7 +1412,9 @@
                                                 :msg "compiling expression join node"}}))
             :negation (if (:join-filter-expressions beta-node)
                         (handle-expr prev
-                                     (compile-join-filter (:join-filter-expressions beta-node)
+                                     (compile-join-filter id
+                                                          "NegationWithJoinFilterNode"
+                                                          (:join-filter-expressions beta-node)
                                                           (:join-filter-join-bindings beta-node)
                                                           (:new-bindings beta-node)
                                                           (:env beta-node))
@@ -1389,14 +1426,19 @@
                                                     :msg "compiling negation with join filter node"}})
                         prev)
             :test (handle-expr prev
-                               (compile-test (:constraints condition))
+                               (compile-test id (:constraints condition))
                                id
                                :test-expr
                                {:compile-ctx {:condition condition
                                               :env (:env beta-node)
                                               :msg "compiling test node"}})
             :accumulator (cond-> (handle-expr prev
-                                              (compile-accum (:accumulator beta-node) (:env beta-node))
+                                              (compile-accum id
+                                                             (if (:join-filter-expressions beta-node)
+                                                               "AccumulateWithJoinFilterNode"
+                                                               "AccumulateNode")
+                                                             (:accumulator beta-node)
+                                                             (:env beta-node))
                                               id
                                               :accum-expr
                                               {:compile-ctx {:condition condition
@@ -1405,7 +1447,9 @@
                                                              :msg "compiling accumulator"}})
 
                                  (:join-filter-expressions beta-node)
-                                 (handle-expr (compile-join-filter (:join-filter-expressions beta-node)
+                                 (handle-expr (compile-join-filter id
+                                                                   "AccumulateWithJoinFilterNode"
+                                                                   (:join-filter-expressions beta-node)
                                                                    (:join-filter-join-bindings beta-node)
                                                                    (:new-bindings beta-node)
                                                                    (:env beta-node))
