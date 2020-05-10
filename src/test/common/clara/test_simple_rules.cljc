@@ -194,3 +194,33 @@
     (is (has-fact? (:cold @side-effect-holder) (->Temperature -10 "MCI") ))
 
     (is (has-fact? (:subzero @side-effect-holder) (->Temperature -10 "MCI")))))
+
+(def-rules-test test-query-failure-when-provided-invalid-parameters
+
+  {:queries [temp-query [[:?t] [[Temperature (= ?t temperature)]]]]
+
+   :sessions [empty-session [temp-query] {}]}
+
+  (let [session (-> empty-session
+                    (insert (->Temperature 10 "MCI"))
+                    ;; Ensure retracting a nonexistent item has no ill effects.
+                    (retract (->Temperature 15 "MCI"))
+                    fire-rules)
+
+        expected-msg #"was not provided with the correct parameters"]
+
+    ;; passivity test
+    (is (= #{{:?t 10}}
+           (set (query session temp-query :?t 10))))
+
+    (is (thrown-with-msg? #?(:clj IllegalArgumentException :cljs js/Error)
+                          expected-msg
+                          (query session temp-query :?another-param 42)))
+
+    (is (thrown-with-msg? #?(:clj IllegalArgumentException :cljs js/Error)
+                          expected-msg
+                          (query session temp-query)))
+
+    (is (thrown-with-msg? #?(:clj IllegalArgumentException :cljs js/Error)
+                          expected-msg
+                          (query session temp-query :?t 42 :?another-param 42)))))
