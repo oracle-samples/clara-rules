@@ -44,6 +44,8 @@
     listener)
   (remove-activations! [listener node activations]
     listener)
+  (activation-group-transition! [listener previous-group new-group]
+    listener)
   (fire-rules! [listener node]
     listener))
 
