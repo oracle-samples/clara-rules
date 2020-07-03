@@ -17,7 +17,7 @@
      (:require [clara.rules :refer [fire-rules
                                     insert
                                     query]]
-               [clara.rules.testfacts :refer [->Temperature Temperaturer]]
+               [clara.rules.testfacts :refer [->Temperature Temperature]]
                [cljs.test]
                [schema.test :as st])
      (:require-macros [clara.tools.testing-utils :refer [def-rules-test]]
