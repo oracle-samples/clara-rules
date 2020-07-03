@@ -22,7 +22,8 @@
             [clara.test-clear-ns-productions]
             [clara.test-negation]
             [clara.performance.test-rule-execution]
-            [clara.test-node-sharing]))
+            [clara.test-node-sharing]
+            [clara.test-queries]))
 
 (enable-console-print!)
 
@@ -60,5 +61,6 @@
                     'clara.test-clear-ns-productions
                     'clara.test-negation
                     'clara.performance.test-rule-execution
-                    'clara.test-node-sharing)
+                    'clara.test-node-sharing
+                    'clara.test-queries)
     @*successful?*))

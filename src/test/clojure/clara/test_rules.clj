@@ -49,20 +49,6 @@
     (catch Exception e
       (is (= [:?t] (:variables (ex-data e)))))))
 
-(deftest test-simple-query
-  (let [cold-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]])
-
-        session (-> (mk-session [cold-query])
-                    (insert (->Temperature 15 "MCI"))
-                    (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI"))
-                    fire-rules)]
-
-    ;; The query should identify all items that were inserted and matchd the
-    ;; expected criteria.
-    (is (= #{{:?t 15} {:?t 10}}
-           (set (query session cold-query))))))
-
 (deftest test-param-query
   (let [cold-query (dsl/parse-query [:?l] [[Temperature (< temperature 50)
                                      (= ?t temperature)
