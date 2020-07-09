@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/cerner/clara-rules.svg?branch=master)](https://travis-ci.org/cerner/clara-rules)
+[![Build Status](https://travis-ci.org/cerner/clara-rules.svg?branch=main)](https://travis-ci.org/cerner/clara-rules)
 
 # _About_
 

@@ -14,7 +14,7 @@
  * since the WorkingMemory is immutable, creating a new instance that shares internal state when changes occur.
  * </p>
  *
- * See the <a href="https://github.com/cerner/clara-examples/blob/master/src/main/java/clara/examples/java/ExampleMain.java">Clara Examples</a>
+ * See the <a href="https://github.com/cerner/clara-examples/blob/main/src/main/java/clara/examples/java/ExampleMain.java">Clara Examples</a>
  * project for an example of this in action.
  */
 package clara.rules;
