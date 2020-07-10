@@ -49,43 +49,6 @@
     (catch Exception e
       (is (= [:?t] (:variables (ex-data e)))))))
 
-(deftest test-simple-query
-  (let [cold-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]])
-
-        session (-> (mk-session [cold-query])
-                    (insert (->Temperature 15 "MCI"))
-                    (insert (->Temperature 10 "MCI"))
-                    (insert (->Temperature 80 "MCI"))
-                    fire-rules)]
-
-    ;; The query should identify all items that were inserted and matchd the
-    ;; expected criteria.
-    (is (= #{{:?t 15} {:?t 10}}
-           (set (query session cold-query))))))
-
-(deftest test-param-query
-  (let [cold-query (dsl/parse-query [:?l] [[Temperature (< temperature 50)
-                                     (= ?t temperature)
-                                     (= ?l location)]])
-
-        session (-> (mk-session [cold-query])
-                    (insert (->Temperature 15 "MCI"))
-                    (insert (->Temperature 20 "MCI")) ; Test multiple items in result.
-                    (insert (->Temperature 10 "ORD"))
-                    (insert (->Temperature 35 "BOS"))
-                    (insert (->Temperature 80 "BOS"))
-                    fire-rules)]
-
-    ;; Query by location.
-    (is (= #{{:?l "BOS" :?t 35}}
-           (set (query session cold-query :?l "BOS"))))
-
-    (is (= #{{:?l "MCI" :?t 15} {:?l "MCI" :?t 20}}
-           (set (query session cold-query :?l "MCI"))))
-
-    (is (= #{{:?l "ORD" :?t 10}}
-           (set (query session cold-query :?l "ORD"))))))
-
 (defn identity-retract
   "Retract function that does nothing for testing purposes."
   [state retracted]
