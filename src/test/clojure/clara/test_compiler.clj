@@ -5,8 +5,7 @@
             [clara.rules.engine :as eng]
             [clojure.string :as str]
             [clara.rules.accumulators :as acc]
-            [clojure.main :as m]
-            [clara.rules.compiler :as com])
+            [clojure.main :as m])
   (:import [clara.rules.engine
             AlphaNode
             TestNode
@@ -70,9 +69,7 @@
                       :fact-binding :?c}]
                :params #{:?b}
                :name "a-query"}]
-    (try (com/mk-session [[query]])
-         (catch ExceptionInfo exc
-           (is (= (ex-data exc)
-                  {:expected-bindings #{:?b}
-                   :available-bindings #{:?c}
-                   :query "a-query"}))))))
+    (tu/assert-ex-data {:expected-bindings #{:?b}
+                        :available-bindings #{:?c}
+                        :query "a-query"}
+                       (r/mk-session [query]))))

@@ -1308,7 +1308,7 @@
                       (create-id-fn)
                       {:node-type :query
                        :query production})
-            (throw (ex-info "QueryNode does not contain bindings specified in parameters."
+            (throw (ex-info "Query does not contain bindings specified in parameters."
                             {:expected-bindings (:params production)
                              :available-bindings ancestor-bindings
                              :query (:name production)}))))))))
