@@ -1292,15 +1292,26 @@
                  beta-with-nodes))
 
         ;; No more conditions to add, so connect the production.
-        (add-node beta-graph
-                  parent-ids
-                  (create-id-fn)
-                  (if (:rhs production)
+        (if (:rhs production)
+          ;; if its a production node simply add it
+          (add-node beta-graph
+                    parent-ids
+                    (create-id-fn)
                     {:node-type :production
                      :production production
-                     :bindings ancestor-bindings}
-                    {:node-type :query
-                     :query production}))))))
+                     :bindings ancestor-bindings})
+          ;; else its a query node and we need to validate that the query has at least the bindings
+          ;; specified in the parameters
+          (if (every? ancestor-bindings (:params production))
+            (add-node beta-graph
+                      parent-ids
+                      (create-id-fn)
+                      {:node-type :query
+                       :query production})
+            (throw (ex-info "Query does not contain bindings specified in parameters."
+                            {:expected-bindings (:params production)
+                             :available-bindings ancestor-bindings
+                             :query (:name production)}))))))))
 
 
 (sc/defn to-beta-graph :- schema/BetaGraph

@@ -14,7 +14,8 @@
             ProductionNode
             NegationWithJoinFilterNode
             ExpressionJoinNode
-            RootJoinNode]))
+            RootJoinNode]
+           [clojure.lang ExceptionInfo]))
 
 ;; See https://github.com/cerner/clara-rules/pull/451 for more info
 (tu/def-rules-test test-nodes-have-named-fns
@@ -56,3 +57,19 @@
                                          (:id node)))
                         (-> node-fn str m/demunge (str/split #"/") last)))
           (str "For node: " node " and node-fn: " node-fn)))))
+
+;; See https://github.com/cerner/clara-rules/issues/454 for more info
+(deftest test-query-node-requires-bindings-exist
+  (let [;; (defquery a-query
+        ;;   [:?b]
+        ;;   [?c <- ::a-fact-type])
+        query {:lhs [{:type ::a-fact-type
+                      :constraints []
+                      :args []
+                      :fact-binding :?c}]
+               :params #{:?b}
+               :name "a-query"}]
+    (tu/assert-ex-data {:expected-bindings #{:?b}
+                        :available-bindings #{:?c}
+                        :query "a-query"}
+                       (r/mk-session [query]))))

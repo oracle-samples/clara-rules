@@ -1986,6 +1986,10 @@
     (let [query-node (get-in rulebase [:query-nodes query])]
       (when (= nil query-node)
         (platform/throw-error (str "The query " query " is invalid or not included in the rule base.")))
+      (when-not (= (into #{} (keys params)) ;; nil params should be equivalent to #{}
+                   (:param-keys query-node))
+        (platform/throw-error (str "The query " query " was not provided with the correct parameters, expected: "
+                                   (:param-keys query-node) ", provided: " (set (keys params)))))
 
       (->> (mem/get-tokens memory query-node params)
 
