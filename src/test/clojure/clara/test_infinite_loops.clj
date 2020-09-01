@@ -206,3 +206,15 @@
                     (fire-rules {:max-cycles 30})
                     (query first-query)))
          21)))
+
+(def-rules-test test-invalid-on-limit-fn-error
+
+  {:rules [hot-rule [[[:not [Hot]]]
+                     (insert! (->Cold nil))]]
+
+   :sessions [empty-session [hot-rule] {}]}
+  
+  (assert-ex-data
+   {:clara-rules/max-cycles-exceeded-fn "NOT A FUNCTION"}
+   (ld/with-loop-detection empty-session 3000 "NOT A FUNCTION")))
+    

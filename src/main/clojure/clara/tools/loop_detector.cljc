@@ -67,12 +67,13 @@
         (reset! warned true)
         (wrapped-fn)))))
 
-(defn on-error-fns
-  [lookup]
-  (case lookup
-    :throw-exception throw-exception-on-max-cycles
-    :standard-out-warning ->standard-out-warning
-    nil))
+(defn on-limit-fn-lookup
+  [fn-or-keyword]
+  (cond
+    (= fn-or-keyword :throw-exception) throw-exception-on-max-cycles
+    (= fn-or-keyword :standard-out-warning) ->standard-out-warning
+    (ifn? fn-or-keyword) fn-or-keyword
+    :else (throw (ex-info "The :on-error-fn must be a non-nil function value" {:clara-rules/max-cycles-exceeded-fn fn-or-keyword}))))
 
 
 (defn with-loop-detection
@@ -98,5 +99,4 @@
     (CyclicalRuleListener.
      (atom 0)
      max-cycles
-     (->invoke-once-fn (or (on-error-fns on-limit-fn)
-                           on-limit-fn)))))
+     (->invoke-once-fn (on-limit-fn-lookup on-limit-fn)))))
