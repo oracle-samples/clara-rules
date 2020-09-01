@@ -103,7 +103,7 @@
                         ;; high enough for some use cases will allow others to create OutOfMemory errors in cases
                         ;; like these but we can at least throw when there is enough memory available to hold the facts
                         ;; created in the loop.
-                        (fire-rules {:max-cycles 10})))))
+                        fire-rules))))
 
 (def-rules-test test-recursive-insertion-loop-no-salience
 
@@ -120,7 +120,7 @@
     (assert-ex-data {:clara-rules/infinite-loop-suspected true}
                     (-> watched-session
                         (insert (->First))
-                        (fire-rules {:max-cycles 10})))))
+                        fire-rules))))
 
 (def-rules-test test-recursive-insertion-loop-with-salience
 
@@ -141,7 +141,7 @@
     (assert-ex-data {:clara-rules/infinite-loop-suspected true}
                     (-> session
                         (insert (->First))
-                        (fire-rules {:max-cycles 10})))))
+                        fire-rules))))
 
 (def-rules-test test-tracing-infinite-loop
 
@@ -197,15 +197,59 @@
   (assert-ex-data {:clara-rules/infinite-loop-suspected true}
                   (-> (ld/with-loop-detection empty-session 10 :throw-exception)
                       (insert (->First))
-                      (fire-rules {:max-cycles 10})))
+                      fire-rules))
 
   (reset! side-effect-holder 0)
 
   (is (= (count (-> (ld/with-loop-detection empty-session 30 :throw-exception)
                     (insert (->First))
-                    (fire-rules {:max-cycles 30})
+                    fire-rules
                     (query first-query)))
          21)))
+
+(def-rules-test test-max-cycles-per-fire-rules-call
+
+  {:rules [recursive-rule-with-end [[[First]]
+                                    (when (< @side-effect-holder 10)
+                                      (do
+                                        (insert-unconditional! (->First))
+                                        (swap! side-effect-holder inc)))]]
+
+   :queries [first-query [[] [[?f <- First]]]]
+
+   :sessions [empty-session [recursive-rule-with-end first-query] {}]}
+
+  (let [detection-session (ld/with-loop-detection empty-session 15 :throw-exception)
+        apply-loop (fn [session]
+                     (-> session
+                         (insert (->First))
+                         (fire-rules)))
+
+        _ (reset! side-effect-holder 0)
+
+        session-1 (apply-loop detection-session)
+
+        _ (reset! side-effect-holder 0)
+
+        ;; Between this and the previous apply-loop call there are sufficient
+        ;; cycles to throw an exception if they all occurred in the same fire-rules
+        ;; loop.  Since they did not no exception should be thrown.
+        session-2 (apply-loop session-1)]
+
+    (reset! side-effect-holder -20)
+
+    ;; This verifies that notwithstanding the previous fire-rules call that did not throw exceptions
+    ;; one can still be thrown if the threshold is breached.  It also serves as a sanity test that
+    ;; the loop we're causing can in fact throw an exception; if this was not the case the previous actions
+    ;; succeeding would not be a meaningful result.
+    (assert-ex-data {:clara-rules/infinite-loop-suspected true}
+                    (apply-loop session-2))
+
+    (reset! side-effect-holder 0)
+    ;; Verify that the breach of the max-cycles threshold in one fire-rules call on session-2 does not
+    ;; impact another fire-rules on session-2, consistent with sessions in the persistent state being
+    ;; immutable persistent data structures.
+    (apply-loop session-2)))
 
 (def-rules-test test-invalid-on-limit-fn-error
 

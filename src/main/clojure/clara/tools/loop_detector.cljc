@@ -3,7 +3,9 @@
             [clara.rules.engine :as eng]
             [clara.tools.tracing :as trace]))
 
-(deftype CyclicalRuleListener [cycles-count max-cycles on-limit-fn]
+;; Although we use a single type here note that the cycles-count and the on-limit-delay fields
+;; will be nil during the persistent state of the listener.
+(deftype CyclicalRuleListener [cycles-count max-cycles on-limit-fn on-limit-delay]
     l/ITransientEventListener
   (left-activate! [listener node tokens]
     listener)
@@ -39,14 +41,19 @@
     listener)
   (activation-group-transition! [listener original-group new-group]
     (when (>= @cycles-count max-cycles)
-      (on-limit-fn))
+      @on-limit-delay)
     (swap! cycles-count inc))
   (to-persistent! [listener]
-    (CyclicalRuleListener. (atom 0) max-cycles on-limit-fn))
+    (CyclicalRuleListener. nil max-cycles on-limit-fn nil))
 
   l/IPersistentEventListener
   (to-transient [listener]
-    listener))
+    ;; To-transient will be called when a call to fire-rules begins, and to-persistent! will be called when it ends.
+    ;; The resetting of the cycles-count atom prevents cycles from one call of fire-rules from leaking into the count
+    ;; for another.  Similarly the on-limit-fn should be invoked 1 or 0 times per fire-rules call. We only call
+    ;; it once, rather than each time the limit is breached, since it may not cause the call to terminate but rather log
+    ;; something etc., in which case we don't want to spam the user's logs.
+    (CyclicalRuleListener. (atom 0) max-cycles on-limit-fn (delay (on-limit-fn)))))
 
 (defn throw-exception-on-max-cycles
   []
@@ -58,14 +65,6 @@
 (defn ->standard-out-warning
   []
   (println "Reached maximum activation group transitions threshhold; an infinite loop is suspected"))
-
-(defn ->invoke-once-fn
-  [wrapped-fn]
-  (let [warned (atom false)]
-    (fn []
-      (when-not @warned
-        (reset! warned true)
-        (wrapped-fn)))))
 
 (defn on-limit-fn-lookup
   [fn-or-keyword]
@@ -93,10 +92,12 @@
    :standard-out-warning - This prints a warning to standard out."
 
   [session max-cycles on-limit-fn]
-  
-  (eng/with-listener
-    session
-    (CyclicalRuleListener.
-     (atom 0)
-     max-cycles
-     (->invoke-once-fn (on-limit-fn-lookup on-limit-fn)))))
+
+  (let [on-limit-fn-normalized (on-limit-fn-lookup on-limit-fn)]
+    (eng/with-listener
+      session
+      (CyclicalRuleListener.
+       nil
+       max-cycles
+       on-limit-fn-normalized
+       nil))))
