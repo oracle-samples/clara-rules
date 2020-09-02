@@ -203,3 +203,18 @@
                      e# \newline
                      "Non matches found: " \newline
                      res#)))))))
+
+#?(:clj
+   (defn ex-data-maps
+    "Given a throwable/exception/error `t`, return all `ex-data` maps from the stack trace cause chain in 
+     the order they occur traversing the chain from this `t` through the rest of the call stack."
+     [t]
+     (let [append-self (fn append-self
+                          [prior t1]
+                          (if t1
+                            (append-self (conj prior t1) (.getCause ^Throwable t1))
+                            prior))
+           throwables  (append-self [] t)]
+       (into []
+             (comp (map ex-data))
+             throwables))))

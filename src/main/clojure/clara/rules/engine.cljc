@@ -1751,7 +1751,9 @@
           ;; group before continuing.
           (do
             (flush-updates *current-session*)
-            (recur (mem/next-activation-group transient-memory) next-group))
+            (let [upcoming-group (mem/next-activation-group transient-memory)]
+              (l/activation-group-transition! listener next-group upcoming-group)
+              (recur upcoming-group next-group)))
 
           (do
 
@@ -1820,7 +1822,7 @@
                                                                []
                                                                (l/get-children p-listener)))
                                                            (catch #?(:clj Exception :cljs :default)
-                                                             listener-exception
+                                                               listener-exception
                                                              listener-exception))}
                                              e)))))
 
@@ -1835,7 +1837,9 @@
         ;; updates and recur with a potential new activation group
         ;; since a flushed item may have triggered one.
         (when (flush-updates *current-session*)
-          (recur (mem/next-activation-group transient-memory) next-group))))))
+          (let [upcoming-group (mem/next-activation-group transient-memory)]
+            (l/activation-group-transition! listener next-group upcoming-group)
+            (recur upcoming-group next-group)))))))
 
 (deftype LocalSession [rulebase memory transport listener get-alphas-fn pending-operations]
   ISession
@@ -2007,9 +2011,7 @@
     {:rulebase rulebase
      :memory memory
      :transport transport
-     :listeners (if (l/null-listener? listener)
-                  []
-                  (l/get-children listener))
+     :listeners (l/flatten-listener listener)
      :get-alphas-fn get-alphas-fn}))
 
 (defn assemble
