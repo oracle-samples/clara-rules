@@ -2087,6 +2087,16 @@
          (vary-meta production assoc ::rule-load-order (or n 0)))
        (range) productions))
 
+
+(defn remove-blacklisted-rules
+  "If an option :blacklist was provided by the user, we filter out the production names indicated."
+  [options productions]
+  (let [blacklist (set (map str (:blacklist options)))
+        not-contains? (complement contains?)]
+    (if (empty? blacklist)
+      productions
+      (filter #(not-contains? blacklist (:name %)) productions))))
+
 (defn mk-session
   "Creates a new session using the given rule source. The resulting session
   is immutable, and can be used with insert, retract, fire-rules, and query functions."
@@ -2098,6 +2108,7 @@
                           (mapcat #(if (satisfies? IRuleSource %)
                                      (load-rules %)
                                      %))
+                          (remove-blacklisted-rules options)
                           add-production-load-order
                           ;; Ensure that we choose the earliest occurrence of a rule for the purpose of rule order.
                           ;; There are Clojure core functions for distinctness, of course, but none of them seem to guarantee

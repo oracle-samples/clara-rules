@@ -11,6 +11,7 @@ Community
 - David Goeke [@dgoeke]
 - Dave Dixon [@sparkofreason]
 - Baptiste Fontaine [@bfontaine]
+- Wanderson Ferreira [@bartuka]
 
 [@rbrush]: https://github.com/rbrush
 [@mrrodriguez]: https://github.com/mrrodriguez
@@ -21,3 +22,4 @@ Community
 [@sparkofreason]: https://github.com/sparkofreason
 [@bfontaine]: https://github.com/bfontaine
 [@sunilgunisetty]: https://github.com/sunilgunisetty
+[@bartuka]: https://github.com/wandersoncferreira
