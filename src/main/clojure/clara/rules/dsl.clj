@@ -7,6 +7,7 @@
             [clojure.walk :as walk]
             [clara.rules.engine :as eng]
             [clara.rules.compiler :as com]
+            [clara.rules.platform :as platform]
             [clara.rules.schema :as schema]
             [schema.core :as sc])
   (:refer-clojure :exclude [qualified-keyword?]))
@@ -277,7 +278,7 @@
 
          query {:lhs (list 'quote (mapv #(resolve-vars % (destructure-syms %))
                                         conditions))
-                :params (set params)}
+                :params (set (map platform/query-param params))}
 
          symbols (set (filter symbol? (com/flatten-expression lhs)))
          matching-env (into {}

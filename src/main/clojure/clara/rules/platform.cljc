@@ -7,6 +7,16 @@
   [^String description]
   (throw #?(:clj (IllegalArgumentException. description) :cljs (js/Error. description))))
 
+(defn query-param
+  "Coerces a query param to a parameter keyword such as :?param, if an unsupported type is
+   supplied then an exception will be thrown"
+  [p]
+  (cond
+   (keyword? p) p
+   (symbol? p) (keyword p)
+   :else
+   (throw-error (str "Query bindings must be specified as a keyword or symbol: " p))))
+
 ;; This class wraps Clojure objects to ensure Clojure's equality and hash
 ;; semantics are visible to Java code. This allows these Clojure objects
 ;; to be safely used in things like Java Sets or Maps.
