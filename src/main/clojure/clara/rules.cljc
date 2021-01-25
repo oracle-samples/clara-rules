@@ -48,13 +48,16 @@
   "Runs the given query with the optional given parameters against the session.
    The optional parameters should be in map form. For example, a query call might be:
 
-   (query session get-by-last-name :last-name \"Jones\")
+   (query session get-by-last-name :?last-name \"Jones\")
 
    The query itself may be either the var created by a defquery statement,
    or the actual name of the query.
    "
   [session query & params]
-  (eng/query session query (apply hash-map params)))
+  (let [params-map (->> (for [[param value] (apply hash-map params)]
+                          [(platform/query-param param) value])
+                        (into {}))]
+    (eng/query session query params-map)))
 
 (defn insert!
   "To be executed within a rule's right-hand side, this inserts a new fact or facts into working memory.

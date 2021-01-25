@@ -521,8 +521,14 @@
                (= ?t temperature)
                (= ?l location)])
 
+(defquery hot-query
+  [?l]
+  [Temperature (>= temperature 50)
+               (= ?t temperature)
+               (= ?l location)])
+
 (deftest test-defquery
-  (let [session (-> (mk-session [cold-query])
+  (let [session (-> (mk-session [cold-query hot-query])
                     (insert (->Temperature 15 "MCI"))
                     (insert (->Temperature 20 "MCI")) ; Test multiple items in result.
                     (insert (->Temperature 10 "ORD"))
@@ -530,16 +536,33 @@
                     (insert (->Temperature 80 "BOS"))
                     fire-rules)]
 
-
     ;; Query by location.
-    (is (= #{{:?l "BOS" :?t 35}}
-           (set (query session cold-query :?l "BOS"))))
 
-    (is (= #{{:?l "MCI" :?t 15} {:?l "MCI" :?t 20}}
-           (set (query session cold-query :?l "MCI"))))
+    (testing "query by location with :?keyword params"
+      (is (= #{{:?l "BOS" :?t 35}}
+             (set (query session cold-query :?l "BOS"))))
 
-    (is (= #{{:?l "ORD" :?t 10}}
-           (set (query session cold-query :?l "ORD"))))))
+      (is (= #{{:?l "BOS" :?t 80}}
+             (set (query session hot-query :?l "BOS"))))
+
+      (is (= #{{:?l "MCI" :?t 15} {:?l "MCI" :?t 20}}
+             (set (query session cold-query :?l "MCI"))))
+
+      (is (= #{{:?l "ORD" :?t 10}}
+             (set (query session cold-query :?l "ORD")))))
+
+    (testing "query by location with '?symbol params"
+      (is (= #{{:?l "BOS" :?t 35}}
+             (set (query session cold-query '?l "BOS"))))
+
+      (is (= #{{:?l "BOS" :?t 80}}
+             (set (query session hot-query '?l "BOS"))))
+
+      (is (= #{{:?l "MCI" :?t 15} {:?l "MCI" :?t 20}}
+             (set (query session cold-query '?l "MCI"))))
+
+      (is (= #{{:?l "ORD" :?t 10}}
+             (set (query session cold-query '?l "ORD")))))))
 
 (deftest test-rules-from-ns
   ;; Validate that rules behave identically when loaded from vars that contain a single
