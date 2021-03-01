@@ -308,7 +308,7 @@
                          [(deref %)])))))))
 
 #?(:clj
-  (defmacro mk-session
+  (defn mk-session
      "Creates a new session using the given rule sources. The resulting session
       is immutable, and can be used with insert, retract, fire-rules, and query functions.
 
@@ -346,8 +346,8 @@
       users must use pre-defined rule sessions using defsession."
      [& args]
      (if (and (seq args) (not (keyword? (first args))))
-       `(com/mk-session ~(vec args)) ; At least one namespace given, so use it.
-       `(com/mk-session (concat [(ns-name *ns*)] ~(vec args)))))) ; No namespace given, so use the current one.
+       (com/mk-session (vec args)) ; At least one namespace given, so use it.
+       (com/mk-session (cons (ns-name *ns*) (vec args)))))) ; No namespace given, so use the current one.
 
 #?(:clj
   (defmacro defsession
