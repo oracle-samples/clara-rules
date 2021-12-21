@@ -415,17 +415,18 @@
         (list `-> '?__token__ :bindings binding-key)))
 
 ;; FIXME: add env...
-(defn compile-test [node-id tests]
-  (let [binding-keys (variables-as-keywords tests)
+(defn compile-test [node-id constraints]
+  (let [binding-keys (variables-as-keywords constraints)
         assignments (mapcat build-token-assignment binding-keys)
 
         ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-test' to be used for this scenario
         fn-name (mk-node-fn-name "TestNode" node-id "TE")]
 
-    `(fn ~fn-name [~'?__token__]
-       (let [~@assignments]
-
-        (and ~@tests)))))
+    `(let [handler# (fn ~fn-name [~'?__token__]
+                      (let [~@assignments]
+                        (and ~@constraints)))]
+       {:handler handler#
+        :constraints '~constraints})))
 
 (defn compile-action
   "Compile the right-hand-side action of a rule, returning a function to execute it."

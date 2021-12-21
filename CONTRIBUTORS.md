@@ -11,6 +11,7 @@ Community
 - David Goeke [@dgoeke]
 - Dave Dixon [@sparkofreason]
 - Baptiste Fontaine [@bfontaine]
+- Jose Gomez [@k13gomez]
 
 [@rbrush]: https://github.com/rbrush
 [@mrrodriguez]: https://github.com/mrrodriguez

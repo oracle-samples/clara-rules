@@ -2361,9 +2361,25 @@
                   (query check-exception))
               (is false "Scope binding test is expected to throw an exception.")
               (catch Exception e e))]
-
       (is (= {:?w 10, :?t nil}
              (-> e (ex-data) :bindings))))))
+
+(deftest test-include-details-when-exception-is-thrown-in-test-filter
+  (testing "when a condition exception is thrown ensure it contains the necessary details and text"
+    (let [check-exception (assoc (dsl/parse-query [] [[WindSpeed (= ?w windspeed)]
+                                                      [Temperature (= ?t temperature)]
+                                                      [:test (> ?t ?w)]])
+                                 :name "my-test-query")]
+
+      (assert-ex-data "Condition exception raised.\nwith no fact\nwith bindings\n  {:?w 10, :?t nil}\nConditions:\n\n1. [:test (> ?t ?w)]\n   queries:\n     my-test-query\n"
+                      {:bindings {:?w 10, :?t nil}
+                       :fact nil
+                       :env {}
+                       :conditions-and-rules {[:test '(> ?t ?w)] #{[:query "my-test-query"]}}}
+                      (-> (mk-session [check-exception])
+                          (insert (->WindSpeed 10 "MCI") (->Temperature nil "MCI"))
+                          (fire-rules)
+                          (query check-exception))))))
 
 ;;; Test that we can properly assemble a session, insert facts, fire rules,
 ;;; and run a query with keyword-named productions.

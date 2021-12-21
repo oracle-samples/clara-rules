@@ -488,13 +488,15 @@
 
 (defn- throw-condition-exception
   "Adds a useful error message when executing a constraint node raises an exception."
-  [{:keys [cause node fact env bindings]}]
+  [{:keys [cause node fact env bindings] :as args}]
   (let [bindings-description (if (empty? bindings)
-                               "with no bindings\n"
+                               "with no bindings"
                                (str "with bindings\n  " bindings))
+        facts-description (if (contains? args :fact)
+                            (str "when processing fact\n " (pr-str fact))
+                            "with no fact")
         message-header (string/join ["Condition exception raised.\n"
-                                     "when processing fact\n"
-                                     (str "  " (pr-str fact) "\n")
+                                     (str facts-description "\n")
                                      (str bindings-description "\n")
                                      "Conditions:\n"])
         conditions-and-rules (get-conditions-and-rule-names node)
@@ -924,6 +926,16 @@
                              constraints)]
       [:not (into [type] full-constraints)])))
 
+(defn- test-node-matches
+  [node test-handler env token]
+  (let [test-result (try
+                      (test-handler token)
+                      (catch #?(:clj Exception :cljs :default) e
+                        (throw-condition-exception {:cause e
+                                                    :node node
+                                                    :env env
+                                                    :bindings (:bindings token)})))]
+    test-result))
 
 ;; The test node represents a Rete extension in which an arbitrary test condition is run
 ;; against bindings from ancestor nodes. Since this node
@@ -937,7 +949,10 @@
      memory
      listener
      children
-     (filter test tokens)))
+     (platform/eager-for
+      [token tokens
+       :when (test-node-matches node (:handler test) {} token)]
+      token)))
 
   (left-retract [node join-bindings tokens memory transport listener]
     (l/left-retract! listener node tokens)
@@ -945,7 +960,11 @@
 
   (get-join-keys [node] [])
 
-  (description [node] (str "TestNode -- " (:text test))))
+  (description [node] (str "TestNode -- " (:text test)))
+
+  IConditionNode
+  (get-condition-description [this]
+    (into [:test] (:constraints test))))
 
 (defn- do-accumulate
   "Runs the actual accumulation.  Returns the accumulated value."
