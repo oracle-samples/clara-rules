@@ -1,5 +1,8 @@
 This is a history of changes to clara-rules.
 
+# 0.22.0-SNAPSHOT
+* Try and catch TestNode expression evaluation so that exceptions thrown are re-thrown wrapped in a condition exception which includes production name and bindings information. See [PR 471](https://github.com/cerner/clara-rules/pull/471).
+
 # 0.21.1
 * Add support to specify query binding arguments as symbols instead of only keywords so that defquery syntax looks closer to function definition syntax. See [PR 463](https://github.com/cerner/clara-rules/pull/463).
 
