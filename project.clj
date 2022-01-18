@@ -89,4 +89,8 @@
                               [:name "Ryan Brush"]
                               [:url "http://www.clara-rules.org"]]]
   :deploy-repositories [["snapshots" {:url "https://oss.sonatype.org/content/repositories/snapshots/"
-                                      :creds :gpg}]])
+                                      :creds :gpg}]
+                        ["clojars" {:url "https://repo.clojars.org"
+                                    :username :env/clojars_username
+                                    :password :env/clojars_password
+                                    :sign-releases false}]])
