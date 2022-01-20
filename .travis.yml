@@ -4,6 +4,13 @@ script:
   - lein test
   - lein test :generative
   - lein with-profile dev,recent-clj test
+deploy:
+  provider: script
+  script: lein deploy clojars
+  on:
+    tags: true
+    all_branches: false
+    condition: $TRAVIS_TAG =~ ^(\d+)\.(\d+)\.(\d+)(-.+)?$
 # Workaround for https://github.com/travis-ci/travis-ci/issues/4691
 sudo: required
 jdk:
