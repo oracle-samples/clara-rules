@@ -1,17 +1,22 @@
+os: linux
+# see https://docs.travis-ci.com/user/reference/xenial/
+dist: xenial
 language: clojure
 lein: 2.7.1
-script:
-  - lein test
-  - lein test :generative
-  - lein with-profile dev,recent-clj test
-deploy:
-  provider: script
-  script: lein deploy clojars
-  on:
-    tags: true
-    all_branches: false
-    condition: $TRAVIS_TAG =~ ^(\d+)\.(\d+)\.(\d+)(-.+)?$
-# Workaround for https://github.com/travis-ci/travis-ci/issues/4691
-sudo: required
 jdk:
   - openjdk8
+# see https://docs.travis-ci.com/user/build-stages/
+stages:
+  - test
+  - deploy
+jobs:
+  include:
+    - stage: test
+      script:
+        - lein test
+        - lein test :generative
+        - lein with-profile dev,recent-clj test
+    - stage: deploy
+      script: lein deploy clojars
+      #see https://docs.travis-ci.com/user/conditions-v1
+      if: fork = false AND tag =~ ^(\d+)\.(\d+)\.(\d+)(-.+)?$
