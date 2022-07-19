@@ -132,7 +132,11 @@
   ([^Reader rdr]
    (read-record rdr nil))
   ([^Reader rdr add-fn]
-   (let [builder (-> (.readObject rdr) resolve deref)
+   (let [try-resolve #(if-let [clazz (resolve %)]
+                        clazz
+                        (throw (ex-info (str "Unable to resolve record symbol: '" % "'")
+                                        {:record-class %})))
+         builder (-> (.readObject rdr) try-resolve deref)
          build-map (.readObject rdr)
          m (read-meta rdr)]
      (cond-> (builder build-map)
