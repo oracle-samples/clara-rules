@@ -134,7 +134,7 @@
   ([^Reader rdr add-fn]
    (let [try-resolve #(if-let [clazz (resolve %)]
                         clazz
-                        (throw (ex-info (str "Unable to resolve record symbol: '" % "'")
+                        (throw (ex-info (str "Unable to resolve fact type symbol: '" % "'")
                                         {:record-class %})))
          builder (-> (.readObject rdr) try-resolve deref)
          build-map (.readObject rdr)
