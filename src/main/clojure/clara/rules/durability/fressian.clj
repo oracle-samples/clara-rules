@@ -135,7 +135,7 @@
    (let [try-resolve #(if-let [clazz (resolve %)]
                         clazz
                         (throw (ex-info (str "Unable to resolve fact type symbol: '" % "'")
-                                        {:record-class %})))
+                                        {:fact-type-class %})))
          builder (-> (.readObject rdr) try-resolve deref)
          build-map (.readObject rdr)
          m (read-meta rdr)]
