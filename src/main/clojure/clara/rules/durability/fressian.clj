@@ -132,10 +132,10 @@
   ([^Reader rdr]
    (read-record rdr nil))
   ([^Reader rdr add-fn]
-   (let [try-resolve #(if-let [clazz (resolve %)]
-                        clazz
+   (let [try-resolve #(if-let [resolved (resolve %)]
+                        resolved
                         (throw (ex-info (str "Unable to resolve fact type symbol: '" % "'")
-                                        {:fact-type-class %})))
+                                        {:unresolvable-symbol %})))
          builder (-> (.readObject rdr) try-resolve deref)
          build-map (.readObject rdr)
          m (read-meta rdr)]
