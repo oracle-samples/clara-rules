@@ -1281,9 +1281,9 @@
                                           [:or
                                            [Cold (= ?temp temperature)
                                             (< temperature 10)]
-                                           [Windspeed (= ?loc location)
+                                           [WindSpeed (= ?loc location)
                                             (< windspeed 50)]
-                                           [:not [Windspeed (= ?loc location)
+                                           [:not [WindSpeed (= ?loc location)
                                                   (< windspeed ?unbound)]]]])
 
         negation-equality-unbound (dsl/parse-query []

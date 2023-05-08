@@ -1,0 +1,8 @@
+{:lint-as {clara.rules/defsession clojure.core/def
+           clara.rules.platform/eager-for clojure.core/for}
+ :config-in-call {clara.tools.testing-utils/def-rules-test {:ignore [:unresolved-symbol
+                                                                     :unresolved-var]}}
+ :hooks {:analyze-call {clara.rules/defquery hooks.clara-rules/analyze-defquery-macro
+                        clara.rules/defrule hooks.clara-rules/analyze-defrule-macro
+                        clara.rules.dsl/parse-query hooks.clara-rules/analyze-parse-query-macro
+                        clara.rules.dsl/parse-rule hooks.clara-rules/analyze-parse-rule-macro}}}
