@@ -1,0 +1,1 @@
+{:config-paths ["../clj-kondo/clj-kondo.exports/clara/rules"]}

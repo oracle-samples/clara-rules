@@ -1920,6 +1920,7 @@
 
         get-alphas-fn (create-get-alphas-fn fact-type-fn ancestors-fn alpha-map)]
 
+    #_{:clj-kondo/ignore [:unresolved-symbol]}
     (strict-map->Rulebase
      {:alpha-roots alpha-map
       :beta-roots beta-roots

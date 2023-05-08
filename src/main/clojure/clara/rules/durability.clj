@@ -339,7 +339,8 @@
                         (mem/->RuleOrderedActivation (.-node-id act)
                                                      (index-token internal-seen seen (.-token act))
                                                      (.-activation act)
-                                                     (.-rule-load-order act)))
+                                                     (.-rule-load-order act)
+                                                     false))
                       %)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
