@@ -3,8 +3,9 @@
   (:require #?(:clj  [clojure.test :refer :all]
                :cljs [cljs.test :refer-macros [is deftest testing]])
 
-            #?(:clj  [clara.rules :refer :all]
-               :cljs [clara.rules :refer [insert insert! fire-rules query]
+            #?(:clj  [clara.rules :refer [defrule defsession defquery
+                                          insert fire-rules query]]
+               :cljs [clara.rules :refer [insert fire-rules query]
                                   :refer-macros [defrule defsession defquery]])
 
             [clara.rules.accumulators :as acc]

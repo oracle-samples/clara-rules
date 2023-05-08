@@ -474,7 +474,8 @@
                   (mem/->RuleOrderedActivation (.readObject rdr)
                                                (.readObject rdr)
                                                (.readObject rdr)
-                                               (.readObject rdr))))}}
+                                               (.readObject rdr)
+                                               false)))}}
 
    "clara/memidx"
    {:class MemIdx
