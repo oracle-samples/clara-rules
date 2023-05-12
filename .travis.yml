@@ -13,6 +13,7 @@ jobs:
   include:
     - stage: test
       script:
+        - lein clj-kondo-lint
         - lein test
         - lein test :generative
         - lein with-profile dev,recent-clj test
