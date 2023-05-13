@@ -71,7 +71,8 @@
                                (->Cold 10))
                        (fire-rules))]
     (is (empty?
-         (query different-temps negation-inside-negation-query)
+         (query different-temps negation-inside-negation-query)))
+    (is (empty?
          (query different-temps negation-inside-negation-ancestors-query)))
 
     (is (= [{:?l "MCI"}]

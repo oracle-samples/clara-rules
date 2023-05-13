@@ -25,7 +25,7 @@
             [com.github.clj-kondo/lein-clj-kondo "0.2.4" :exclusions [org.clojure/clojure
                                                                       org.clojure/clojurescript]]]
   :aliases {"clj-kondo-deps" ["clj-kondo" "--copy-configs" "--dependencies" "--parallel" "--lint" "$classpath"]
-            "clj-kondo-lint" ["do" ["clj-kondo-deps"] ["clj-kondo" "--lint" "src/main" "--fail-level" "error"]]}
+            "clj-kondo-lint" ["do" ["clj-kondo-deps"] ["clj-kondo" "--lint" "src/main:src/test" "--fail-level" "error"]]}
   :codox {:namespaces [clara.rules clara.rules.dsl clara.rules.accumulators
                        clara.rules.listener clara.rules.durability
                        clara.tools.inspect clara.tools.tracing

@@ -62,7 +62,7 @@
                    (seq (:children node))
                    (concat token-seq (extract-arg-tokens (:children node)))
 
-                   :else token-seq)) [] node-seq)
+                   :else token-seq)) [(api/token-node 'this)] node-seq)
        (set)
        (sort-by node-value)))
 
@@ -79,7 +79,7 @@
           (symbol? (node-value fact-node))
           [(api/vector-node (vec (extract-arg-tokens condition))) condition]
 
-          :else [(api/vector-node []) condition])
+          :else [(api/vector-node [(api/token-node 'this)]) condition])
         args-binding-set (set (map node-value (:children production-args)))
         prev-bindings-set (->> (mapcat (comp :children first) prev-bindings)
                                (filter binding-node?)
@@ -225,7 +225,7 @@
                                 (vec production-output))))
         fn-node (api/list-node
                   (list
-                    (api/token-node 'clojure.core/fn)
+                    (api/token-node 'fn)
                     input-args
                     production-result))
         new-node (api/map-node
@@ -280,7 +280,7 @@
                               (api/vector-node
                                 (vec production-output))))
         fn-node (api/list-node
-                  (cond-> (list (api/token-node 'clojure.core/fn))
+                  (cond-> (list (api/token-node 'fn))
                     production-docs (concat [production-docs])
                     :always (concat [input-args])
                     production-opts (concat [production-opts])
@@ -330,7 +330,7 @@
                               body-node))
         fn-node (api/list-node
                    (list
-                     (api/token-node 'clojure.core/fn)
+                     (api/token-node 'fn)
                      input-args
                      production-result))
         new-node (api/map-node
@@ -378,7 +378,7 @@
                                 (vec production-output))
                               body-seq))
         fn-node (api/list-node
-                  (cond-> (list (api/token-node 'clojure.core/fn))
+                  (cond-> (list (api/token-node 'fn))
                     production-docs (concat [production-docs])
                     :always (concat [input-args])
                     production-opts (concat [production-opts])
@@ -390,4 +390,49 @@
                        (api/map-node
                          [(api/keyword-node :production) fn-node])))
                    merge {:clj-kondo/ignore [:clojure-lsp/unused-public-var]})]
+    {:node new-node}))
+
+
+(defn analyze-def-rules-test-macro
+  [{:keys [:node]}]
+  (let [[test-name test-params & test-body] (rest (:children node))
+        {:keys [rules
+                queries
+                sessions]} (->> (:children test-params)
+                                (partition 2)
+                                (map (juxt (comp api/sexpr first) last))
+                                (into {}))
+        rules-seq (for [[name-node rule-node] (partition 2 (:children rules))]
+                    [name-node (analyze-parse-rule-macro
+                                 {:node (api/list-node
+                                          (list*
+                                            (api/token-node 'clara.rules.dsl/parse-rule)
+                                            (:children rule-node)))})])
+        query-seq (for [[name-node query-node] (partition 2 (:children queries))]
+                    [name-node (analyze-parse-query-macro
+                                 {:node (api/list-node
+                                          (list*
+                                            (api/token-node 'clara.rules.dsl/parse-query)
+                                            (:children query-node)))})])
+        session-seq (for [[name-node productions-node options-node] (partition 3 (:children sessions))
+                          :let [args-seq (concat (:children productions-node)
+                                                 (:children options-node))]]
+                      [name-node (api/list-node
+                                   (list
+                                     (api/token-node 'clara.rules.compiler/mk-session)
+                                     (api/vector-node
+                                       (vec args-seq))))])
+        args-seq (->> (concat rules-seq query-seq session-seq)
+                      (apply concat))
+        wrap-body (api/list-node
+                    (list*
+                      (api/token-node 'let)
+                      (api/vector-node
+                        (vec args-seq))
+                      test-body))
+        new-node (api/list-node
+                   (list
+                     (api/token-node 'clojure.test/deftest)
+                     test-name
+                     wrap-body))]
     {:node new-node}))
