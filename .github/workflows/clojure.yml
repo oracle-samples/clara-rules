@@ -31,3 +31,5 @@ jobs:
       run: lein test :generative
     - name: Run recent-clj tests
       run: lein with-profile dev,recent-clj test
+    - name: Run clj-kondo linter
+      run: lein with-profile dev,recent-clj clj-kondo-lint

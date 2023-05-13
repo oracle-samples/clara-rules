@@ -6,7 +6,8 @@
   :dependencies [[org.clojure/clojure "1.7.0"]
                  [prismatic/schema "1.1.6"]]
   :profiles {:dev {:dependencies [[org.clojure/math.combinatorics "0.1.3"]
-                                  [org.clojure/data.fressian "0.2.1"]]
+                                  [org.clojure/data.fressian "0.2.1"]
+                                  [clj-kondo/clj-kondo "2023.04.14"]]
                    :java-source-paths ["src/test/java"]
                    :global-vars {*warn-on-reflection* true}}
              :provided {:dependencies [[org.clojure/clojurescript "1.7.170"]]}
@@ -20,7 +21,11 @@
             [lein-cljsbuild "1.1.7" :exclusions [org.clojure/clojure
                                                  org.clojure/clojurescript]]
             [lein-figwheel "0.5.14" :exclusions [org.clojure/clojure
-                                                 org.clojure/clojurescript]]]
+                                                 org.clojure/clojurescript]]
+            [com.github.clj-kondo/lein-clj-kondo "0.2.4" :exclusions [org.clojure/clojure
+                                                                      org.clojure/clojurescript]]]
+  :aliases {"clj-kondo-deps" ["clj-kondo" "--copy-configs" "--dependencies" "--parallel" "--lint" "$classpath"]
+            "clj-kondo-lint" ["do" ["clj-kondo-deps"] ["clj-kondo" "--lint" "src/main:src/test" "--fail-level" "error"]]}
   :codox {:namespaces [clara.rules clara.rules.dsl clara.rules.accumulators
                        clara.rules.listener clara.rules.durability
                        clara.tools.inspect clara.tools.tracing
@@ -28,7 +33,7 @@
           :metadata {:doc/format :markdown}}
   :javadoc-opts {:package-names "clara.rules"}
   :source-paths ["src/main/clojure"]
-  :resource-paths []
+  :resource-paths ["clj-kondo"]
   :test-paths ["src/test/clojure" "src/test/common"]
   :java-source-paths ["src/main/java"]
   :javac-options ["-target" "1.6" "-source" "1.6"]

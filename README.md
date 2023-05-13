@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/cerner/clara-rules.svg?branch=main)](https://travis-ci.org/cerner/clara-rules)
+[![Build Status](https://github.com/cerner/clara-rules/actions/workflows/clojure.yml/badge.svg)](https://github.com/cerner/clara-rules/actions/workflows/clojure.yml)
 
 # _About_
 

@@ -41,6 +41,7 @@
 (defn- has-fact? [token fact]
   (some #{fact} (map first (:matches token))))
 
+#_{:clj-kondo/ignore [:unresolved-symbol]}
 (deftest test-malformed-binding
   ;; Test binding with no value.
   (try
@@ -1238,6 +1239,7 @@
                (fire-rules)
                (query q2))))))
 
+#_{:clj-kondo/ignore [:unresolved-symbol]}
 (deftest test-unmatched-nested-binding
   ;; This should throw an exception because ?w may not be bound. There is no
   ;; ancestor of the constraint that includes ?w, so there isn't a consitent value
@@ -1250,6 +1252,7 @@
     (assert-ex-data {:variables #{'?w}}
                     (mk-session [same-wind-and-temp]))))
 
+#_{:clj-kondo/ignore [:unresolved-symbol]}
 (deftest test-unbound-bindings
   (let [accum-condition (dsl/parse-query []
                                          [[?ts <- (acc/all) :from [Temperature (and ?bogus (< ?bogus temperature))]]])
@@ -1281,9 +1284,9 @@
                                           [:or
                                            [Cold (= ?temp temperature)
                                             (< temperature 10)]
-                                           [Windspeed (= ?loc location)
+                                           [WindSpeed (= ?loc location)
                                             (< windspeed 50)]
-                                           [:not [Windspeed (= ?loc location)
+                                           [:not [WindSpeed (= ?loc location)
                                                   (< windspeed ?unbound)]]]])
 
         negation-equality-unbound (dsl/parse-query []
@@ -1603,6 +1606,7 @@
            [s1 s2 s5 s6 s8]))
   (reset! @#'com/session-cache original-cache)))
 
+#_{:clj-kondo/ignore [:unresolved-symbol]}
 (deftest test-try-eval-failures-includes-compile-ctx
   (let [q1 (dsl/parse-query [] [[:not [Temperature (= ?t temperature)]]])
         q2 (dsl/parse-query [] [[First (= ?b bogus)]])]
@@ -1916,6 +1920,7 @@
     (is (= [:hot :cold] holder2))))
 
 ;; TODO: Move this to test-dsl once a strategy for replicating assert-ex-data is determined and implemented.
+#_{:clj-kondo/ignore [:unresolved-symbol]}
 (deftest test-reused-var-in-constraints
   (let [q (dsl/parse-query [] [[Temperature (= ?t (+ 5 temperature)) (< ?t 10)]])
 
