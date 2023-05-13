@@ -1,5 +1,9 @@
 This is a history of changes to clara-rules.
 
+# 0.22.0
+* add built-in clj-kondo support for clara-rules as hooks. Importing should be automatic if using clojure-lsp; for detailed instructions see clj-kondo's documentation on [how to import clj-kondo configuration](https://github.com/clj-kondo/clj-kondo/blob/master/doc/config.md#importing)
+* use correct arity calling `->RuleOrderedActivation` constructor during serialization if clara session; this change should have the same effective behavior as before.
+
 # 0.21.2
 * Try and catch TestNode expression evaluation so that exceptions thrown are re-thrown wrapped in a condition exception which includes production name and bindings information. See [PR 471](https://github.com/cerner/clara-rules/pull/471).
 
