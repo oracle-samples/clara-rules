@@ -62,7 +62,7 @@
                    (seq (:children node))
                    (concat token-seq (extract-arg-tokens (:children node)))
 
-                   :else token-seq)) [(api/token-node 'this)] node-seq)
+                   :else token-seq)) [] node-seq)
        (set)
        (sort-by node-value)))
 
@@ -79,7 +79,13 @@
           (symbol? (node-value fact-node))
           [(api/vector-node (vec (extract-arg-tokens condition))) condition]
 
-          :else [(api/vector-node [(api/token-node 'this)]) condition])
+          :else [(api/vector-node []) condition])
+        cond-binding-set (set (map node-value (:children condition-args)))
+        ;;; if `this` bindings are not explicit, then add them anyways
+        [this-input-bindings
+         this-output-bindings] (when-not (contains? cond-binding-set 'this)
+                                 [[[(api/token-node 'this) input-token]]
+                                  [[(api/token-node '_) (api/token-node 'this)]]])
         args-binding-set (set (map node-value (:children production-args)))
         prev-bindings-set (->> (mapcat (comp :children first) prev-bindings)
                                (filter binding-node?)
@@ -122,7 +128,7 @@
 
         input-bindings (when-not (empty? (node-value condition-args))
                          [[condition-args input-token]])]
-    (concat input-bindings constraint-bindings)))
+    (concat input-bindings this-input-bindings constraint-bindings this-output-bindings)))
 
 (defn analyze-conditions
   "sequentially analyzes condition expressions of clara rules and queries
