@@ -1,5 +1,8 @@
 This is a history of changes to clara-rules.
 
+# 0.22.1
+* fix incorrent lint warning triggered when this binding is not used in clj-kondo hooks
+
 # 0.22.0
 * add built-in clj-kondo support for clara-rules as hooks. Importing should be automatic if using clojure-lsp; for detailed instructions see clj-kondo's documentation on [how to import clj-kondo configuration](https://github.com/clj-kondo/clj-kondo/blob/master/doc/config.md#importing)
 * use correct arity calling `->RuleOrderedActivation` constructor during serialization if clara session; this change should have the same effective behavior as before.
