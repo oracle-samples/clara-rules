@@ -929,7 +929,7 @@
 (defn- test-node-matches
   [node test-handler env token]
   (let [test-result (try
-                      (test-handler token)
+                      (test-handler token env)
                       (catch #?(:clj Exception :cljs :default) e
                         (throw-condition-exception {:cause e
                                                     :node node
