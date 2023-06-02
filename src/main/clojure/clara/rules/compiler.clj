@@ -1555,7 +1555,7 @@
    expr-fn-lookup :- schema/NodeFnLookup
    new-bindings :- #{sc/Keyword}]
 
-  (let [{:keys [condition production query join-bindings]} beta-node
+  (let [{:keys [condition production query join-bindings env]} beta-node
 
         condition (if (symbol? condition)
                     (.loadClass (clojure.lang.RT/makeClassLoader) (name condition))
@@ -1609,6 +1609,7 @@
       :test
       (eng/->TestNode
         id
+        env
         (compiled-expr-fn id :test-expr)
         children)
 
