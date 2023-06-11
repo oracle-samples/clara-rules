@@ -1,6 +1,6 @@
 This is a history of changes to clara-rules.
 
-# 0.23.0
+# 0.23.0-SNAPSHOT
 * extract clara.rules.compiler/compile-test-handler from clara.rules.compiler/compile-test
 * add support for `env` inside of test expressions
 

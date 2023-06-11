@@ -1340,7 +1340,7 @@
                       :type :foo
                       :constraints [(= e ?entity) (= v ?value)]}
                      {:constraints [(= ?entity 1) (reset! rule-output ?value)]}]
-              :rhs '(println @rule-output)}]
+              :rhs '(inc 1)}]
 
     (-> (mk-session [rule] :fact-type-fn second)
         (insert [1 :foo 42])
