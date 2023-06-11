@@ -403,7 +403,7 @@
         fn-name (mk-node-fn-name "AlphaNode" node-id "AE")]
 
     `(fn ~fn-name [~(add-meta '?__fact__ type)
-          ~destructured-env] ;; TODO: add destructured environment parameter...
+                   ~destructured-env]
        (let [~@assignments
              ~'?__bindings__ (atom ~initial-bindings)]
          ~(compile-constraints constraints)))))
@@ -414,19 +414,25 @@
   (list (symbol (name binding-key))
         (list `-> '?__token__ :bindings binding-key)))
 
-;; FIXME: add env...
-(defn compile-test [node-id constraints]
+(defn compile-test-handler [node-id constraints env]
   (let [binding-keys (variables-as-keywords constraints)
         assignments (mapcat build-token-assignment binding-keys)
 
+        ;; The destructured environment, if any
+        destructured-env (if (> (count env) 0)
+                           {:keys (mapv #(symbol (name %)) (keys env))}
+                           '?__env__)
+
         ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-test' to be used for this scenario
         fn-name (mk-node-fn-name "TestNode" node-id "TE")]
+    `(fn ~fn-name [~'?__token__ ~destructured-env]
+       (let [~@assignments]
+         (and ~@constraints)))))
 
-    `(let [handler# (fn ~fn-name [~'?__token__]
-                      (let [~@assignments]
-                        (and ~@constraints)))]
-       {:handler handler#
-        :constraints '~constraints})))
+(defn compile-test [node-id constraints env]
+  (let [test-handler (compile-test-handler node-id constraints env)]
+    `(array-map :handler ~test-handler
+                :constraints '~constraints)))
 
 (defn compile-action
   "Compile the right-hand-side action of a rule, returning a function to execute it."
@@ -1438,7 +1444,7 @@
                                                     :msg "compiling negation with join filter node"}})
                         prev)
             :test (handle-expr prev
-                               (compile-test id (:constraints condition))
+                               (compile-test id (:constraints condition) (:env beta-node))
                                id
                                :test-expr
                                {:compile-ctx {:condition condition
@@ -1549,7 +1555,7 @@
    expr-fn-lookup :- schema/NodeFnLookup
    new-bindings :- #{sc/Keyword}]
 
-  (let [{:keys [condition production query join-bindings]} beta-node
+  (let [{:keys [condition production query join-bindings env]} beta-node
 
         condition (if (symbol? condition)
                     (.loadClass (clojure.lang.RT/makeClassLoader) (name condition))
@@ -1603,6 +1609,7 @@
       :test
       (eng/->TestNode
         id
+        env
         (compiled-expr-fn id :test-expr)
         children)
 

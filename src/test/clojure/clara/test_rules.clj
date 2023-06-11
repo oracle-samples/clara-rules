@@ -1318,9 +1318,9 @@
 
 ;; Test for: https://github.com/cerner/clara-rules/issues/96
 (deftest test-destructured-binding
-  (let [rule-output (atom nil)
+  (let [rule-output-env (atom nil)
         rule {:name "clara.test-destructured-binding/test-destructured-binding"
-              :env {:rule-output rule-output} ; Rule environment so we can check its output.
+              :env {:rule-output rule-output-env} ; Rule environment so we can check its output.
               :lhs '[{:args [[e a v]]
                      :type :foo
                      :constraints [(= e 1) (= v ?value)]}]
@@ -1330,7 +1330,23 @@
         (insert [1 :foo 42])
         (fire-rules))
 
-    (is (= 42 @rule-output))))
+    (is (= 42 @rule-output-env))))
+
+(deftest test-destructured-test-env-binding
+  (let [rule-output-env (atom nil)
+        rule {:name "clara.test-destructured-binding/test-destructured-test-env-binding"
+              :env {:rule-output rule-output-env} ; Rule environment so we can check its output.
+              :lhs '[{:args [[e a v]]
+                      :type :foo
+                      :constraints [(= e ?entity) (= v ?value)]}
+                     {:constraints [(= ?entity 1) (reset! rule-output ?value)]}]
+              :rhs '(inc 1)}]
+
+    (-> (mk-session [rule] :fact-type-fn second)
+        (insert [1 :foo 42])
+        (fire-rules))
+
+    (is (= 42 @rule-output-env))))
 
 (def locals-shadowing-tester
   "Used to demonstrate local shadowing works in `test-explicit-rhs-map-can-use-ns-name-for-unqualified-symbols` below."
@@ -2379,7 +2395,7 @@
       (assert-ex-data "Condition exception raised.\nwith no fact\nwith bindings\n  {:?w 10, :?t nil}\nConditions:\n\n1. [:test (> ?t ?w)]\n   queries:\n     my-test-query\n"
                       {:bindings {:?w 10, :?t nil}
                        :fact nil
-                       :env {}
+                       :env nil
                        :conditions-and-rules {[:test '(> ?t ?w)] #{[:query "my-test-query"]}}}
                       (-> (mk-session [check-exception])
                           (insert (->WindSpeed 10 "MCI") (->Temperature nil "MCI"))

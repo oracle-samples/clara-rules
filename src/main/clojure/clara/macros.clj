@@ -131,7 +131,8 @@
           :test
           `(eng/->TestNode
             ~id
-            ~(com/compile-test id (:constraints condition))
+            ~(:env beta-node)
+            ~(com/compile-test id (:constraints condition) (:env beta-node))
             ~(gen-beta-network child-ids beta-graph all-bindings))
 
           :accumulator
