@@ -3,6 +3,7 @@ This is a history of changes to clara-rules.
 # 0.23.0-SNAPSHOT
 * extract clara.rules.compiler/compile-test-handler from clara.rules.compiler/compile-test
 * add support for `env` inside of test expressions
+* use `.clj_kondo` extension for clj-kondo hook code for better tool compatibility (clj-kondo support now requires clj-kondo 2022.04.25 or higher)
 
 # 0.22.1
 * fix incorrent lint warning triggered when this binding is not used in clj-kondo hooks
