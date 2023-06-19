@@ -4,6 +4,7 @@ This is a history of changes to clara-rules.
 * extract clara.rules.compiler/compile-test-handler from clara.rules.compiler/compile-test
 * add support for `env` inside of test expressions
 * use `.clj_kondo` extension for clj-kondo hook code for better tool compatibility (clj-kondo support now requires clj-kondo 2022.04.25 or higher)
+* Include the invalid constraint in the exception thrown at session compilation time when negations have multiple children.  See [Issue 284](https://github.com/cerner/clara-rules/issues/284).
 
 # 0.22.1
 * fix incorrent lint warning triggered when this binding is not used in clj-kondo hooks
