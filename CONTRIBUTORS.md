@@ -12,6 +12,7 @@ Community
 - Dave Dixon [@sparkofreason]
 - Baptiste Fontaine [@bfontaine]
 - Jose Gomez [@k13gomez]
+- Imre Kószó [@imrekoszo]
 
 [@rbrush]: https://github.com/rbrush
 [@mrrodriguez]: https://github.com/mrrodriguez
@@ -23,3 +24,4 @@ Community
 [@bfontaine]: https://github.com/bfontaine
 [@sunilgunisetty]: https://github.com/sunilgunisetty
 [@k13gomez]: https://github.com/k13gomez
+[@imrekoszo]: https://github.com/imrekoszo

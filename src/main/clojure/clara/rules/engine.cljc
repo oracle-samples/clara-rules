@@ -929,7 +929,7 @@
 (defn- test-node-matches
   [node test-handler env token]
   (let [test-result (try
-                      (test-handler token)
+                      (test-handler token env)
                       (catch #?(:clj Exception :cljs :default) e
                         (throw-condition-exception {:cause e
                                                     :node node
@@ -940,7 +940,7 @@
 ;; The test node represents a Rete extension in which an arbitrary test condition is run
 ;; against bindings from ancestor nodes. Since this node
 ;; performs no joins it does not accept right activations or retractions.
-(defrecord TestNode [id test children]
+(defrecord TestNode [id env test children]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport listener]
     (l/left-activate! listener node tokens)
@@ -951,7 +951,7 @@
      children
      (platform/eager-for
       [token tokens
-       :when (test-node-matches node (:handler test) {} token)]
+       :when (test-node-matches node (:handler test) env token)]
       token)))
 
   (left-retract [node join-bindings tokens memory transport listener]
