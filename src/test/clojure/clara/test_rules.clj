@@ -2424,3 +2424,15 @@
                                                                :name :clara.rules.test-rules-data/is-cold-and-windy-data
                                                                :lhs  []
                                                                :rhs  '(println "I have no meaning outside of this test")}))) {})))
+
+(deftest test-negation-multiple-children-exception
+  (let [not-rule (dsl/parse-rule [[:not
+                                   [Hot (= ?t temperature)]
+                                   [Temperature (> temperature 0)]]]
+                                 (insert! (->LousyWeather)))]
+    (assert-ex-data
+     {:illegal-negation [:not {:type clara.rules.testfacts.Hot
+                               :constraints ['(= ?t temperature)]}
+                         {:type clara.rules.testfacts.Temperature
+                          :constraints ['(> temperature 0)]}]}
+     (mk-session [not-rule] :cache false))))

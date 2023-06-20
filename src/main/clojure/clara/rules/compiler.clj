@@ -584,7 +584,7 @@
           child (first children)]
 
       (when (not= 1 (count children))
-        (throw (RuntimeException. "Negation must have only one child.")))
+        (throw (ex-info "Negation must have only one child." {:illegal-negation expression})))
 
       (condp = (expr-type child)
 
