@@ -15,8 +15,10 @@
   :dev {:extra-paths ["dev"]
         :extra-deps {reloaded.repl/reloaded.repl {:mvn/version "0.2.4"}
                      org.clojure/math.combinatorics {:mvn/version "0.1.3"}
-                     clj-kondo/clj-kondo {:mvn/version "2023.04.14"}
                      criterium/criterium {:mvn/version "0.4.6"}}}
+
+  :clj-kondo {:deps {clj-kondo/clj-kondo {:mvn/version "2023.04.14"}}
+              :main-opts ["-m" "clj-kondo.main"]}
 
   :test {:extra-paths ["src/test/clojure" "target/test/classes"]
          :extra-deps {lambdaisland/kaocha         {:mvn/version "1.80.1274"}

@@ -24,6 +24,10 @@ test-config:
 clean:
 	rm -rf pom.xml target build
 
+lint: compile-test-java
+	clj -M:dev:test:clj-kondo --copy-configs --dependencies --parallel --lint "$(shell clj -A:dev:test -Spath)"
+	clj -M:dev:test:clj-kondo --lint "src/main:src/test" --fail-level "error"
+
 build: compile-main-java
 	clj -Spom
 	clj -X:jar \
