@@ -11,7 +11,6 @@
             ColdAndWindy
             LousyWeather]))
 
-
 ;;; These rules are used for unit testing loading from a namespace.
 (defquery freezing-locations
   "Query the freezing locations."

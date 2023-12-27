@@ -15,7 +15,7 @@
 
 (use-fixtures :once schema.test/validate-schemas)
 
-(deftest test-simple-all-condition-binding-groups
+(deftest ^:generative test-simple-all-condition-binding-groups
   (let [r (dsl/parse-rule [[?ts <- (acc/all) :from [Temperature (= ?loc location)]]]
                           ;; The all accumulator can return facts in different orders, so we sort
                           ;; the temperatures to make asserting on the output easier.
@@ -50,7 +50,7 @@
                                    expected-temp-hist (frequencies [{:?history (->TemperatureHistory ["MCI" [11 19]])}
                                                                     {:?history (->TemperatureHistory ["ORD" [1]])}])]
                                (= actual-temp-hist expected-temp-hist)))]
-      
+
       (doseq [permutation (map #(concat % [{:type :fire}]) operation-permutations)
               :let [session (gen/session-run-ops empty-session permutation)]]
         (is (expected-output? session permutation)
@@ -75,7 +75,7 @@
                               (->Temperature 25 "LGA")])
 
           operation-permutations (gen/ops->permutations operations {})]
-      
+
       (doseq [permutation (map #(concat % [{:type :fire}]) operation-permutations)
               :let [session (gen/session-run-ops empty-session permutation)
                     output (query session q)]]
@@ -86,7 +86,7 @@
                  "Output was: "
                  (into [] output)))))))
 
-(deftest test-min-accum-with-binding-groups
+(deftest ^:generative test-min-accum-with-binding-groups
   (let [coldest-rule (dsl/parse-rule [[?coldest-temp <- (acc/min :temperature :returns-fact true)
                                        :from [ColdAndWindy (= ?w windspeed)]]]
                                      (insert! (->Cold (:temperature ?coldest-temp))))
@@ -121,7 +121,7 @@
                "The output was: "
                (into [] output))))))
 
-(deftest test-min-accum-without-binding-groups
+(deftest ^:generative test-min-accum-without-binding-groups
   (let [coldest-rule (dsl/parse-rule [[?coldest <- (acc/min :temperature) :from [Cold]]]
                                      (insert! (->Temperature ?coldest "MCI")))
         temp-query (dsl/parse-query [] [[Temperature (= ?t temperature)]])
@@ -147,7 +147,7 @@
 
             :let [session (gen/session-run-ops empty-session permutation)
                   output (query session temp-query)]]
-      
+
       (is (= output
              [{:?t (min temp-1 temp-2)}])
           (str "Did not find the correct minimum temperature for permutation: "

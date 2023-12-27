@@ -1,6 +1,12 @@
-This is a history of changes to clara-rules.
+This is a history of changes to k13labs/clara-rules.
 
-# 0.23.0-SNAPSHOT
+# 0.9.0
+* strip cljs support, general cleanup.
+* integrate with collections from ham-fisted for performance gains.
+
+This is a history of changes to clara-rules prior to forking to k13labs/clara-rules.
+
+# 0.23.0
 * extract clara.rules.compiler/compile-test-handler from clara.rules.compiler/compile-test
 * add support for `env` inside of test expressions
 * use `.clj_kondo` extension for clj-kondo hook code for better tool compatibility (clj-kondo support now requires clj-kondo 2022.04.25 or higher)

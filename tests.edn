@@ -1,0 +1,19 @@
+#kaocha/v1 {:capture-output?                 true
+            :kaocha/fail-fast?               false
+            :plugins                         [:kaocha.plugin/profiling
+                                              :kaocha.plugin/gc-profiling
+                                              :kaocha.plugin/print-invocations
+                                              :kaocha.plugin/hooks
+                                              :preloads]
+            :kaocha.hooks/pre-report         [clara.test-setup/defuse-zero-assertions]
+            :kaocha.plugin.preloads/ns-names [clara.test-setup]
+            :tests                           [{:id        :unit
+                                               :kaocha/source-paths             ["src/main/clojure"]
+                                               :kaocha/test-paths               ["src/test/clojure"]
+                                               :ns-patterns                     [".*"]
+                                               :skip-meta                       [:generative]}
+                                              {:id         :generative
+                                               :kaocha/source-paths             ["src/main/clojure"]
+                                               :kaocha/test-paths               ["src/test/clojure"]
+                                               :ns-patterns                     [".*"]
+                                               :focus-meta                      [:generative]}]}

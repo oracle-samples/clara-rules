@@ -4,13 +4,13 @@
             [schema.core :as s]))
 
 (s/defschema FactSessionOperation {:type (s/enum :insert :retract)
-                                    :facts [s/Any]})
+                                   :facts [s/Any]})
 
 (s/defschema FireSessionOperation {:type (s/enum :fire)})
 
 (s/defschema SessionOperation (s/conditional
-                                #(= (:type %) :fire) FireSessionOperation
-                                :else FactSessionOperation))
+                               #(= (:type %) :fire) FireSessionOperation
+                               :else FactSessionOperation))
 
 (defn session-run-ops
   "Run the provided sequence of operations on the provide session and return the final session."
@@ -38,7 +38,7 @@
 
         any-count-negative? (fn [fc]
                               (boolean (some neg? (vals fc))))]
-    
+
     (= ::premature-retract (reduce (fn [fact-count op]
                                      (let [new-count (condp = (:type op)
                                                        :insert (inc-fact-count fact-count (:facts op))
@@ -87,7 +87,7 @@
    {:keys [dup-level] :or {dup-level 0}}]
   (let [dup-ops-seqs (ops->add-insert-retract ops dup-level)
         permutations (mapcat combo/permutations dup-ops-seqs)]
-    
+
     ;; The permutation creation allows for a retraction to occur before insertion, which
     ;; effectively removes the retraction from the seq of operations since retractions of facts
     ;; that are not present do not cause alteration of the session state.  The idea of these helpers
@@ -99,4 +99,4 @@
     ;;
     ;; For now, we can just find all permutations and remove the ones with invalid ordering.
     ;; This is inefficient and there may be a more efficient algorithm or implementation.
-    (remove retract-before-insertion? permutations)))             
+    (remove retract-before-insertion? permutations)))

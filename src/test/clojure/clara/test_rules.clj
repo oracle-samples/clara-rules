@@ -58,16 +58,16 @@
 (defn average-value
   "Test accumulator that returns the average of a field"
   [field]
-  (accumulate
-   :initial-value [0 0]
-   :reduce-fn (fn [[value count] item]
-                [(+ value (field item)) (inc count)])
-   :combine-fn (fn [[value1 count1] [value2 count2]]
-                 [(+ value1 value2) (+ count1 count2)])
-   :retract-fn identity-retract
-   :convert-return-fn (fn [[value count]] (if (= 0 count)
-                                            nil
-                                            (/ value count)))))
+  (acc/accum
+   {:initial-value [0 0]
+    :reduce-fn (fn [[value count] item]
+                 [(+ value (field item)) (inc count)])
+    :combine-fn (fn [[value1 count1] [value2 count2]]
+                  [(+ value1 value2) (+ count1 count2)])
+    :retract-fn identity-retract
+    :convert-return-fn (fn [[value count]] (if (= 0 count)
+                                             nil
+                                             (/ value count)))}))
 
 (deftest test-negation-with-complex-retractions
   (let [;; Non-blocked rule, where "blocked" means there is a
@@ -139,8 +139,7 @@
   (let [all-temps-are-max (dsl/parse-query
                            []
                            [[?t <- (acc/max :temperature) :from [Temperature]]
-                            [:not [Temperature (< temperature ?t)]]
-                            ])
+                            [:not [Temperature (< temperature ?t)]]])
 
         session (mk-session [all-temps-are-max])]
 
@@ -276,11 +275,10 @@
 
 (deftest test-disjunction-with-nested-and
 
-
   (let [really-cold-or-cold-and-windy
         (dsl/parse-query [] [[:or [Temperature (< temperature 0) (= ?t temperature)]
-                                  [:and [Temperature (< temperature 20) (= ?t temperature)]
-                                        [WindSpeed (> windspeed 30) (= ?w windspeed)]]]])
+                              [:and [Temperature (< temperature 20) (= ?t temperature)]
+                               [WindSpeed (> windspeed 30) (= ?w windspeed)]]]])
 
         rulebase [really-cold-or-cold-and-windy]
 
@@ -361,14 +359,13 @@
            {:type Temperature :constraints ['(> 2 1)]}
            {:type Temperature :constraints ['(> 3 2)]}
            {:type Temperature :constraints ['(> 4 3)]}]
-         (com/to-dnf
-          [:or
-           {:type Temperature :constraints ['(> 2 1)]}
-           {:type Temperature :constraints ['(> 3 2)]}
-           {:type Temperature :constraints ['(> 4 3)]}])))
+          (com/to-dnf
+           [:or
+            {:type Temperature :constraints ['(> 2 1)]}
+            {:type Temperature :constraints ['(> 3 2)]}
+            {:type Temperature :constraints ['(> 4 3)]}])))
 
-
-  ;; Test simple disjunction with nested conjunction.
+;; Test simple disjunction with nested conjunction.
   (is (= [:or
           {:type Temperature :constraints ['(> 2 1)]}
           [:and
@@ -441,10 +438,10 @@
              {:type Temperature :constraints ['(> 4 3)]}]]])))
 
   (is (= [:or
-            {:type Temperature :constraints ['(> 2 1)]}
-            [:and
-             {:type Temperature :constraints ['(> 3 2)]}
-             {:type Temperature :constraints ['(> 4 3)]}]]
+          {:type Temperature :constraints ['(> 2 1)]}
+          [:and
+           {:type Temperature :constraints ['(> 3 2)]}
+           {:type Temperature :constraints ['(> 4 3)]}]]
 
          (com/to-dnf
           [:and
@@ -519,14 +516,14 @@
 (defquery cold-query
   [:?l]
   [Temperature (< temperature 50)
-               (= ?t temperature)
-               (= ?l location)])
+   (= ?t temperature)
+   (= ?l location)])
 
 (defquery hot-query
   [?l]
   [Temperature (>= temperature 50)
-               (= ?t temperature)
-               (= ?l location)])
+   (= ?t temperature)
+   (= ?l location)])
 
 (deftest test-defquery
   (let [session (-> (mk-session [cold-query hot-query])
@@ -617,12 +614,12 @@
                     (insert (->WindSpeed 45 "MCI"))
                     (fire-rules)
                     (query sample/find-lousy-weather))))
-       (str "Failed to find LousyWeather using sample-ruleset namespace " sample-ruleset-ns))))
+        (str "Failed to find LousyWeather using sample-ruleset namespace " sample-ruleset-ns))))
 
 (deftest test-mark-as-fired
   (let [rule-output (atom nil)
         cold-rule (dsl/parse-rule [[Temperature (< temperature 20)]]
-                                  (reset! rule-output ?__token__) )
+                                  (reset! rule-output ?__token__))
 
         session (-> (mk-session [cold-rule])
                     (insert (->Temperature 10 "MCI"))
@@ -643,7 +640,6 @@
         (fire-rules))
 
     (is (has-fact? @rule-output (->Temperature 10 "MCI")))))
-
 
 (deftest test-chained-inference
   (let [item-query (dsl/parse-query [] [[?item <- Fourth]])
@@ -695,7 +691,7 @@
                     fire-rules)]
 
     ;; Finds two temperatures such that t1 is less than t2.
-    (is (= #{ {:?t1 10, :?t2 15}}
+    (is (= #{{:?t1 10, :?t2 15}}
            (set (query session distinct-temps-query))))))
 
 (deftest test-test-in-negation
@@ -724,12 +720,12 @@
 (deftest test-empty-test-condition
   (let [exception-data {:line 123 :column 456}]
     (is (assert-ex-data
-          exception-data
-          (dsl/parse-query*
-            []
-            [[:test]]
-            {}
-            exception-data)))))
+         exception-data
+         (dsl/parse-query*
+          []
+          [[:test]]
+          {}
+          exception-data)))))
 
 (deftest test-multi-insert-retract
 
@@ -753,7 +749,6 @@
                   (fire-rules)
                   (query sample/freezing-locations)))))
 
-
   (let [session (-> (mk-session 'clara.sample-ruleset)
                     (insert (->Temperature 15 "MCI"))
                     (insert (->WindSpeed 45 "MCI"))
@@ -769,13 +764,12 @@
 
 (deftest test-no-loop
   (let [reduce-temp (dsl/parse-rule [[?t <- Temperature (> temperature 0) (= ?v temperature)]]
-                             (do
-                               (retract! ?t)
-                               (insert! (->Temperature (- ?v 1) "MCI")))
-                             {:no-loop true})
+                                    (do
+                                      (retract! ?t)
+                                      (insert! (->Temperature (- ?v 1) "MCI")))
+                                    {:no-loop true})
 
         temp-query (dsl/parse-query [] [[Temperature (= ?t temperature)]])
-
 
         session (-> (mk-session [reduce-temp temp-query])
                     (insert (->Temperature 10 "MCI"))
@@ -829,7 +823,6 @@
     ;; Only one reduced temperature should be present.
     (is (= [{:?t 9}] (query session temp-query)))))
 
-
 ;; Test behavior discussed in https://github.com/cerner/clara-rules/issues/35
 (deftest test-identical-facts
   (let [ident-query (dsl/parse-query [] [[?t1 <- Temperature (= ?loc location)]
@@ -850,8 +843,7 @@
     ;; The inserted facts are identical, so there cannot be a non-identicial match.
     (is (empty? (query session ident-query)))
 
-
-    ;; Duplications should have two matches, since either fact can bind to either condition.
+;; Duplications should have two matches, since either fact can bind to either condition.
     (is (= [{:?t1 #clara.rules.testfacts.Temperature{:temperature 15, :location "MCI"}
              :?t2 #clara.rules.testfacts.Temperature{:temperature 15, :location "MCI"}
              :?loc  "MCI"}
@@ -859,7 +851,6 @@
              :?t1 #clara.rules.testfacts.Temperature{:temperature 15, :location "MCI"}
              :?loc "MCI"}]
            (query session-with-dups ident-query)))))
-
 
 ;; An EDN string for testing. This would normally be stored in an external file. The structure simply needs to be a
 ;; sequence of maps matching the clara.rules.schema/Production schema.
@@ -884,18 +875,17 @@
     (is (= #{{:?l "ORD" :?t 10}}
            (set (query session "cold-query" :?l "ORD"))))))
 
-
 (defsession my-session 'clara.sample-ruleset)
 
 (deftest test-defsession
 
   (is (= #{{:?loc "MCI"} {:?loc "BOS"}}
-       (set (-> my-session
-                (insert (->Temperature 15 "MCI"))
-                (insert (->Temperature 22 "BOS"))
-                (insert (->Temperature 50 "SFO"))
-                fire-rules
-                (query sample/freezing-locations)))))
+         (set (-> my-session
+                  (insert (->Temperature 15 "MCI"))
+                  (insert (->Temperature 22 "BOS"))
+                  (insert (->Temperature 50 "SFO"))
+                  fire-rules
+                  (query sample/freezing-locations)))))
 
   (let [session (-> (mk-session 'clara.sample-ruleset)
                     (insert (->Temperature 15 "MCI"))
@@ -932,9 +922,9 @@
 
     ;; The special ancestor query should match everything since our trivial
     ;; ancestry function treats :my-ancestor as an ancestor of everything.
-    (is (= #{{:?result (->Temperature 15 "MCI") }
-             {:?result (->Temperature 10 "MCI") }
-             {:?result (->Temperature 80 "MCI") }}
+    (is (= #{{:?result (->Temperature 15 "MCI")}
+             {:?result (->Temperature 10 "MCI")}
+             {:?result (->Temperature 80 "MCI")}}
            (set (query session special-ancestor-query))))
 
     ;; There shouldn't be anything that matches our typical ancestor here.
@@ -974,10 +964,10 @@
 
 (deftest test-extract-simple-test
   (let [distinct-temps-query (dsl/parse-query [] [[Temperature (< temperature 20)
-                                                               (= ?t1 temperature)]
+                                                   (= ?t1 temperature)]
 
                                                   [Temperature (< temperature 20)
-                                                               (= ?t2 temperature)
+                                                   (= ?t2 temperature)
                                                    (< ?t1 temperature)]])
 
         session  (-> (mk-session [distinct-temps-query])
@@ -987,15 +977,15 @@
                      fire-rules)]
 
     ;; Finds two temperatures such that t1 is less than t2.
-    (is (= #{ {:?t1 10, :?t2 15}}
+    (is (= #{{:?t1 10, :?t2 15}}
            (set (query session distinct-temps-query))))))
 
 (deftest test-extract-nested-test
   (let [distinct-temps-query (dsl/parse-query [] [[Temperature (< temperature 20)
-                                                               (= ?t1 temperature)]
+                                                   (= ?t1 temperature)]
 
                                                   [Temperature (< temperature 20)
-                                                               (= ?t2 temperature)
+                                                   (= ?t2 temperature)
                                                    (< (- ?t1 0) temperature)]])
 
         session  (-> (mk-session [distinct-temps-query])
@@ -1005,9 +995,8 @@
                      fire-rules)]
 
     ;; Finds two temperatures such that t1 is less than t2.
-    (is (= #{ {:?t1 10, :?t2 15}}
+    (is (= #{{:?t1 10, :?t2 15}}
            (set (query session distinct-temps-query))))))
-
 
 ;; External structure to ensure that salience works with defrule as well.
 (def salience-rule-output (atom []))
@@ -1031,11 +1020,9 @@
            [:numeric-greatest-sort :salience-group :forward-order]
            [:numeric-greatest-sort :neg-salience-group :backward-order]
 
-
            [:boolean-greatest-sort :default-group :forward-order]
            [:boolean-greatest-sort :salience-group :forward-order]
            [:boolean-greatest-sort :neg-salience-group :backward-order]
-
 
            [:numeric-least-sort :default-group :backward-order]
            [:numeric-least-sort :salience-group :backward-order]
@@ -1051,12 +1038,12 @@
                  :props {:salience 100})
 
           rule2 (assoc
-                 (dsl/parse-rule [[Temperature ]]
+                 (dsl/parse-rule [[Temperature]]
                                  (swap! salience-rule-output conj 50))
                  :props {:salience 50})
 
           rule3 (assoc
-                 (dsl/parse-rule [[Temperature ]]
+                 (dsl/parse-rule [[Temperature]]
                                  (swap! salience-rule-output conj 0))
                  :props {:salience 0})
 
@@ -1109,61 +1096,61 @@
                 test-fail-str)))))))
 
 (deftest test-negation-with-extracted-test
-    (let [colder-temp (dsl/parse-rule [[Temperature (= ?t temperature)]
-                                       [:not [Cold (or (< temperature ?t)
-                                                       (< temperature 0))]]]
+  (let [colder-temp (dsl/parse-rule [[Temperature (= ?t temperature)]
+                                     [:not [Cold (or (< temperature ?t)
+                                                     (< temperature 0))]]]
 
                                     (insert! ^{:type :found-colder} {:found true}))
 
-          find-colder (dsl/parse-query [] [[?f <- :found-colder]])
+        find-colder (dsl/parse-query [] [[?f <- :found-colder]])
 
-          session (-> (mk-session [colder-temp find-colder] :cache false))]
+        session (-> (mk-session [colder-temp find-colder] :cache false))]
 
       ;; Test no token.
-      (is (empty? (-> session
-                      (insert (->Cold 11))
-                      (fire-rules)
-                      (query find-colder))))
+    (is (empty? (-> session
+                    (insert (->Cold 11))
+                    (fire-rules)
+                    (query find-colder))))
 
       ;; Test simple insertion.
-      (is (= [{:?f {:found true}}]
-             (-> session
-                 (insert (->Temperature 10 "MCI"))
-                 (insert (->Cold 11))
-                 (fire-rules)
-                 (query find-colder))))
+    (is (= [{:?f {:found true}}]
+           (-> session
+               (insert (->Temperature 10 "MCI"))
+               (insert (->Cold 11))
+               (fire-rules)
+               (query find-colder))))
 
       ;; Test insertion with right-hand match first.
-      (is (= [{:?f {:found true}}]
-             (-> session
-                 (insert (->Cold 11))
-                 (insert (->Temperature 10 "MCI"))
-                 (fire-rules)
-                 (query find-colder))))
+    (is (= [{:?f {:found true}}]
+           (-> session
+               (insert (->Cold 11))
+               (insert (->Temperature 10 "MCI"))
+               (fire-rules)
+               (query find-colder))))
 
       ;; Test no fact matching not.
-      (is (= [{:?f {:found true}}]
-             (-> session
-                 (insert (->Temperature 10 "MCI"))
-                 (fire-rules)
-                 (query find-colder))))
+    (is (= [{:?f {:found true}}]
+           (-> session
+               (insert (->Temperature 10 "MCI"))
+               (fire-rules)
+               (query find-colder))))
 
       ;; Test violate negation.
-      (is (empty? (-> session
-                      (insert (->Cold 9))
-                      (insert (->Temperature 10 "MCI"))
-                      (fire-rules)
-                      (query find-colder))))
+    (is (empty? (-> session
+                    (insert (->Cold 9))
+                    (insert (->Temperature 10 "MCI"))
+                    (fire-rules)
+                    (query find-colder))))
 
       ;; Test violate negation alternate order.
-      (is (empty? (-> session
-                      (insert (->Temperature 10 "MCI"))
-                      (insert (->Cold 9))
-                      (fire-rules)
-                      (query find-colder))))
+    (is (empty? (-> session
+                    (insert (->Temperature 10 "MCI"))
+                    (insert (->Cold 9))
+                    (fire-rules)
+                    (query find-colder))))
 
       ;; Test retract violation.
-      (is (= [{:?f {:found true}}]
+    (is (= [{:?f {:found true}}]
            (-> session
                (insert (->Cold 9))
                (insert (->Temperature 10 "MCI"))
@@ -1174,23 +1161,23 @@
 
       ;; Test only partial retraction of violation,
       ;; ensuring the remaining violation holds.
-      (is (empty? (-> session
-                      (insert (->Cold 9))
-                      (insert (->Cold 9))
-                      (insert (->Temperature 10 "MCI"))
-                      (fire-rules)
-                      (retract (->Cold 9))
-                      (fire-rules)
-                      (query find-colder))))
+    (is (empty? (-> session
+                    (insert (->Cold 9))
+                    (insert (->Cold 9))
+                    (insert (->Temperature 10 "MCI"))
+                    (fire-rules)
+                    (retract (->Cold 9))
+                    (fire-rules)
+                    (query find-colder))))
 
       ;; Test violate negation after success.
-      (is (empty? (-> session
-                      (insert (->Cold 11))
-                      (insert (->Temperature 10 "MCI"))
-                      (fire-rules)
-                      (insert (->Cold 9))
-                      (fire-rules)
-                      (query find-colder))))))
+    (is (empty? (-> session
+                    (insert (->Cold 11))
+                    (insert (->Temperature 10 "MCI"))
+                    (fire-rules)
+                    (insert (->Cold 9))
+                    (fire-rules)
+                    (query find-colder))))))
 
 ;; TODO: Move this once it succeeds with def-rules-test.  The def-rules-test macro may
 ;; be stripping the metadata somewhere.
@@ -1257,29 +1244,29 @@
   (let [accum-condition (dsl/parse-query []
                                          [[?ts <- (acc/all) :from [Temperature (and ?bogus (< ?bogus temperature))]]])
         negation-condition (dsl/parse-query []
-                                        [[:not [WindSpeed (not= ?invalid location)]]])
+                                            [[:not [WindSpeed (not= ?invalid location)]]])
         test-condition (dsl/parse-query []
-                                    [[:test (< ?missing 10)]])
+                                        [[:test (< ?missing 10)]])
         multi-conditions (dsl/parse-query []
-                                            [[Temperature (= ?temp temperature)
-                                              (= ?loc location)]
-                                             [Temperature (= ?loc location)
-                                              (< ?temp temperature)]
-                                             [Cold (< ?extra1 ?temp ?extra2)]])
+                                          [[Temperature (= ?temp temperature)
+                                            (= ?loc location)]
+                                           [Temperature (= ?loc location)
+                                            (< ?temp temperature)]
+                                           [Cold (< ?extra1 ?temp ?extra2)]])
         nested-conditions (dsl/parse-query []
                                            [[?t <- Temperature (= ?temp temperature)
-                                              (= ?loc location)]
-                                             [Cold (= ?temp temperature)
+                                             (= ?loc location)]
+                                            [Cold (= ?temp temperature)
                                               ;; Demonstrating using an available :fact-binding
-                                              (some? (:location ?t))
-                                              (and (< ?unbound temperature 10))]])
+                                             (some? (:location ?t))
+                                             (and (< ?unbound temperature 10))]])
 
         nested-accum-conditions (dsl/parse-query []
                                                  [[Temperature (= ?loc location)]
                                                   [?ts <- (acc/all) :from [Temperature (= ?loc location) (< ?invalid temperature)]]])
         bool-conditions (dsl/parse-query []
                                          [[?t <- Temperature (= ?temp temperature)
-                                              (= ?loc location)]
+                                           (= ?loc location)]
 
                                           [:or
                                            [Cold (= ?temp temperature)
@@ -1322,8 +1309,8 @@
         rule {:name "clara.test-destructured-binding/test-destructured-binding"
               :env {:rule-output rule-output-env} ; Rule environment so we can check its output.
               :lhs '[{:args [[e a v]]
-                     :type :foo
-                     :constraints [(= e 1) (= v ?value)]}]
+                      :type :foo
+                      :constraints [(= e 1) (= v ?value)]}]
               :rhs '(reset! rule-output ?value)}]
 
     (-> (mk-session [rule] :fact-type-fn second)
@@ -1361,8 +1348,8 @@
             :lhs '[{:type :test
                     :constraints []}]
             :rhs '(clara.rules/insert! ^{:type :result}
-                                       {:r :r1
-                                        :v all-rules})}
+                   {:r :r1
+                    :v all-rules})}
         ;; However, rule structures are not required to specific a :ns-name if
         ;; they do not need them.  This would be safe if the :rhs form already
         ;; had qualified symbols used, which may typically be the case for
@@ -1371,8 +1358,8 @@
             :lhs '[{:type :test
                     :constraints []}]
             :rhs `(insert! ^{:type :result}
-                           {:r :r2
-                            :v locals-shadowing-tester})}
+                   {:r :r2
+                    :v locals-shadowing-tester})}
         q (dsl/parse-query [] [[?r <- :result]])]
     (is (= #{{:r :r1
               :v srs/all-rules}
@@ -1433,8 +1420,8 @@
   (let [q (dsl/parse-query []
                            ;; Make two conditions that are very similar, but differ
                            ;; where a nil will be compared to something else.
-                           [[(accumulate :retract-fn identity-retract :reduce-fn (fn [x y] nil)) :from [Temperature]]
-                            [(accumulate :retract-fn identity-retract :reduce-fn (fn [x y] 10)) :from [Temperature]]])
+                           [[(acc/accum {:retract-fn identity-retract :reduce-fn (fn [x y] nil)}) :from [Temperature]]
+                            [(acc/accum {:retract-fn identity-retract :reduce-fn (fn [x y] 10)}) :from [Temperature]]])
         s (mk-session [q])]
 
     ;; Mostly just ensuring the rulebase was compiled successfully.
@@ -1620,7 +1607,7 @@
                                   [s1 s2 s3 s4 s5 s6 s7 s8])]
     (is (= distinct-sessions
            [s1 s2 s5 s6 s8]))
-  (reset! @#'com/session-cache original-cache)))
+    (reset! @#'com/session-cache original-cache)))
 
 #_{:clj-kondo/ignore [:unresolved-symbol]}
 (deftest test-try-eval-failures-includes-compile-ctx
@@ -1658,7 +1645,6 @@
                                              :else 1))))
            []))))
 
-
 (def some-rules [(assoc (dsl/parse-query [] [[Temperature (< temperature 40) (= ?t temperature) (= ?l location)]])
                         :name "cold")
                  (assoc (dsl/parse-query [] [[Temperature (> temperature 80) (= ?t temperature) (= ?l location)]])
@@ -1689,7 +1675,7 @@
 
   ;; Test bogus symbol
   (is (thrown? clojure.lang.ExceptionInfo
-       (mk-session 'clara.test-rules/bogus-symbol))))
+               (mk-session 'clara.test-rules/bogus-symbol))))
 
 (defprotocol Getter
   (getX [this])
@@ -1941,7 +1927,7 @@
   (let [q (dsl/parse-query [] [[Temperature (= ?t (+ 5 temperature)) (< ?t 10)]])
 
         ;; Test that a value must be bound before use.
-        invalid (dsl/parse-query [] [[Temperature (< ?t 10) (= ?t (+ 5 temperature))]] )
+        invalid (dsl/parse-query [] [[Temperature (< ?t 10) (= ?t (+ 5 temperature))]])
 
         s (mk-session [q] :cache false)]
 
@@ -1954,10 +1940,10 @@
 
     ;; Item that does satisfy second criterion should match.
     (is (= [{:?t 5}]
-         (-> s
-             (insert (->Temperature 0 "MCI"))
-             (fire-rules)
-             (query q))))
+           (-> s
+               (insert (->Temperature 0 "MCI"))
+               (fire-rules)
+               (query q))))
 
     ;; The variable used out of order should be marked as unbound.
     (assert-ex-data {:variables #{'?t}}
@@ -2016,13 +2002,13 @@
   (let [accum-state (atom [])
 
         stateful-accum (acc/accum
-                         {:initial-value []
-                          :reduce-fn conj
-                          :retract-fn (fn [items retracted] (remove #{retracted} items))
-                          :convert-return-fn (fn [items]
-                                               (do
-                                                 (swap! accum-state conj items)
-                                                 items))})
+                        {:initial-value []
+                         :reduce-fn conj
+                         :retract-fn (fn [items retracted] (remove #{retracted} items))
+                         :convert-return-fn (fn [items]
+                                              (do
+                                                (swap! accum-state conj items)
+                                                items))})
 
         common-ancestor-rule (dsl/parse-rule [[?lists <- stateful-accum :from [List]]]
                                              ;; don't care about whats inserted
@@ -2032,8 +2018,8 @@
         linked-list (LinkedList.)
 
         ses (-> (mk-session [common-ancestor-rule])
-              (insert-all [array-list linked-list])
-              (fire-rules))]
+                (insert-all [array-list linked-list])
+                (fire-rules))]
 
     (is (not-any? #(= 1 (count %)) @accum-state)
         "Facts with common ancestors should be batched together, expected either the initial accumulator value or a vector containing both lists but never a vector containing one list.")))
@@ -2419,12 +2405,13 @@
 (deftest test-duplicate-name
   (assert-ex-data {:names #{::rules-data/is-cold-and-windy-data}}
                   (com/mk-session*
-                    (set (com/add-production-load-order (conj (rules-data/weather-rules-with-keyword-names)
-                                                              {:doc  "An extra rule to test for duplicate names."
-                                                               :name :clara.rules.test-rules-data/is-cold-and-windy-data
-                                                               :lhs  []
-                                                               :rhs  '(println "I have no meaning outside of this test")}))) {})))
+                   (set (com/add-production-load-order (conj (rules-data/weather-rules-with-keyword-names)
+                                                             {:doc  "An extra rule to test for duplicate names."
+                                                              :name :clara.rules.test-rules-data/is-cold-and-windy-data
+                                                              :lhs  []
+                                                              :rhs  '(println "I have no meaning outside of this test")}))) {})))
 
+#_{:clj-kondo/ignore [:unresolved-symbol]}
 (deftest test-negation-multiple-children-exception
   (let [not-rule (dsl/parse-rule [[:not
                                    [Hot (= ?t temperature)]

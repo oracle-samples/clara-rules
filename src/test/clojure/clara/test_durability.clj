@@ -14,7 +14,6 @@
             [clara.tools.testing-utils :as tu])
   (:import [clara.rules.testfacts Temperature]
            [clara.rules.engine TestNode]))
-           
 
 (use-fixtures :once st/validate-schemas)
 
@@ -34,7 +33,7 @@
   ;; cases.
   (when (is (= expected-fact fact)
             "The expected and actual must be equal")
-    
+
     (or (identical? expected-fact fact)
         (and (is (= (coll? expected-fact)
                     (coll? fact))
@@ -88,7 +87,7 @@
         chi "CHI"
         irk "IRK"
         ten 10
-        twenty 20 
+        twenty 20
         fifty 50
         forty 40
         thirty 30
@@ -167,13 +166,13 @@
          ws50
          ws40
          ws10] (:all-objs results)
-        
+
         fired (:fired-session results)
 
         {:keys [unpaired-res
                 cold-res
                 hot-res
-                temp-his-res 
+                temp-his-res
                 temps-under-thresh-res]} (:query-results results)
 
         create-serializer (fn [stream]
@@ -191,7 +190,7 @@
         mem-serializer (->LocalMemorySerializer holder)]
 
     ;; Serialize the data.  Store the rulebase seperately.  This is likely to be the most common usage.
-    
+
     (d/serialize-rulebase fired
                           rulebase-serializer)
     (d/serialize-session-state fired
@@ -210,7 +209,7 @@
           restored (d/deserialize-session-state session-serializer
                                                 mem-serializer
                                                 {:base-rulebase restored-rulebase})
-          
+
           r-unpaired-res (query restored dr/unpaired-wind-speed)
           r-cold-res (query restored dr/cold-temp)
           r-hot-res (query restored dr/hot-temp)
@@ -295,14 +294,14 @@
                               hot30
                               hot50
                               [temp40 temp30 temp20]]]
-          
+
           (is (= (count expected-facts)
                  (count facts))
               (str "expected facts:" \newline
                    (vec expected-facts) \newline
                    "actual facts:" \newline
                    (vec facts)))
-          
+
           (doseq [i (range (count expected-facts))
                   :let [expected-fact (nth expected-facts i)
                         fact (nth facts i)]]
@@ -317,7 +316,7 @@
         (if deserialize-opts
           (d/deserialize-rulebase (df/create-session-serializer bais) deserialize-opts)
           (d/deserialize-rulebase (df/create-session-serializer bais)))))))
- 
+
 (deftest test-durability-fressian-serde
   (testing "SerDe of the rulebase along with working memory"
     (durability-test :fressian))
@@ -334,7 +333,7 @@
           init-qresults (:query-results (session-test s))
           restored-qresults1 (:query-results (session-test restored1))
           restored-qresults2 (:query-results (session-test restored2))]
-      
+
       (is (= init-qresults
              restored-qresults1
              restored-qresults2)))))
@@ -378,7 +377,7 @@
                               activation-group-sort-fn-called? (volatile! false)
                               fact-type-fn-called? (volatile! false)
                               ancestors-fn-called? (volatile! false)
-                              
+
                               opts {:activation-group-fn (fn [x]
                                                            (vreset! activation-group-fn-called? true)
                                                            (or (some-> x :props :salience)
@@ -394,7 +393,7 @@
                                                     (ancestors x))}
 
                               rulebase (rb-serde orig opts)
-                              
+
                               restored (if assemble-with-memory?
                                          (d/assemble-restored-session rulebase memory opts)
                                          (d/assemble-restored-session rulebase opts))]

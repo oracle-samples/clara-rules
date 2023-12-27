@@ -1,13 +1,10 @@
-Cerner Corporation
+Clara Rules Contributors
 
 - Ryan Brush [@rbrush]
 - Mike Rodriguez [@mrrodriguez]
 - William Parker [@WilliamParker]
 - Ethan Christian [@EthanEChristian]
 - Pushkar Kulkarni [@kulkarnipushkar]
-
-Community
-
 - David Goeke [@dgoeke]
 - Dave Dixon [@sparkofreason]
 - Baptiste Fontaine [@bfontaine]

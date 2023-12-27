@@ -1,6 +1,6 @@
-(defproject com.cerner/clara-rules "0.24.0-SNAPSHOT"
+(defproject k13labs/clara-rules "0.24.0-SNAPSHOT"
   :description "Clara Rules Engine"
-  :url "https://github.com/cerner/clara-rules"
+  :url "https://github.com/k13labs/clara-rules"
   :license {:name "Apache License Version 2.0"
             :url "https://www.apache.org/licenses/LICENSE-2.0"}
   :dependencies [[org.clojure/clojure "1.7.0"]
@@ -86,13 +86,13 @@
                                             (some->> x :ns ns-name str (re-matches (re-pattern (apply str patterns)))))))
                    :generative (fn [x] (some->> x :ns ns-name str (re-matches #"^clara\.generative.*")))
                    :performance (fn [x] (some->> x :ns ns-name str (re-matches #"^clara\.performance.*")))}
-  
+
   :scm {:name "git"
-        :url "https://github.com/cerner/clara-rules"}
+        :url "https://github.com/k13labs/clara-rules"}
   :pom-addition [:developers [:developer
-                              [:id "rbrush"]
-                              [:name "Ryan Brush"]
-                              [:url "http://www.clara-rules.org"]]]
+                              [:id "k13gomez"]
+                              [:name "Jose Gomez"]
+                              [:url "http://www.k13labs.com/clara-rules"]]]
   :deploy-repositories [["snapshots" {:url "https://oss.sonatype.org/content/repositories/snapshots/"
                                       :creds :gpg}]
                         ["clojars" {:url "https://repo.clojars.org"

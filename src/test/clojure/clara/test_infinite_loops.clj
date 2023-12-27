@@ -65,7 +65,6 @@
   ;; two rules that form the loop have salience and are thus parts of different
   ;; activation groups.
 
-  
   {:rules [hot-rule [[[:not [Hot]]]
                      (insert! (->Cold nil))
                      {:salience 1}]
@@ -82,7 +81,6 @@
     ;; Validate that the results are the same in either rule ordering.
 
     (assert-ex-data  {:clara-rules/infinite-loop-suspected true}  (fire-rules session))))
-
 
 (def-rules-test test-recursive-insertion
 
@@ -257,8 +255,8 @@
                      (insert! (->Cold nil))]]
 
    :sessions [empty-session [hot-rule] {}]}
-  
+
   (assert-ex-data
    {:clara-rules/max-cycles-exceeded-fn "NOT A FUNCTION"}
    (ld/with-loop-detection empty-session 3000 "NOT A FUNCTION")))
-    
+

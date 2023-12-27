@@ -1,0 +1,4 @@
+Manifest-Version: 1.0
+Created-By: depstar
+Built-By: jose.gomez
+Build-Jdk: 11.0.20

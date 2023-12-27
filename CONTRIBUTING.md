@@ -30,7 +30,7 @@ Thanks.
 * Open a [pull request][7].
 * The pull request will be reviewed by the community and merged by the project committers.
 
-[1]: https://github.com/cerner/clara-rules/issues
+[1]: https://github.com/k13labs/clara-rules/issues
 [2]: http://gun.io/blog/how-to-github-fork-branch-and-pull-request
 [3]: http://tbaggery.com/2008/04/19/a-note-about-git-commit-messages.html
 [4]: ./CHANGELOG.md

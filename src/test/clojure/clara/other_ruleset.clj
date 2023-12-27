@@ -23,7 +23,7 @@
 (defquery temp-by-location
   "Query temperatures by location."
   [:?loc]
-  (Temperature (== ?temp temperature) 
+  (Temperature (== ?temp temperature)
                (== ?loc location)))
 
 

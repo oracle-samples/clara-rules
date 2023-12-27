@@ -57,7 +57,7 @@
 
   (testing "set"
     (test-serde-with-meta #{:x :y} #{:x :y}))
-  
+
   (testing "vec"
     (test-serde-with-meta [1 2 3] [1 2 3]))
 
@@ -78,13 +78,13 @@
       (test-serde [:x 1] e)
       (is (instance? clojure.lang.MapEntry (serde e))
           "preserves map entry type to be sure to still work with `key` and `val`")))
-  
+
   (testing "sym"
     (test-serde-with-meta 't 't))
 
   (testing "record"
     (test-serde-with-meta (->Tester 10) (->Tester 10)))
-  
+
   (testing "sorted collections"
     (let [ss (sorted-set 1 10)
           ss-custom (with-meta (sorted-set-by custom-comparator 1 10)
