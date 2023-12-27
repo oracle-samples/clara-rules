@@ -36,7 +36,7 @@ build: compile-main-java
 		:artifact-id "clara-rules" \
 		:version '"$(VERSION)"'
 
-deploy:
+deploy: clean build
 	clj -X:deploy-maven
 
 install:
