@@ -240,10 +240,10 @@
      (cond-> rule
 
        ;; Add properties, if given.
-       (not (empty? properties)) (assoc :props properties)
+       (seq properties) (assoc :props properties)
 
        ;; Add the environment, if given.
-       (not (empty? env)) (assoc :env matching-env)))))
+       (seq env) (assoc :env matching-env)))))
 
 (defn parse-query*
   "Creates a query from the DSL syntax using the given environment map."
@@ -264,7 +264,7 @@
                               [(keyword (name sym)) sym]))]
 
      (cond-> query
-       (not (empty? env)) (assoc :env matching-env)))))
+       (seq env) (assoc :env matching-env)))))
 
 (defmacro parse-rule
   "Macro used to dynamically create a new rule using the DSL syntax."

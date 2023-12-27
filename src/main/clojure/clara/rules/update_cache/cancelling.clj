@@ -1,5 +1,6 @@
 (ns clara.rules.update-cache.cancelling
   (:require [clara.rules.update-cache.core :as uc]
+            [clara.rules.platform :refer [jeq-wrap]]
             [ham-fisted.api :as hf]
             [ham-fisted.mut-map :as hm])
   (:import [java.util
@@ -7,33 +8,6 @@
             Map
             LinkedList
             LinkedHashMap]))
-
-;;; We need a wrapper to use Clojure equality semantics inside
-;;; a Java collection.  Furthermore, since we know we will need to do
-;;; a hash operation for each such wrapper created anyway we can ensure
-;;; that if the hashes of two facts are not equal that the equals implementation
-;;; here will quickly return false.
-(deftype FactWrapper [fact ^int fact-hash]
-
-  Object
-  (equals [this other]
-
-    (cond
-
-      ;; There are some cases where the inserted and retracted facts could be identical, particularly
-      ;; if user code in the RHS has caches, so we go ahead and check for identity as a first-pass check,
-      ;; but there are probably aren't enough cases where the facts are identical to make doing a full sweep
-      ;; on identity first worthwhile, particularly since in practice the hash check will make the vast majority
-      ;; of .equals calls that return false quite fast.
-      (identical? fact (.fact ^FactWrapper other))
-      true
-
-      (not (== fact-hash (.fact_hash ^FactWrapper other)))
-      false
-
-      :else (= fact (.fact ^FactWrapper other))))
-
-  (hashCode [this] fact-hash))
 
 ;;; These functions essentially allow us to use a Java map to create a set that stores
 ;;; the frequency of its items.  Note that when multiple instances of a fact are added
@@ -43,13 +17,13 @@
 ;;; memory operations look for matches on identity first in tokens before falling back to matching
 ;;; on equality.
 (defn inc-fact-count! [^Map m fact]
-  (let [wrapper (FactWrapper. fact (hash fact))
+  (let [wrapper (jeq-wrap fact)
         ^List result (or (.get m wrapper) (LinkedList.))]
     (hm/compute-if-absent! m wrapper (constantly result))
     (.add result fact)))
 
 (defn dec-fact-count! [^Map m fact]
-  (let [wrapper (FactWrapper. fact (hash fact))
+  (let [wrapper (jeq-wrap fact)
         ;; Note that we specifically use a LinkedList type hint here since we
         ;; use methods from multiple interfaces here, namely List and Deque.
         ^LinkedList current-val (.get m wrapper)]

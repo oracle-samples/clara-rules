@@ -28,11 +28,28 @@
 
   Object
   (equals [this other]
-    (and (instance? JavaEqualityWrapper other)
-         (= wrapped (.wrapped ^JavaEqualityWrapper other))))
 
-  (hashCode [this]
-    hash-code))
+    (cond
+
+      ;; There are some cases where the inserted and retracted facts could be identical, particularly
+      ;; if user code in the RHS has caches, so we go ahead and check for identity as a first-pass check,
+      ;; but there are probably aren't enough cases where the facts are identical to make doing a full sweep
+      ;; on identity first worthwhile, particularly since in practice the hash check will make the vast majority
+      ;; of .equals calls that return false quite fast.
+      (identical? wrapped (.wrapped ^JavaEqualityWrapper other))
+      true
+
+      (not (== hash-code (.hash_code ^JavaEqualityWrapper other)))
+      false
+
+      :else (= wrapped (.wrapped ^JavaEqualityWrapper other))))
+
+  (hashCode [this] hash-code))
+
+(defn jeq-wrap
+  "wraps the value with a JavaEqualityWrapper"
+  ^JavaEqualityWrapper [value]
+  (JavaEqualityWrapper. value (hash value)))
 
 (defn group-by-seq
   "Groups the items of the given coll by f to each item.  Returns a seq of tuples of the form
@@ -49,10 +66,7 @@
                                    (let [k (f x)
                                          ;; Use Java's hashcode for performance reasons as
                                          ;; discussed at https://github.com/cerner/clara-rules/issues/393
-                                         wrapper (JavaEqualityWrapper. k
-                                                                       (if (nil? k)
-                                                                         (int 0)
-                                                                         (int (.hashCode ^Object k))))
+                                         wrapper (jeq-wrap k)
                                          xs (or (.get m wrapper)
                                                 (transient []))]
                                      (.put m wrapper (conj! xs x)))

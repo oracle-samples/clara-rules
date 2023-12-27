@@ -4,11 +4,14 @@
    Most users should use only the clara.rules namespace."
   (:require [clara.rules.engine :as eng]
             [clara.rules.schema :as schema]
+            [clara.rules.platform :refer [jeq-wrap] :as platform]
             [clojure.set :as set]
             [clojure.string :as string]
             [clojure.walk :as walk]
             [schema.core :as sc])
-  (:import [clara.rules.engine
+  (:import [clara.rules.platform
+            JavaEqualityWrapper]
+           [clara.rules.engine
             ProductionNode
             QueryNode
             AlphaNode
@@ -884,15 +887,13 @@
                                (variables-as-keywords join-filter-expressions)
                                nil)]
 
-    (cond->
-     {:node-type node-type
-      :condition condition
-      :new-bindings new-bindings
-      :used-bindings (set/union cond-bindings join-filter-bindings)}
-
+    (cond-> {:node-type node-type
+             :condition condition
+             :new-bindings new-bindings
+             :used-bindings (set/union cond-bindings join-filter-bindings)}
       (seq env) (assoc :env env)
 
-          ;; Add the join bindings to join, accumulator or negation nodes.
+      ;; Add the join bindings to join, accumulator or negation nodes.
       (#{:join :negation :accumulator} node-type) (assoc :join-bindings (set/intersection cond-bindings parent-bindings))
 
       accumulator (assoc :accumulator accumulator)
@@ -1689,24 +1690,19 @@
 
 ;; Wrap the fact-type so that Clojure equality and hashcode semantics are used
 ;; even though this is placed in a Java map.
-(deftype AlphaRootsWrapper [fact-type ^int fact-type-hash roots]
+(deftype AlphaRootsWrapper [^JavaEqualityWrapper fact-type wrapped]
   Object
   (equals [this other]
     (let [other ^AlphaRootsWrapper other]
-      (cond
-
-        (identical? fact-type (.fact-type other))
-        true
-
-        (not (== fact-type-hash (.fact-type-hash other)))
-        false
-
-        :else
-        (= fact-type (.fact-type other)))))
+      (.equals fact-type (.fact_type other))))
 
   ;; Since know we will need to find the hashcode of this object in all cases just eagerly calculate it upfront
   ;; and avoid extra calls to hash later.
-  (hashCode [this] fact-type-hash))
+  (hashCode [this] (.hash_code fact-type)))
+
+(defn alpha-roots-wrap
+  [fact-type roots]
+  (AlphaRootsWrapper. (jeq-wrap fact-type) roots))
 
 (defn- create-get-alphas-fn
   "Returns a function that given a sequence of facts,
@@ -1748,7 +1744,7 @@
                                   ;; removing groups with no alpha nodes here will improve performance on subsequent calls
                                   ;; to the get-alphas-fn with the same fact type.
                                   (keep #(when-let [roots (not-empty (get alpha-roots %))]
-                                           (AlphaRootsWrapper. % (hash %) roots)))
+                                           (alpha-roots-wrap % roots)))
                                   ;; If a user-provided ancestors-fn returns a sorted collection, for example for
                                   ;; ensuring determinism, we respect that ordering here by conj'ing on to the existing
                                   ;; collection.
@@ -1779,7 +1775,7 @@
           (loop []
             (when (.hasNext entries-it)
               (let [^java.util.Map$Entry e (.next entries-it)]
-                (.add return-list [(-> e ^AlphaRootsWrapper (.getKey) .roots)
+                (.add return-list [(-> e ^AlphaRootsWrapper (.getKey) (.wrapped))
                                    (java.util.Collections/unmodifiableList (.getValue e))])
                 (recur))))
 
