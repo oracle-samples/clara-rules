@@ -32,7 +32,7 @@ build: compile-main-java
 	clojure -Spom
 	clojure -X:jar \
 		:sync-pom true \
-		:group-id "k13labs" \
+		:group-id "com.github.k13labs" \
 		:artifact-id "clara-rules" \
 		:version '"$(VERSION)"'
 
