@@ -4,46 +4,46 @@ SHELL := /bin/bash
 VERSION := 0.9.0-SNAPSHOT
 
 compile-main-java:
-	clj -T:build compile-main-java
+	clojure -T:build compile-main-java
 
 compile-test-java: compile-main-java
-	clj -T:build compile-test-java
+	clojure -T:build compile-test-java
 
 repl: compile-test-java
-	clj -M:dev:test:repl
+	clojure -M:dev:test:repl
 
 test: compile-test-java
-	clj -M:dev:test:runner --focus :unit --reporter kaocha.report/tap
+	clojure -M:dev:test:runner --focus :unit --reporter kaocha.report/tap
 
 test-generative: compile-test-java
-	clj -M:dev:test:runner --focus :generative --reporter kaocha.report/tap
+	clojure -M:dev:test:runner --focus :generative --reporter kaocha.report/tap
 
 test-config:
-	clj -M:dev:test:runner --print-config
+	clojure -M:dev:test:runner --print-config
 
 clean:
 	rm -rf pom.xml target build
 
 lint: compile-test-java
-	clj -M:dev:test:clj-kondo --copy-configs --dependencies --parallel --lint "$(shell clj -A:dev:test -Spath)"
-	clj -M:dev:test:clj-kondo --lint "src/main:src/test" --fail-level "error"
+	clojure -M:dev:test:clj-kondo --copy-configs --dependencies --parallel --lint "$(shell clojure -A:dev:test -Spath)"
+	clojure -M:dev:test:clj-kondo --lint "src/main:src/test" --fail-level "error"
 
 build: compile-main-java
-	clj -Spom
-	clj -X:jar \
+	clojure -Spom
+	clojure -X:jar \
 		:sync-pom true \
 		:group-id "k13labs" \
 		:artifact-id "clara-rules" \
 		:version '"$(VERSION)"'
 
 deploy: clean build
-	clj -X:deploy-maven
+	clojure -X:deploy-maven
 
 install:
-	clj -X:install-maven
+	clojure -X:install-maven
 
 format-check:
-	clj -M:format-check
+	clojure -M:format-check
 
 format-fix:
-	clj -M:format-fix
+	clojure -M:format-fix
