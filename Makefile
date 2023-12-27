@@ -22,7 +22,7 @@ test-config:
 	clojure -M:dev:test:runner --print-config
 
 clean:
-	rm -rf pom.xml target build
+	rm -rf target build
 
 lint: compile-test-java
 	clojure -M:dev:test:clj-kondo --copy-configs --dependencies --parallel --lint "$(shell clojure -A:dev:test -Spath)"
