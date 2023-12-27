@@ -580,8 +580,7 @@
     (when-not (coll-empty? tokens)
       (let [binding-token-map (get beta-memory (:id node) {})
             previous-tokens (get binding-token-map join-bindings)]
-        (if
-         (coll-empty? previous-tokens)
+        (if (coll-empty? previous-tokens)
           []
 
           (let [;; Attempt to remove tokens using the faster indentity-based equality first since
