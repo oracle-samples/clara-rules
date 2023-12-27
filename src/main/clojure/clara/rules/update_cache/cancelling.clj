@@ -1,11 +1,12 @@
 (ns clara.rules.update-cache.cancelling
-  (:require [clara.rules.update-cache.core :as uc])
+  (:require [clara.rules.update-cache.core :as uc]
+            [ham-fisted.api :as hf]
+            [ham-fisted.mut-map :as hm])
   (:import [java.util
             List
             Map
             LinkedList
-            LinkedHashMap
-            Collections]))
+            LinkedHashMap]))
 
 ;;; We need a wrapper to use Clojure equality semantics inside
 ;;; a Java collection.  Furthermore, since we know we will need to do
@@ -43,10 +44,9 @@
 ;;; on equality.
 (defn inc-fact-count! [^Map m fact]
   (let [wrapper (FactWrapper. fact (hash fact))
-        ^List current-val (.get m wrapper)]
-    (if current-val
-      (.add current-val fact)
-      (.put m wrapper (LinkedList. [fact])))))
+        ^List result (or (.get m wrapper) (LinkedList.))]
+    (hm/compute-if-absent! m wrapper (constantly result))
+    (.add result fact)))
 
 (defn dec-fact-count! [^Map m fact]
   (let [wrapper (FactWrapper. fact (hash fact))
@@ -68,24 +68,7 @@
 
 (defn map->vals-concated
   [^Map m]
-  (let [val-list (java.util.LinkedList.)
-        it (.iterator (.entrySet m))]
-    (loop []
-      (when (.hasNext it)
-        (do (let [^java.util.Map$Entry e (.next it)
-                  fact (.fact ^FactWrapper (.getKey e))
-                  ^Iterable facts-in-val (.getValue e)
-                  fact-iter (.iterator facts-in-val)]
-              (loop []
-                (when (.hasNext fact-iter)
-                  (do
-                    (.add val-list (.next fact-iter))
-                    (recur)))))
-            (recur))))
-    ;; This list will never be exposed to the user; it is simply iterated over
-    ;; by the engine and then discarded.  This being the case there is no
-    ;; need to return a persistent data structure rather than an unmodifiable one.
-    (Collections/unmodifiableList val-list)))
+  (hf/apply-concat (hm/values m)))
 
 ;;; This is a pending updates cache that allows
 ;;  retractions and insertions of equal facts
