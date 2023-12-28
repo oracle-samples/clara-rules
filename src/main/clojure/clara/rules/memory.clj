@@ -509,87 +509,81 @@
 
   ITransientMemory
   (add-elements! [memory node join-bindings elements]
-    (hm/compute!
-      alpha-memory (:id node)
-      (fn do-add-bem
-        [_ bem]
-        (let [binding-element-map (->mutable-map bem)]
-          (hm/compute!
-            binding-element-map join-bindings
-            (fn do-add-bel
-              [_ bel]
-              (let [binding-element-list (->linked-list bel)]
-                (add-all! binding-element-list elements)
-                binding-element-list)))
-          binding-element-map))))
+    (hm/compute! alpha-memory (:id node)
+                 (fn do-add-bem
+                   [_ bem]
+                   (let [binding-element-map (->mutable-map bem)]
+                     (hm/compute! binding-element-map join-bindings
+                                  (fn do-add-bel
+                                    [_ bel]
+                                    (let [binding-element-list (->linked-list bel)]
+                                      (add-all! binding-element-list elements)
+                                      binding-element-list)))
+                     binding-element-map))))
 
   (remove-elements! [memory node join-bindings elements]
     ;; Do nothing when no elements to remove.
     (when-not (coll-empty? elements)
       (let [removed-elements-result (hf/mut-list)]
-        (hm/compute-if-present!
-          alpha-memory (:id node)
-          (fn do-rem-bem
-            [_ bem]
-            (let [binding-element-map (->mutable-map bem)]
-              (hm/compute-if-present!
-                binding-element-map join-bindings
-                (fn do-rem-bel
-                  [_ bel]
-                  (let [binding-element-list (->linked-list bel)
-                        removed-elements (first (remove-first-of-each! elements binding-element-list))]
-                    (hf/add-all! removed-elements-result removed-elements)
-                    (not-empty binding-element-list))))
-              (not-empty binding-element-map))))
+        (hm/compute-if-present! alpha-memory (:id node)
+                                (fn do-rem-bem
+                                  [_ bem]
+                                  (let [binding-element-map (->mutable-map bem)]
+                                    (hm/compute-if-present! binding-element-map join-bindings
+                                                            (fn do-rem-bel
+                                                              [_ bel]
+                                                              (let [binding-element-list (->linked-list bel)
+                                                                    removed-elements (first (remove-first-of-each! elements binding-element-list))]
+                                                                (hf/add-all! removed-elements-result removed-elements)
+                                                                (not-empty binding-element-list))))
+                                    (not-empty binding-element-map))))
         (hf/persistent! removed-elements-result))))
 
   (add-tokens! [memory node join-bindings tokens]
-    (hm/compute!
-      beta-memory (:id node)
-      (fn do-add-btm
-        [_ btm]
-        (let [binding-token-map (->mutable-map btm)]
-          (hm/compute!
-            binding-token-map join-bindings
-            (fn do-add-btl
-              [_ btl]
-              (let [binding-token-list (->linked-list btl)]
-                (add-all! binding-token-list tokens)
-                binding-token-list)))
-          binding-token-map))))
+    (hm/compute! beta-memory (:id node)
+                 (fn do-add-btm
+                   [_ btm]
+                   (let [binding-token-map (->mutable-map btm)]
+                     (hm/compute! binding-token-map join-bindings
+                                  (fn do-add-btl
+                                    [_ btl]
+                                    (let [binding-token-list (->linked-list btl)]
+                                      (add-all! binding-token-list tokens)
+                                      binding-token-list)))
+                     binding-token-map))))
 
   (remove-tokens! [memory node join-bindings tokens]
     ;; The reasoning here is the same as remove-elements!
     (when-not (coll-empty? tokens)
       (let [removed-tokens-result (hf/mut-list)]
         (hm/compute-if-present!
-          beta-memory (:id node)
-          (fn do-rem-btm
-            [_ btm]
-            (let [binding-token-map (->mutable-map btm)]
-              (hm/compute-if-present!
-                binding-token-map join-bindings
-                (fn do-rem-btl
-                  [_ btl]
-                  (let [binding-token-list (->linked-list btl)]
-                    ;; Attempt to remove tokens using the faster indentity-based equality first since
-                    ;; most of the time this is all we need and it can be much faster.  Any token that
-                    ;; wasn't removed via identity, has to be "retried" with normal value-based
-                    ;; equality though since those semantics are supported within the engine.  This
-                    ;; slower path should be rare for any heavy retraction flows - such as those that come
-                    ;; via truth maintenance.
-                    (let [[removed-tokens not-removed-tokens]
-                          (remove-first-of-each! tokens
-                                                 binding-token-list
-                                                 (partial fast-token-compare identical?))]
-                      (hf/add-all! removed-tokens-result removed-tokens)
-                      (when (seq not-removed-tokens)
-                        (let [[other-removed-tokens]
-                              (remove-first-of-each! not-removed-tokens binding-token-list
-                                                     (partial fast-token-compare =))]
-                          (hf/add-all! removed-tokens-result other-removed-tokens))))
-                    (not-empty binding-token-list))))
-              (not-empty binding-token-map))))
+         beta-memory (:id node)
+         (fn do-rem-btm
+           [_ btm]
+           (let [binding-token-map (->mutable-map btm)]
+             (hm/compute-if-present!
+              binding-token-map join-bindings
+              (fn do-rem-btl
+                [_ btl]
+                (let [binding-token-list (->linked-list btl)
+                      ;; Attempt to remove tokens using the faster indentity-based equality first since
+                      ;; most of the time this is all we need and it can be much faster.  Any token that
+                      ;; wasn't removed via identity, has to be "retried" with normal value-based
+                      ;; equality though since those semantics are supported within the engine.  This
+                      ;; slower path should be rare for any heavy retraction flows - such as those that come
+                      ;; via truth maintenance.
+                      [removed-tokens not-removed-tokens]
+                      (remove-first-of-each! tokens
+                                             binding-token-list
+                                             (partial fast-token-compare identical?))]
+                  (hf/add-all! removed-tokens-result removed-tokens)
+                  (when (seq not-removed-tokens)
+                    (let [[other-removed-tokens]
+                          (remove-first-of-each! not-removed-tokens binding-token-list
+                                                 (partial fast-token-compare =))]
+                      (hf/add-all! removed-tokens-result other-removed-tokens)))
+                  (not-empty binding-token-list))))
+             (not-empty binding-token-map))))
         (hf/persistent! removed-tokens-result))))
 
   (add-accum-reduced! [memory node join-bindings accum-result fact-bindings]
