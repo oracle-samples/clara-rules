@@ -216,7 +216,7 @@
           r-temp-his-res (query restored dr/temp-his)
           r-temps-under-thresh-res (query restored dr/temps-under-thresh)
 
-          facts @(:holder mem-serializer)]
+          facts (sort-by hash @(:holder mem-serializer))]
 
       (testing "Ensure the queries return same before and after serialization"
         (is (= (frequencies [{:?ws (dr/->UnpairedWindSpeed ws10)}])
@@ -268,32 +268,32 @@
 
               ;; All of these facts must have an identical? relationship (same object references)
               ;; as the actual facts being tested against.
-              expected-facts [temp50
-                              temp40
-                              temp30
-                              temp20
-                              [temp50 temp40 temp30 temp20]
-                              mci
-                              lax
-                              san
-                              chi
-                              twenty
-                              cold20
-                              unpaired-ws10
-                              temp-his
-                              ws50
-                              ws40
-                              ws10
-                              irk
-                              fifty
-                              forty
-                              thirty
-                              thresh50
-                              temps-under-thresh
-                              hot40
-                              hot30
-                              hot50
-                              [temp40 temp30 temp20]]]
+              expected-facts (sort-by hash [temp50
+                                            temp40
+                                            temp30
+                                            temp20
+                                            [temp50 temp40 temp30 temp20]
+                                            mci
+                                            lax
+                                            san
+                                            chi
+                                            twenty
+                                            cold20
+                                            unpaired-ws10
+                                            temp-his
+                                            ws50
+                                            ws40
+                                            ws10
+                                            irk
+                                            fifty
+                                            forty
+                                            thirty
+                                            thresh50
+                                            temps-under-thresh
+                                            hot40
+                                            hot30
+                                            hot50
+                                            [temp40 temp30 temp20]])]
 
           (is (= (count expected-facts)
                  (count facts))

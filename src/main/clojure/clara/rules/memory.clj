@@ -1,12 +1,15 @@
 (ns clara.rules.memory
   "This namespace is for internal use and may move in the future.
   Specification and default implementation of working memory"
+  (:require [ham-fisted.api :as hf])
   (:import [java.util
+            Map
             Collections
             LinkedList
             NavigableMap
             PriorityQueue
-            TreeMap]))
+            TreeMap]
+           [ham_fisted MutableMap]))
 
 (defprotocol IPersistentMemory
   (to-transient [memory]))
@@ -154,14 +157,35 @@
     (.add dest x))
   dest)
 
+(defn- linked-list?
+  [coll]
+  (instance? LinkedList coll))
+
 (defn- ->linked-list
   "Creates a new java.util.LinkedList from the coll, but avoids using
   Collection.addAll(Collection) since there is unnecessary overhead 
   in this of calling Collection.toArray() on coll."
   ^java.util.List [coll]
-  (if (instance? LinkedList coll)
+  (if (linked-list? coll)
     coll
     (add-all! (LinkedList.) coll)))
+
+(defn- mutable-map?
+  [m]
+  (instance? MutableMap m))
+
+(defn- ->mutable-map
+  "Creates a new ham_fisted.MutableMap from the map, but only if necessary."
+  [m]
+  (if (mutable-map? m) m
+    (hf/mut-map m)))
+
+(defn- ->persistent-coll
+  "Creates a persistent collection from the input collection, but only if necessary"
+  [coll]
+  (if (coll? coll)
+    coll
+    (seq coll)))
 
 (defn- remove-first-of-each!
   "Remove the first instance of each item in the given remove-seq that
@@ -417,11 +441,11 @@
                                activation-group-sort-fn
                                activation-group-fn
                                alphas-fn
-                               ^:unsynchronized-mutable alpha-memory
-                               ^:unsynchronized-mutable beta-memory
-                               ^:unsynchronized-mutable accum-memory
-                               ^:unsynchronized-mutable production-memory
-                               ^:unsynchronized-mutable ^NavigableMap activation-map]
+                               ^Map ^:unsynchronized-mutable alpha-memory
+                               ^Map ^:unsynchronized-mutable beta-memory
+                               ^Map ^:unsynchronized-mutable accum-memory
+                               ^Map ^:unsynchronized-mutable production-memory
+                               ^NavigableMap ^:unsynchronized-mutable activation-map]
 
   IMemoryReader
   (get-rulebase [memory] rulebase)
@@ -483,7 +507,8 @@
 
   ITransientMemory
   (add-elements! [memory node join-bindings elements]
-    (let [binding-element-map (get alpha-memory (:id node) {})
+    (let [node-id (:id node)
+          binding-element-map (get alpha-memory node-id {})
           previous-elements (get binding-element-map join-bindings)]
 
       (cond
@@ -492,7 +517,7 @@
         (coll? previous-elements)
         (set! alpha-memory
               (assoc! alpha-memory
-                      (:id node)
+                      node-id
                       (assoc binding-element-map
                              join-bindings
                              (into previous-elements elements))))
@@ -507,7 +532,7 @@
         elements
         (set! alpha-memory
               (assoc! alpha-memory
-                      (:id node)
+                      node-id
                       (assoc binding-element-map
                              join-bindings
                              elements))))))
@@ -515,7 +540,8 @@
   (remove-elements! [memory node join-bindings elements]
     ;; Do nothing when no elements to remove.
     (when-not (coll-empty? elements)
-      (let [binding-element-map (get alpha-memory (:id node) {})
+      (let [node-id (:id node)
+            binding-element-map (get alpha-memory node-id {})
             previous-elements (get binding-element-map join-bindings)]
         (cond
           ;; Do nothing when no previous elements to remove from.
@@ -537,7 +563,7 @@
                                             remaining-elements))]
               (set! alpha-memory
                     (assoc! alpha-memory
-                            (:id node)
+                            node-id
                             new-bindings-map))
               removed-elements))
 
@@ -547,19 +573,20 @@
             (when (.isEmpty ^java.util.List previous-elements)
               (set! alpha-memory
                     (assoc! alpha-memory
-                            (:id node)
+                            node-id
                             (dissoc binding-element-map join-bindings))))
             removed-elements)))))
 
   (add-tokens! [memory node join-bindings tokens]
-    (let [binding-token-map (get beta-memory (:id node) {})
+    (let [node-id (:id node)
+          binding-token-map (get beta-memory node-id {})
           previous-tokens (get binding-token-map join-bindings)]
       ;; The reasoning here is the same as in add-elements! impl above.
       (cond
         (coll? previous-tokens)
         (set! beta-memory
               (assoc! beta-memory
-                      (:id node)
+                      node-id
                       (assoc binding-token-map
                              join-bindings
                              (into previous-tokens tokens))))
@@ -570,7 +597,7 @@
         tokens
         (set! beta-memory
               (assoc! beta-memory
-                      (:id node)
+                      node-id
                       (assoc binding-token-map
                              join-bindings
                              tokens))))))
@@ -578,7 +605,8 @@
   (remove-tokens! [memory node join-bindings tokens]
     ;; The reasoning here is the same as remove-elements!
     (when-not (coll-empty? tokens)
-      (let [binding-token-map (get beta-memory (:id node) {})
+      (let [node-id (:id node)
+            binding-token-map (get beta-memory node-id {})
             previous-tokens (get binding-token-map join-bindings)]
         (if (coll-empty? previous-tokens)
           []
@@ -589,18 +617,17 @@
                 ;; equality though since those semantics are supported within the engine.  This
                 ;; slower path should be rare for any heavy retraction flows - such as those that come
                 ;; via truth maintenance.
-                two-pass-remove! (fn [remaining-tokens tokens]
+                two-pass-remove! (fn do-remove-tokens
+                                   [remaining-tokens tokens]
                                    (let [[removed-tokens not-removed-tokens]
                                          (remove-first-of-each! tokens
                                                                 remaining-tokens
-                                                                (fn [t1 t2]
-                                                                  (fast-token-compare identical? t1 t2)))]
+                                                                (partial fast-token-compare identical?))]
 
                                      (if-let [other-removed (and (seq not-removed-tokens)
                                                                  (-> not-removed-tokens
                                                                      (remove-first-of-each! remaining-tokens
-                                                                                            (fn [t1 t2]
-                                                                                              (fast-token-compare = t1 t2)))
+                                                                                            (partial fast-token-compare =))
                                                                      first
                                                                      seq))]
                                        (into removed-tokens other-removed)
@@ -614,7 +641,7 @@
                                      (assoc binding-token-map join-bindings remaining-tokens))]
                 (set! beta-memory
                       (assoc! beta-memory
-                              (:id node)
+                              node-id
                               new-tokens-map))
                 removed-tokens)
 
@@ -623,7 +650,7 @@
                 (when (.isEmpty ^java.util.List previous-tokens)
                   (set! beta-memory
                         (assoc! beta-memory
-                                (:id node)
+                                node-id
                                 (dissoc binding-token-map join-bindings))))
 
                 removed-tokens)))))))
@@ -785,22 +812,19 @@
     (.clear activation-map))
 
   (to-persistent! [memory]
-    (let [->persistent-coll #(if (coll? %)
-                               %
-                               (seq %))
-          update-vals (fn [m update-fn]
+    (let [update-vals (fn do-update-vals [update-fn m]
                         (->> m
                              (reduce-kv (fn [m k v]
                                           (assoc! m k (update-fn v)))
                                         (transient m))
                              persistent!))
-          persistent-vals #(update-vals % ->persistent-coll)]
+          persistent-vals (partial update-vals ->persistent-coll)]
       (->PersistentLocalMemory rulebase
                                activation-group-sort-fn
                                activation-group-fn
                                alphas-fn
-                               (update-vals (persistent! alpha-memory) persistent-vals)
-                               (update-vals (persistent! beta-memory) persistent-vals)
+                               (update-vals persistent-vals (persistent! alpha-memory))
+                               (update-vals persistent-vals (persistent! beta-memory))
                                (persistent! accum-memory)
                                (persistent! production-memory)
                                (into {}
@@ -882,10 +906,10 @@
                            activation-group-sort-fn
                            activation-group-fn
                            alphas-fn
-                           (transient alpha-memory)
-                           (transient beta-memory)
-                           (transient accum-memory)
-                           (transient production-memory)
+                           (->mutable-map alpha-memory)
+                           (->mutable-map beta-memory)
+                           (->mutable-map accum-memory)
+                           (->mutable-map production-memory)
                            (let [treemap (TreeMap. ^java.util.Comparator activation-group-sort-fn)]
                              (doseq [[activation-group activations] activation-map]
                                (.put treemap
@@ -901,8 +925,8 @@
                            activation-group-sort-fn
                            activation-group-fn
                            alphas-fn
-                           {}
-                           {}
-                           {}
-                           {}
-                           {}))
+                           (hf/hash-map)
+                           (hf/hash-map)
+                           (hf/hash-map)
+                           (hf/hash-map)
+                           (hf/hash-map)))
