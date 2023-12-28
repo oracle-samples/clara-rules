@@ -522,14 +522,18 @@
     (hm/compute! alpha-memory (:id node)
                  (fn do-add-bem
                    [_ bem]
-                   (let [binding-element-map (->mutable-map bem)]
-                     (hm/compute! binding-element-map join-bindings
-                                  (fn do-add-bel
-                                    [_ bel]
-                                    (let [binding-element-list (->linked-list bel)]
-                                      (add-all! binding-element-list elements)
-                                      binding-element-list)))
-                     binding-element-map))))
+                   (if bem
+                     (let [binding-element-map (->mutable-map bem)]
+                       (hm/compute! binding-element-map join-bindings
+                                    (fn do-add-bel
+                                      [_ bel]
+                                      (if bel
+                                        (let [binding-element-list (->linked-list bel)]
+                                          (add-all! binding-element-list elements)
+                                          binding-element-list)
+                                        elements)))
+                       binding-element-map)
+                     {join-bindings elements}))))
 
   (remove-elements! [memory node join-bindings elements]
     ;; Do nothing when no elements to remove.
@@ -553,14 +557,18 @@
     (hm/compute! beta-memory (:id node)
                  (fn do-add-btm
                    [_ btm]
-                   (let [binding-token-map (->mutable-map btm)]
-                     (hm/compute! binding-token-map join-bindings
-                                  (fn do-add-btl
-                                    [_ btl]
-                                    (let [binding-token-list (->linked-list btl)]
-                                      (add-all! binding-token-list tokens)
-                                      binding-token-list)))
-                     binding-token-map))))
+                   (if btm
+                     (let [binding-token-map (->mutable-map btm)]
+                       (hm/compute! binding-token-map join-bindings
+                                    (fn do-add-btl
+                                      [_ btl]
+                                      (if btl
+                                        (let [binding-token-list (->linked-list btl)]
+                                          (add-all! binding-token-list tokens)
+                                          binding-token-list)
+                                        tokens)))
+                       binding-token-map)
+                     {join-bindings tokens}))))
 
   (remove-tokens! [memory node join-bindings tokens]
     ;; The reasoning here is the same as remove-elements!
@@ -600,12 +608,14 @@
     (hm/compute! accum-memory (:id node)
                  (fn add-jbam
                    [_ jbam]
-                   (let [join-binding-accum-map (->mutable-map jbam)]
-                     (hm/compute! join-binding-accum-map join-bindings
-                                  (fn add-fbam
-                                    [_ fact-binding-accum-map]
-                                    (assoc fact-binding-accum-map fact-bindings accum-result)))
-                     join-binding-accum-map))))
+                   (if jbam
+                     (let [join-binding-accum-map (->mutable-map jbam)]
+                       (hm/compute! join-binding-accum-map join-bindings
+                                    (fn add-fbam
+                                      [_ fact-binding-accum-map]
+                                      (assoc fact-binding-accum-map fact-bindings accum-result)))
+                       join-binding-accum-map)
+                     {join-bindings {fact-bindings accum-result}}))))
 
   (remove-accum-reduced! [memory node join-bindings fact-bindings]
     (hm/compute-if-present! accum-memory (:id node)
@@ -625,14 +635,16 @@
     (hm/compute! production-memory (:id node)
                  (fn add-tfm
                    [_ tfm]
-                   (let [token-facts-map (->mutable-map tfm)]
-                     (hm/compute! token-facts-map token
-                                  (fn add-tfl
-                                    [_ tfl]
-                                    (let [^List token-facts-list (->linked-list tfl)]
-                                      (.add token-facts-list facts)
-                                      token-facts-list)))
-                     token-facts-map))))
+                   (if tfm
+                     (let [token-facts-map (->mutable-map tfm)]
+                       (hm/compute! token-facts-map token
+                                    (fn add-tfl
+                                      [_ tfl]
+                                      (let [^List token-facts-list (->linked-list tfl)]
+                                        (.add token-facts-list facts)
+                                        token-facts-list)))
+                       token-facts-map)
+                     {token [facts]}))))
 
   (remove-insertions! [memory node tokens]
     ;; Remove the facts inserted from the given token.
