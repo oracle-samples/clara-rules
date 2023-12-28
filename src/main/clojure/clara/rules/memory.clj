@@ -608,16 +608,16 @@
                      (not-empty join-binding-accum-map)))))
 
   (remove-accum-reduced! [memory node join-bindings fact-bindings]
-    (hm/compute! accum-memory (:id node)
-                 (fn add-jbam
-                   [_ jbam]
-                   (let [join-binding-accum-map (->mutable-map jbam)]
-                     (hm/compute! join-binding-accum-map join-bindings
-                                  (fn add-fbam
-                                    [_ fbam]
-                                    (let [fact-binding-accum-map (->mutable-map fbam)]
-                                      (not-empty (dissoc! fact-binding-accum-map fact-bindings)))))
-                     (not-empty join-binding-accum-map)))))
+    (hm/compute-if-present! accum-memory (:id node)
+                            (fn add-jbam
+                              [_ jbam]
+                              (let [join-binding-accum-map (->mutable-map jbam)]
+                                (hm/compute-if-present! join-binding-accum-map join-bindings
+                                                        (fn add-fbam
+                                                          [_ fbam]
+                                                          (let [fact-binding-accum-map (->mutable-map fbam)]
+                                                            (not-empty (dissoc! fact-binding-accum-map fact-bindings)))))
+                                (not-empty join-binding-accum-map)))))
 
   ;; The value under each token in the map should be a sequence
   ;; of sequences of facts, with each inner sequence coming from a single
@@ -629,7 +629,6 @@
               (update token-facts-map token conj facts))))
 
   (remove-insertions! [memory node tokens]
-
     ;; Remove the facts inserted from the given token.
     (let [token-facts-map (get production-memory (:id node) {})
           ;; Get removed tokens for the caller.
