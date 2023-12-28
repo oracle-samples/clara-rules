@@ -5,6 +5,7 @@
             [ham-fisted.mut-map :as hm])
   (:import [java.util
             Map
+            List
             Collections
             LinkedList
             NavigableMap
@@ -623,46 +624,43 @@
   ;; of sequences of facts, with each inner sequence coming from a single
   ;; rule activation.
   (add-insertions! [memory node token facts]
-    (let [token-facts-map (get production-memory (:id node) {})]
-      (assoc! production-memory
-              (:id node)
-              (update token-facts-map token conj facts))))
+    (hm/compute! production-memory (:id node)
+                 (fn add-tfm
+                   [_ tfm]
+                   (let [token-facts-map (->mutable-map tfm)]
+                     (hm/compute! token-facts-map token
+                                  (fn add-tfl
+                                    [_ tfl]
+                                    (let [^List token-facts-list (->linked-list tfl)]
+                                      (.add token-facts-list facts)
+                                      token-facts-list)))
+                     token-facts-map))))
 
   (remove-insertions! [memory node tokens]
     ;; Remove the facts inserted from the given token.
-    (let [token-facts-map (get production-memory (:id node) {})
-          ;; Get removed tokens for the caller.
-          [results
-           new-token-facts-map]
-
-          (loop [results (transient {})
-                 token-map (transient token-facts-map)
-                 to-remove tokens]
-            (if-let [head-token (first to-remove)]
-              ;; Don't use contains? due to http://dev.clojure.org/jira/browse/CLJ-700
-              (if-let [token-insertions (get token-map head-token)]
-                (let [;; There is no particular significance in removing the
-                      ;; first group; we just need to remove exactly one.
-                      [removed-facts & remaining-facts] token-insertions
-                      removed-insertion-map (if (not-empty remaining-facts)
-                                              (assoc! token-map head-token remaining-facts)
-                                              (dissoc! token-map head-token))
-                      prev-token-result (get results head-token [])]
-                  (recur (assoc! results head-token (into prev-token-result removed-facts))
-                         removed-insertion-map
-                         (rest to-remove)))
-                ;; If the token isn't present in the insertions just try the next one.
-                (recur results token-map (rest to-remove)))
-              [(persistent! results)
-               (persistent! token-map)]))]
-
-      ;; Clear the tokens and update the memory.
-      (if (not-empty new-token-facts-map)
-        (assoc! production-memory
-                (:id node)
-                new-token-facts-map)
-        (dissoc! production-memory (:id node)))
-      results))
+    (let [results (hf/mut-map)]
+      (hm/compute-if-present! production-memory (:id node)
+                              (fn rem-tfm
+                                [_ tfm]
+                                (let [token-facts-map (->mutable-map tfm)]
+                                  (doseq [token tokens]
+                                    (hm/compute-if-present! token-facts-map token
+                                                            (fn [_ tfl]
+                                                              ;; Don't use contains? due to http://dev.clojure.org/jira/browse/CLJ-700
+                                                              (let [^List token-facts-list (->linked-list tfl)
+                                                                    ;; There is no particular significance in removing the
+                                                                    ;; first group; we just need to remove exactly one.
+                                                                    removed-facts (.remove token-facts-list 0)]
+                                                                (hm/compute! results token
+                                                                             (fn add-tfr
+                                                                               [_ tfr]
+                                                                               (let [token-facts-removed (->linked-list tfr)]
+                                                                                 (add-all! token-facts-removed removed-facts)
+                                                                                 token-facts-removed)))
+                                                                (not-empty token-facts-list)))))
+                                  (not-empty token-facts-map))))
+      (persistent! (hf/update-values results (fn to-persistent [_ coll]
+                                               (->persistent-coll coll))))))
 
   (add-activations!
     [memory production new-activations]
@@ -764,7 +762,7 @@
                                (persistent-maps persistent-vals alpha-memory)
                                (persistent-maps persistent-vals beta-memory)
                                (persistent-maps persistent-vals accum-memory)
-                               (persistent! production-memory)
+                               (persistent-maps persistent-vals production-memory)
                                (into {}
                                      (map (juxt key (comp ->persistent-coll val)))
                                      activation-map)))))

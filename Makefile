@@ -13,10 +13,10 @@ repl: compile-test-java
 	clojure -M:dev:test:repl
 
 test: compile-test-java
-	clojure -M:dev:test:runner --focus :unit --reporter kaocha.report/tap --no-capture-output
+	clojure -M:dev:test:runner --focus :unit --reporter kaocha.report/documentation --no-capture-output
 
 test-generative: compile-test-java
-	clojure -M:dev:test:runner --focus :generative --reporter kaocha.report/tap --no-capture-output
+	clojure -M:dev:test:runner --focus :generative --reporter kaocha.report/documentation --no-capture-output
 
 test-config:
 	clojure -M:dev:test:runner --print-config
