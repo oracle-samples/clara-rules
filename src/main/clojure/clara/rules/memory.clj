@@ -603,10 +603,9 @@
                    (let [join-binding-accum-map (->mutable-map jbam)]
                      (hm/compute! join-binding-accum-map join-bindings
                                   (fn add-fbam
-                                    [_ fbam]
-                                    (let [fact-binding-accum-map (->mutable-map fbam)]
-                                      (assoc! fact-binding-accum-map fact-bindings accum-result))))
-                     (not-empty join-binding-accum-map)))))
+                                    [_ fact-binding-accum-map]
+                                    (assoc fact-binding-accum-map fact-bindings accum-result)))
+                     join-binding-accum-map))))
 
   (remove-accum-reduced! [memory node join-bindings fact-bindings]
     (hm/compute-if-present! accum-memory (:id node)
@@ -615,9 +614,8 @@
                               (let [join-binding-accum-map (->mutable-map jbam)]
                                 (hm/compute-if-present! join-binding-accum-map join-bindings
                                                         (fn add-fbam
-                                                          [_ fbam]
-                                                          (let [fact-binding-accum-map (->mutable-map fbam)]
-                                                            (not-empty (dissoc! fact-binding-accum-map fact-bindings)))))
+                                                          [_ fact-binding-accum-map]
+                                                          (not-empty (dissoc fact-binding-accum-map fact-bindings))))
                                 (not-empty join-binding-accum-map)))))
 
   ;; The value under each token in the map should be a sequence
