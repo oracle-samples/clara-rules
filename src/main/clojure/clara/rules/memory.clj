@@ -185,8 +185,17 @@
 (defn- ->persistent-coll
   "Creates a persistent collection from the input collection, but only if necessary"
   [coll]
-  (if (coll? coll)
+  (cond
+    (coll? coll)
     coll
+
+    (mutable-map? coll)
+    (persistent! coll)
+
+    (map? coll)
+    (persistent! coll)
+
+    :else
     (seq coll)))
 
 (defn- remove-first-of-each!
@@ -587,25 +596,28 @@
         (hf/persistent! removed-tokens-result))))
 
   (add-accum-reduced! [memory node join-bindings accum-result fact-bindings]
-    (assoc! accum-memory
-            (:id node)
-            (assoc-in (get accum-memory (:id node) {})
-                      [join-bindings fact-bindings]
-                      accum-result)))
+    (hm/compute! accum-memory (:id node)
+                 (fn add-jbam
+                   [_ jbam]
+                   (let [join-binding-accum-map (->mutable-map jbam)]
+                     (hm/compute! join-binding-accum-map join-bindings
+                                  (fn add-fbam
+                                    [_ fbam]
+                                    (let [fact-binding-accum-map (->mutable-map fbam)]
+                                      (assoc! fact-binding-accum-map fact-bindings accum-result))))
+                     (not-empty join-binding-accum-map)))))
 
   (remove-accum-reduced! [memory node join-bindings fact-bindings]
-    (let [node-id (:id node)
-          node-id-mem (get accum-memory node-id {})
-          join-mem (dissoc (get node-id-mem join-bindings) fact-bindings)
-          node-id-mem (if (empty? join-mem)
-                        (dissoc node-id-mem join-bindings)
-                        (assoc node-id-mem join-bindings join-mem))]
-      (if (empty? node-id-mem)
-        (dissoc! accum-memory
-                 node-id)
-        (assoc! accum-memory
-                node-id
-                node-id-mem))))
+    (hm/compute! accum-memory (:id node)
+                 (fn add-jbam
+                   [_ jbam]
+                   (let [join-binding-accum-map (->mutable-map jbam)]
+                     (hm/compute! join-binding-accum-map join-bindings
+                                  (fn add-fbam
+                                    [_ fbam]
+                                    (let [fact-binding-accum-map (->mutable-map fbam)]
+                                      (not-empty (dissoc! fact-binding-accum-map fact-bindings)))))
+                     (not-empty join-binding-accum-map)))))
 
   ;; The value under each token in the map should be a sequence
   ;; of sequences of facts, with each inner sequence coming from a single
@@ -739,20 +751,20 @@
     (.clear activation-map))
 
   (to-persistent! [memory]
-    (let [update-vals (fn do-update-vals [update-fn m]
-                        (->> m
-                             (reduce-kv (fn [m k v]
-                                          (assoc! m k (update-fn v)))
-                                        (hf/mut-map))
-                             persistent!))
-          persistent-vals (partial update-vals ->persistent-coll)]
+    (let [persistent-maps (fn do-update-vals [update-fn m]
+                            (->> m
+                                 (reduce-kv (fn [m k v]
+                                              (assoc! m k (update-fn v)))
+                                            (hf/mut-map))
+                                 persistent!))
+          persistent-vals (partial persistent-maps ->persistent-coll)]
       (->PersistentLocalMemory rulebase
                                activation-group-sort-fn
                                activation-group-fn
                                alphas-fn
-                               (update-vals persistent-vals (persistent! alpha-memory))
-                               (update-vals persistent-vals (persistent! beta-memory))
-                               (persistent! accum-memory)
+                               (persistent-maps persistent-vals alpha-memory)
+                               (persistent-maps persistent-vals beta-memory)
+                               (persistent-maps persistent-vals accum-memory)
                                (persistent! production-memory)
                                (into {}
                                      (map (juxt key (comp ->persistent-coll val)))
