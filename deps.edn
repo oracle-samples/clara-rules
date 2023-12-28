@@ -25,13 +25,16 @@
                       org.clojure/test.check {:mvn/version "1.1.1"}
                       pjstadig/humane-test-output {:mvn/version "0.10.0"}}}
 
-  :runner {:main-opts ["-m" "kaocha.runner"]
+  :runner {:main-opts ["-e" "(println \"warn-on-reflection =\" (set! *warn-on-reflection* true))"
+                       "-m" "kaocha.runner"]
            :exec-fn   kaocha.runner/exec-fn}
 
 
   :repl {:extra-deps {nrepl/nrepl {:mvn/version "1.1.0"}
                       cider/cider-nrepl {:mvn/version "0.44.0"}}
-         :main-opts ["-m" "nrepl.cmdline" "--interactive" "--middleware" "[\"cider.nrepl/cider-middleware\"]"]}
+         :main-opts ["-e" "(println \"warn-on-reflection =\" (set! *warn-on-reflection* true))"
+                     "-m" "nrepl.cmdline" "--interactive"
+                     "--middleware" "[\"cider.nrepl/cider-middleware\"]"]}
 
   :format-fix {:extra-deps {cljfmt/cljfmt {:mvn/version "0.9.2"}}
                :main-opts ["-m" "cljfmt.main" "fix" "src" "dev"]}

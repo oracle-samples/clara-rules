@@ -1,4 +1,4 @@
-#kaocha/v1 {:capture-output?                 true
+#kaocha/v1 {:capture-output?                 false
             :kaocha/fail-fast?               false
             :plugins                         [:kaocha.plugin/profiling
                                               :kaocha.plugin/gc-profiling

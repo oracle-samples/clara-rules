@@ -177,7 +177,8 @@
 (defn- ->mutable-map
   "Creates a new ham_fisted.MutableMap from the map, but only if necessary."
   [m]
-  (if (mutable-map? m) m
+  (if (mutable-map? m)
+    m
     (hf/mut-map m)))
 
 (defn- ->persistent-coll
@@ -441,11 +442,11 @@
                                activation-group-sort-fn
                                activation-group-fn
                                alphas-fn
-                               ^Map ^:unsynchronized-mutable alpha-memory
-                               ^Map ^:unsynchronized-mutable beta-memory
-                               ^Map ^:unsynchronized-mutable accum-memory
-                               ^Map ^:unsynchronized-mutable production-memory
-                               ^NavigableMap ^:unsynchronized-mutable activation-map]
+                               ^Map alpha-memory
+                               ^Map beta-memory
+                               ^Map accum-memory
+                               ^Map production-memory
+                               ^NavigableMap activation-map]
 
   IMemoryReader
   (get-rulebase [memory] rulebase)
@@ -515,12 +516,11 @@
         ;; When changing existing persistent collections, just add on
         ;; the new elements.
         (coll? previous-elements)
-        (set! alpha-memory
-              (assoc! alpha-memory
-                      node-id
-                      (assoc binding-element-map
-                             join-bindings
-                             (into previous-elements elements))))
+        (assoc! alpha-memory
+                node-id
+                (assoc binding-element-map
+                       join-bindings
+                       (into previous-elements elements)))
 
         ;; Already mutable, so update-in-place.
         previous-elements
@@ -530,12 +530,11 @@
         ;; until we actually need to modify anything.  This avoids
         ;; unnecessary copying.
         elements
-        (set! alpha-memory
-              (assoc! alpha-memory
-                      node-id
-                      (assoc binding-element-map
-                             join-bindings
-                             elements))))))
+        (assoc! alpha-memory
+                node-id
+                (assoc binding-element-map
+                       join-bindings
+                       elements)))))
 
   (remove-elements! [memory node join-bindings elements]
     ;; Do nothing when no elements to remove.
@@ -561,20 +560,18 @@
                                      (assoc binding-element-map
                                             join-bindings
                                             remaining-elements))]
-              (set! alpha-memory
-                    (assoc! alpha-memory
-                            node-id
-                            new-bindings-map))
+              (assoc! alpha-memory
+                      node-id
+                      new-bindings-map)
               removed-elements))
 
           ;; Already mutable, so we do not need to re-associate to alpha-memory.
           previous-elements
           (let [removed-elements (first (remove-first-of-each! elements previous-elements))]
             (when (.isEmpty ^java.util.List previous-elements)
-              (set! alpha-memory
-                    (assoc! alpha-memory
-                            node-id
-                            (dissoc binding-element-map join-bindings))))
+              (assoc! alpha-memory
+                      node-id
+                      (dissoc binding-element-map join-bindings)))
             removed-elements)))))
 
   (add-tokens! [memory node join-bindings tokens]
@@ -584,23 +581,21 @@
       ;; The reasoning here is the same as in add-elements! impl above.
       (cond
         (coll? previous-tokens)
-        (set! beta-memory
-              (assoc! beta-memory
-                      node-id
-                      (assoc binding-token-map
-                             join-bindings
-                             (into previous-tokens tokens))))
+        (assoc! beta-memory
+                node-id
+                (assoc binding-token-map
+                       join-bindings
+                       (into previous-tokens tokens)))
 
         previous-tokens
         (add-all! previous-tokens tokens)
 
         tokens
-        (set! beta-memory
-              (assoc! beta-memory
-                      node-id
-                      (assoc binding-token-map
-                             join-bindings
-                             tokens))))))
+        (assoc! beta-memory
+                node-id
+                (assoc binding-token-map
+                       join-bindings
+                       tokens)))))
 
   (remove-tokens! [memory node join-bindings tokens]
     ;; The reasoning here is the same as remove-elements!
@@ -639,29 +634,26 @@
                     new-tokens-map (if (.isEmpty ^java.util.List remaining-tokens)
                                      (dissoc binding-token-map join-bindings)
                                      (assoc binding-token-map join-bindings remaining-tokens))]
-                (set! beta-memory
-                      (assoc! beta-memory
-                              node-id
-                              new-tokens-map))
+                (assoc! beta-memory
+                        node-id
+                        new-tokens-map)
                 removed-tokens)
 
               previous-tokens
               (let [removed-tokens (two-pass-remove! previous-tokens tokens)]
                 (when (.isEmpty ^java.util.List previous-tokens)
-                  (set! beta-memory
-                        (assoc! beta-memory
-                                node-id
-                                (dissoc binding-token-map join-bindings))))
+                  (assoc! beta-memory
+                          node-id
+                          (dissoc binding-token-map join-bindings)))
 
                 removed-tokens)))))))
 
   (add-accum-reduced! [memory node join-bindings accum-result fact-bindings]
-    (set! accum-memory
-          (assoc! accum-memory
-                  (:id node)
-                  (assoc-in (get accum-memory (:id node) {})
-                            [join-bindings fact-bindings]
-                            accum-result))))
+    (assoc! accum-memory
+            (:id node)
+            (assoc-in (get accum-memory (:id node) {})
+                      [join-bindings fact-bindings]
+                      accum-result)))
 
   (remove-accum-reduced! [memory node join-bindings fact-bindings]
     (let [node-id (:id node)
@@ -670,23 +662,21 @@
           node-id-mem (if (empty? join-mem)
                         (dissoc node-id-mem join-bindings)
                         (assoc node-id-mem join-bindings join-mem))]
-      (set! accum-memory
-            (if (empty? node-id-mem)
-              (dissoc! accum-memory
-                       node-id)
-              (assoc! accum-memory
-                      node-id
-                      node-id-mem)))))
+      (if (empty? node-id-mem)
+        (dissoc! accum-memory
+                 node-id)
+        (assoc! accum-memory
+                node-id
+                node-id-mem))))
 
   ;; The value under each token in the map should be a sequence
   ;; of sequences of facts, with each inner sequence coming from a single
   ;; rule activation.
   (add-insertions! [memory node token facts]
     (let [token-facts-map (get production-memory (:id node) {})]
-      (set! production-memory
-            (assoc! production-memory
-                    (:id node)
-                    (update token-facts-map token conj facts)))))
+      (assoc! production-memory
+              (:id node)
+              (update token-facts-map token conj facts))))
 
   (remove-insertions! [memory node tokens]
 
@@ -718,12 +708,11 @@
                (persistent! token-map)]))]
 
       ;; Clear the tokens and update the memory.
-      (set! production-memory
-            (if (not-empty new-token-facts-map)
-              (assoc! production-memory
-                      (:id node)
-                      new-token-facts-map)
-              (dissoc! production-memory (:id node))))
+      (if (not-empty new-token-facts-map)
+        (assoc! production-memory
+                (:id node)
+                new-token-facts-map)
+        (dissoc! production-memory (:id node)))
       results))
 
   (add-activations!
@@ -816,7 +805,7 @@
                         (->> m
                              (reduce-kv (fn [m k v]
                                           (assoc! m k (update-fn v)))
-                                        (transient m))
+                                        (hf/mut-map))
                              persistent!))
           persistent-vals (partial update-vals ->persistent-coll)]
       (->PersistentLocalMemory rulebase
