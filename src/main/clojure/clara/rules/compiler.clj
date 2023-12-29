@@ -5,6 +5,9 @@
   (:require [clara.rules.engine :as eng]
             [clara.rules.schema :as schema]
             [clara.rules.platform :refer [jeq-wrap] :as platform]
+            [ham-fisted.api :as hf]
+            [ham-fisted.set :as hs]
+            [ham-fisted.mut-map :as hm]
             [clojure.set :as set]
             [clojure.string :as string]
             [clojure.walk :as walk]
@@ -117,12 +120,16 @@
           [(symbol (string/replace (.getName property) #"_" "-")) ; Replace underscore with idiomatic dash.
            (symbol (str "." (.getName read-method)))])))
 
-(defn effective-type [type]
+(defn- effective-type*
+  [type]
   (if (symbol? type)
     (.loadClass (clojure.lang.RT/makeClassLoader) (name type))
     type))
 
-(defn get-fields
+(def effective-type
+  (memoize effective-type*))
+
+(defn- get-fields*
   "Returns a map of field name to a symbol representing the function used to access it."
   [type]
   (let [type (effective-type type)]
@@ -130,6 +137,9 @@
       (isa? type clojure.lang.IRecord) (get-field-accessors type)
       (class? type) (get-bean-accessors type) ; Treat unrecognized classes as beans.
       :else [])))
+
+(def get-fields
+  (memoize get-fields*))
 
 (defn- equality-expression? [expression]
   (let [qualify-when-sym #(when-let [resolved (and (symbol? %)
@@ -1095,7 +1105,7 @@
                                    (assoc! m node [id]))))
 
             node->ids (-> (reduce update-node->ids
-                                  (transient {})
+                                  (transient (hf/hash-map))
                                   forward-edges)
                           persistent!)
 
@@ -1285,7 +1295,7 @@
                                            :compile-ctx {:condition condition
                                                          :env env
                                                          :msg "compiling alpha node"}})))
-                         {}
+                         (hf/hash-map)
                          alpha-graph)
         id->expr (reduce-kv (fn [prev id production-node]
                               (let [production (-> production-node :production)]
@@ -1427,7 +1437,7 @@
                                                      "that the method size exceeded the maximum set by the jvm, see the cause for the actual error.")
                                                 {:compilation-ctxs compilation-ctxs}
                                                 e)))))]
-    (into {}
+    (into (hf/hash-map)
           cat
           ;; Grouping by ns, most expressions will not have a defined ns, only expressions from production nodes.
           ;; These expressions must be evaluated in the ns where they were defined, as they will likely contain code
@@ -1655,7 +1665,7 @@
                                  (if (get node-map [condition env])
                                    (update-in node-map [[condition env]] conj node-id)
                                    (assoc node-map [condition env] [node-id])))
-                               {}
+                               (hf/hash-map)
                                condition-to-node-ids)
 
         ;; We sort the alpha nodes by the ordered sequence of the node ids they correspond to
@@ -1729,7 +1739,7 @@
                                  ;; Exclude system types from having ancestors for now
                                  ;; since none of our use-cases require them.  If this changes
                                  ;; we may need to define a custom hierarchy for them.
-                                 #{}
+                                 (hs/set)
                                  (ancestors-fn fact-type)))
 
         fact-type->roots (memoize
@@ -1751,19 +1761,20 @@
                                   (conj (wrapped-ancestors-fn fact-type) fact-type))))
 
         update-roots->facts! (fn [^java.util.Map roots->facts roots-group fact]
-                               (if-let [v (.get roots->facts roots-group)]
-                                 (.add ^java.util.List v fact)
-                                 (.put roots->facts roots-group (doto (java.util.LinkedList.)
-                                                                  (.add fact)))))]
+                               (hm/compute! roots->facts roots-group
+                                            (fn update-roots
+                                              [_ facts]
+                                              (let [^java.util.List fact-list (or facts (hf/mut-list))]
+                                                (.add fact-list fact)
+                                                fact-list))))]
 
     (fn [facts]
       (let [roots->facts (java.util.LinkedHashMap.)]
-
         (doseq [fact facts
                 roots-group (fact-type->roots (wrapped-fact-type-fn fact))]
           (update-roots->facts! roots->facts roots-group fact))
 
-        (let [return-list (java.util.LinkedList.)
+        (let [return-list (hf/mut-list)
               entries (.entrySet roots->facts)
               entries-it (.iterator entries)]
           ;; We iterate over the LinkedHashMap manually to avoid potential issues described at http://dev.clojure.org/jira/browse/CLJ-1738
@@ -1776,10 +1787,9 @@
             (when (.hasNext entries-it)
               (let [^java.util.Map$Entry e (.next entries-it)]
                 (.add return-list [(-> e ^AlphaRootsWrapper (.getKey) (.wrapped))
-                                   (java.util.Collections/unmodifiableList (.getValue e))])
+                                   (hf/persistent! (.getValue e))])
                 (recur))))
-
-          (java.util.Collections/unmodifiableList return-list))))))
+          (hf/persistent! return-list))))))
 
 (sc/defn build-network
   "Constructs the network from compiled beta tree and condition functions."
@@ -1803,12 +1813,13 @@
                           :when (= QueryNode (type node))]
                       node)
 
-        query-map (into {} (for [query-node query-nodes
+        query-map (->> (for [query-node query-nodes
 
-                                 ;; Queries can be looked up by reference or by name;
-                                 entry [[(:query query-node) query-node]
-                                        [(:name (:query query-node)) query-node]]]
-                             entry))
+                             ;; Queries can be looked up by reference or by name;
+                             entry [[(:query query-node) query-node]
+                                    [(:name (:query query-node)) query-node]]]
+                         entry)
+                       (into (hf/hash-map)))
 
         ;; type, alpha node tuples.
         alpha-nodes (for [{:keys [id type alpha-fn children env] :as alpha-map} alpha-fns
@@ -1819,7 +1830,7 @@
         alpha-map (reduce
                    (fn [alpha-map [type alpha-node]]
                      (update-in alpha-map [type] conj alpha-node))
-                   {}
+                   (hf/hash-map)
                    alpha-nodes)
 
         ;; Merge the alpha nodes into the id-to-node map
@@ -1843,7 +1854,7 @@
       :node-expr-fn-lookup expr-fn-lookup})))
 
 ;; Cache of sessions for fast reloading.
-(def ^:private session-cache (atom {}))
+(def ^:private session-cache (atom (hf/hash-map)))
 
 (defn clear-session-cache!
   "Clears the cache of reusable Clara sessions, so any subsequent sessions
@@ -1851,7 +1862,7 @@
    by tooling or specialized needs; most users can simply specify the :cache false
    option when creating sessions."
   []
-  (reset! session-cache {}))
+  (reset! session-cache (hf/hash-map)))
 
 (defn production-load-order-comp [a b]
   (< (-> a meta ::rule-load-order)
@@ -1949,7 +1960,7 @@
         ;; in diagnosing compilation errors in specific rules.
         omit-compile-ctx (:omit-compile-ctx options omit-compile-ctx-default)
         exprs (if omit-compile-ctx
-                (into {}
+                (into (hf/hash-map)
                       (map
                        (fn [[k [expr ctx]]]
                          [k [expr (dissoc ctx :compile-ctx)]]))

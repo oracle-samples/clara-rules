@@ -11,7 +11,9 @@
             [schema.core :as s]
             [clojure.data.fressian :as fres]
             [clojure.java.io :as jio]
-            [clojure.main :as cm])
+            [clojure.main :as cm]
+            [ham-fisted.api :as hf]
+            [ham-fisted.set :as hs])
   (:import [clara.rules.durability
             MemIdx
             InternalMemIdx]
@@ -47,7 +49,10 @@
             WeakHashMap]
            [java.io
             InputStream
-            OutputStream]))
+            OutputStream]
+           [ham_fisted
+            IAPersistentSet
+            IAPersistentMap]))
 
 ;; Use this map to cache the symbol for the map->RecordNameHere
 ;; factory function created for every Clojure record to improve
@@ -241,6 +246,20 @@
               (reify ReadHandler
                 (read [_ rdr tag component-count]
                   (resolve (.readObject rdr))))}}
+
+   "hamf/set"
+   (create-identity-based-handler
+    IAPersistentSet
+    "hamf/set"
+    write-with-meta
+    (fn hamf-set-reader [rdr] (read-with-meta rdr hs/set)))
+
+   "hamf/map"
+   (create-identity-based-handler
+    IAPersistentMap
+    "hamf/map"
+    (fn clj-map-writer [wtr tag m] (write-with-meta wtr tag m write-map))
+    (fn clj-map-reader [rdr] (read-with-meta rdr (partial into (hf/hash-map)))))
 
    "clj/set"
    (create-identity-based-handler
