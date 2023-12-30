@@ -1779,76 +1779,77 @@
           (do
 
             ;; If there are activations, fire them.
-            (when-let [{:keys [node token] :as activation} (mem/pop-activation! transient-memory)]
-              ;; Use vectors for the insertion caches so that within an insertion type
-              ;; (unconditional or logical) all insertions are done in order after the into
-              ;; calls in insert-facts!.  This shouldn't have a functional impact, since any ordering
-              ;; should be valid, but makes traces less confusing to end users.  It also prevents any laziness
-              ;; in the sequences.
-              (let [batched-logical-insertions (atom [])
-                    batched-unconditional-insertions (atom [])
-                    batched-rhs-retractions (atom [])]
-                (binding [*rule-context* {:token token
-                                          :node node
-                                          :batched-logical-insertions batched-logical-insertions
-                                          :batched-unconditional-insertions batched-unconditional-insertions
-                                          :batched-rhs-retractions batched-rhs-retractions}]
+            (let [activations (mem/pop-activations! transient-memory 10)]
+              (doseq [{:keys [node token] :as activation} activations]
+                ;; Use vectors for the insertion caches so that within an insertion type
+                ;; (unconditional or logical) all insertions are done in order after the into
+                ;; calls in insert-facts!.  This shouldn't have a functional impact, since any ordering
+                ;; should be valid, but makes traces less confusing to end users.  It also prevents any laziness
+                ;; in the sequences.
+                (let [batched-logical-insertions (atom [])
+                      batched-unconditional-insertions (atom [])
+                      batched-rhs-retractions (atom [])]
+                  (binding [*rule-context* {:token token
+                                            :node node
+                                            :batched-logical-insertions batched-logical-insertions
+                                            :batched-unconditional-insertions batched-unconditional-insertions
+                                            :batched-rhs-retractions batched-rhs-retractions}]
 
-                  ;; Fire the rule itself.
-                  (try
-                    ((:rhs node) token (:env (:production node)))
-                    ;; Don't do anything if a given insertion type has no corresponding
-                    ;; facts to avoid complicating traces.  Note that since each no RHS's of
-                    ;; downstream rules are fired here everything is governed by truth maintenance.
-                    ;; Therefore, the reordering of retractions and insertions should have no impact
-                    ;; assuming that the evaluation of rule conditions is pure, which is a general expectation
-                    ;; of the rules engine.
-                    ;;
-                    ;; Bind the contents of the cache atoms after the RHS is fired since they are used twice
-                    ;; below.  They will be dereferenced again if an exception is caught, but in the error
-                    ;; case we aren't worried about performance.
-                    (let [retrieved-unconditional-insertions @batched-unconditional-insertions
-                          retrieved-logical-insertions @batched-logical-insertions
-                          retrieved-rhs-retractions @batched-rhs-retractions]
-                      (l/fire-activation! listener
-                                          activation
-                                          {:unconditional-insertions retrieved-unconditional-insertions
-                                           :logical-insertions retrieved-logical-insertions
-                                           :rhs-retractions retrieved-rhs-retractions})
-                      (when-let [batched (seq retrieved-unconditional-insertions)]
-                        (flush-insertions! batched true))
-                      (when-let [batched (seq retrieved-logical-insertions)]
-                        (flush-insertions! batched false))
-                      (when-let [batched (seq retrieved-rhs-retractions)]
-                        (flush-rhs-retractions! batched)))
-                    (catch Exception e
-                           ;; If the rule fired an exception, help debugging by attaching
-                           ;; details about the rule itself, cached insertions, and any listeners
-                           ;; while propagating the cause.
-                      (let [production (:production node)
-                            rule-name (:name production)
-                            rhs (:rhs production)]
-                        (throw (ex-info (str "Exception in " (if rule-name rule-name (pr-str rhs))
-                                             " with bindings " (pr-str (:bindings token)))
-                                        {:bindings (:bindings token)
-                                         :name rule-name
-                                         :rhs rhs
-                                         :batched-logical-insertions @batched-logical-insertions
-                                         :batched-unconditional-insertions @batched-unconditional-insertions
-                                         :batched-rhs-retractions @batched-rhs-retractions
-                                         :listeners (try
-                                                      (let [p-listener (l/to-persistent! listener)]
-                                                        (if (l/null-listener? p-listener)
-                                                          []
-                                                          (l/get-children p-listener)))
-                                                      (catch Exception listener-exception
-                                                        listener-exception))}
-                                        e)))))
+                    ;; Fire the rule itself.
+                    (try
+                      ((:rhs node) token (:env (:production node)))
+                      ;; Don't do anything if a given insertion type has no corresponding
+                      ;; facts to avoid complicating traces.  Note that since each no RHS's of
+                      ;; downstream rules are fired here everything is governed by truth maintenance.
+                      ;; Therefore, the reordering of retractions and insertions should have no impact
+                      ;; assuming that the evaluation of rule conditions is pure, which is a general expectation
+                      ;; of the rules engine.
+                      ;;
+                      ;; Bind the contents of the cache atoms after the RHS is fired since they are used twice
+                      ;; below.  They will be dereferenced again if an exception is caught, but in the error
+                      ;; case we aren't worried about performance.
+                      (let [retrieved-unconditional-insertions @batched-unconditional-insertions
+                            retrieved-logical-insertions @batched-logical-insertions
+                            retrieved-rhs-retractions @batched-rhs-retractions]
+                        (l/fire-activation! listener
+                                            activation
+                                            {:unconditional-insertions retrieved-unconditional-insertions
+                                             :logical-insertions retrieved-logical-insertions
+                                             :rhs-retractions retrieved-rhs-retractions})
+                        (when-let [batched (seq retrieved-unconditional-insertions)]
+                          (flush-insertions! batched true))
+                        (when-let [batched (seq retrieved-logical-insertions)]
+                          (flush-insertions! batched false))
+                        (when-let [batched (seq retrieved-rhs-retractions)]
+                          (flush-rhs-retractions! batched)))
+                      (catch Exception e
+                        ;; If the rule fired an exception, help debugging by attaching
+                        ;; details about the rule itself, cached insertions, and any listeners
+                        ;; while propagating the cause.
+                        (let [production (:production node)
+                              rule-name (:name production)
+                              rhs (:rhs production)]
+                          (throw (ex-info (str "Exception in " (if rule-name rule-name (pr-str rhs))
+                                               " with bindings " (pr-str (:bindings token)))
+                                          {:bindings (:bindings token)
+                                           :name rule-name
+                                           :rhs rhs
+                                           :batched-logical-insertions @batched-logical-insertions
+                                           :batched-unconditional-insertions @batched-unconditional-insertions
+                                           :batched-rhs-retractions @batched-rhs-retractions
+                                           :listeners (try
+                                                        (let [p-listener (l/to-persistent! listener)]
+                                                          (if (l/null-listener? p-listener)
+                                                            []
+                                                            (l/get-children p-listener)))
+                                                        (catch Exception listener-exception
+                                                          listener-exception))}
+                                          e)))))
 
-                  ;; Explicitly flush updates if we are in a no-loop rule, so the no-loop
-                  ;; will be in context for child rules.
-                  (when (some-> node :production :props :no-loop)
-                    (flush-updates *current-session*)))))
+                    ;; Explicitly flush updates if we are in a no-loop rule, so the no-loop
+                    ;; will be in context for child rules.
+                    (when (some-> node :production :props :no-loop)
+                      (flush-updates *current-session*))))))
 
             (recur (mem/next-activation-group transient-memory) next-group)))
 

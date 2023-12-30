@@ -1626,7 +1626,7 @@
                                   [Hot (= ?t temperature)]]]]
                           (insert-unconditional! (->First)))
 
-        q (dsl/parse-query [] [[First]])
+        q (dsl/parse-query [] [[?result <- First]])
 
         session->results (fn [session] (-> session
                                            (insert (->Cold 10) (->Hot 10))

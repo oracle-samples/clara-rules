@@ -97,7 +97,7 @@
 
   ;; Pop an activation from the working memory. Returns nil if no
   ;; activations are pending.
-  (pop-activation! [memory])
+  (pop-activations! [memory count])
 
   ;; Returns the group of the next activation, or nil if none are pending.
   (next-activation-group [memory])
@@ -686,24 +686,51 @@
               activation-group
               (->activation-priority-queue new-activations)))))
 
-  (pop-activation!
-    [memory]
-    (when (not (.isEmpty activation-map))
-      (let [entry (.firstEntry activation-map)
-            key (.getKey entry)
-            ^java.util.Queue value (.getValue entry)
+  (pop-activations!
+    [memory count]
+    (loop [^List activations (hf/mut-list)
+           remaining count]
+      (cond
+        (.isEmpty activation-map)
+        (persistent! activations)
 
-            ;; An empty value is illegal and should be removed by an action
-            ;; that creates one (e.g. a remove-activations! call).
-            ^RuleOrderedActivation activation (.remove value)]
+        (not (and (number? remaining)
+                  (pos? remaining)))
+        (persistent! activations)
 
-        ;; This activation group is empty now, so remove it from
-        ;; the map entirely.
-        (when (.isEmpty value)
-          (.remove activation-map key))
+        :else
+        (let [entry (.firstEntry activation-map)
+              key (.getKey entry)
+              ^java.util.Queue activation-queue (.getValue entry)
+              curr-popped-activations (not (.isEmpty activations))
+              next-no-loop-activation (some-> ^RuleOrderedActivation (.peek activation-queue)
+                                              (.activation)
+                                              :node :production :props :no-loop)]
+          (if (and curr-popped-activations next-no-loop-activation)
+            (persistent! activations)
+            (let [;; An empty value is illegal and should be removed by an action
+                  ;; that creates one (e.g. a remove-activations! call).
+                  ^RuleOrderedActivation activation-wrapper (.remove activation-queue)
+                  ;; Extract the selected activation.
+                  activation (.activation activation-wrapper)
+                  empty-activation-group (.isEmpty activation-queue)]
+              (.add activations activation)
+              ;; This activation group is empty now, so remove it from
+              ;; the map entirely.
+              (when empty-activation-group
+                (.remove activation-map key))
+              (cond
+                ;; This activation group is empty so return and do not  move
+                ;; to the next activation group
+                empty-activation-group
+                (persistent! activations)
+                ;; When we encounter a no-loop activation we need to stop returning activations since it would
+                ;; flush updates after the RHS is activated
+                (some-> activation :node :production :props :no-loop)
+                (persistent! activations)
 
-        ;; Return the selected activation.
-        (.activation activation))))
+                :else
+                (recur activations (dec remaining)))))))))
 
   (next-activation-group
     [memory]
