@@ -1,5 +1,6 @@
 {:lint-as {clara.rules/defsession clojure.core/def
-           clara.rules.platform/eager-for clojure.core/for}
+           clara.rules.platform/eager-for clojure.core/for
+           clara.rules.platform/match-for clojure.core/for}
  :hooks {:analyze-call {clara.rules/defquery hooks.clara-rules/analyze-defquery-macro
                         clara.rules/defrule hooks.clara-rules/analyze-defrule-macro
                         clara.rules.dsl/parse-query hooks.clara-rules/analyze-parse-query-macro

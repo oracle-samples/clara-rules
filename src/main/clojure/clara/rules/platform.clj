@@ -1,8 +1,19 @@
 (ns clara.rules.platform
   "This namespace is for internal use and may move in the future.
   Platform unified code Clojure/ClojureScript."
-  (:import [java.lang IllegalArgumentException]
-           [java.util LinkedHashMap]))
+  (:require
+   [ham-fisted.function :as f])
+  (:import
+   [clojure.lang Var]
+   [java.lang IllegalArgumentException]
+   [java.util LinkedHashMap]
+   [java.util.concurrent
+    ExecutionException
+    CompletableFuture
+    ExecutorService
+    ForkJoinPool
+    Future]
+   [java.util.function Function]))
 
 (defn throw-error
   "Throw an error with the given description string."
@@ -101,7 +112,52 @@
          ~@(for [[tl] binding-pairs]
              `(.remove ~tl))))))
 
+(def ^:dynamic *thread-pool* (ForkJoinPool/commonPool))
+
+(defmacro completable-future
+  "Asynchronously invokes the body inside a completable future, preserves the current thread binding frame,
+  using by default the `ForkJoinPool/commonPool`, the pool used can be specified via `*thread-pool*` binding."
+  ^CompletableFuture [& body]
+  `(let [binding-frame# (Var/cloneThreadBindingFrame) ;;; capture the thread local binding frame before start
+         ^CompletableFuture result# (CompletableFuture.) ;;; this is the CompletableFuture being returned
+         ^ExecutorService pool# (or *thread-pool* (ForkJoinPool/commonPool))
+         ^Runnable fbody# (fn do-complete#
+                            []
+                            (try
+                              (Var/resetThreadBindingFrame binding-frame#) ;;; set the Clojure binding frame captured above
+                              (.complete result# (do ~@body)) ;;; send the result of evaluating the body to the CompletableFuture
+                              (catch Throwable ~'e
+                                (.completeExceptionally result# ~'e)))) ;;; if we catch an exception we send it to the CompletableFuture
+         ^Future fut# (.submit pool# fbody#)
+         ^Function cancel# (f/function
+                            [~'_]
+                            (future-cancel fut#))] ;;; submit the work to the pool and get the FutureTask doing the work
+     ;;; if the CompletableFuture returns exceptionally
+     ;;; then cancel the Future which is currently doing the work
+     (.exceptionally result# cancel#)
+     result#))
+
 (defmacro eager-for
   "A for wrapped with a doall to force realisation. Usage is the same as regular for."
   [& body]
   `(doall (for ~@body)))
+
+(def ^:dynamic *parallel-match* false)
+
+(defmacro match-for
+  [bindings & body]
+  `(if *parallel-match*
+     (let [fut-seq# (eager-for [~@bindings]
+                               (platform/completable-future
+                                ~@body))]
+       (try
+         (eager-for [fut# fut-seq#
+                     :let [match# @fut#]
+                     :when match#]
+                    match#)
+         (catch ExecutionException e#
+           (throw (ex-cause e#)))))
+     (eager-for [~@bindings
+                 :let [match# (do ~@body)]
+                 :when match#]
+                match#)))

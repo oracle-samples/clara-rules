@@ -7,7 +7,8 @@
             [clara.rules.update-cache.cancelling :as ca]
             [clara.rules.compiler :as com]
             [clara.rules.dsl :as dsl]
-            [clojure.test :refer [is]]))
+            [clojure.test :refer [is]]
+            [clara.rules.platform :as platform]))
 
 (defmacro def-rules-test
   "This macro allows creation of rules, queries, and sessions from arbitrary combinations of rules
@@ -66,12 +67,13 @@
 
 (defn opts-fixture
   ;; For operations other than replace-facts uc/get-ordered-update-cache is currently
-  ;; always used.  This fixture ensures that CancellingUpdateCache is tested for a wide
+  ;; always used.  This fixture ensures that CancellingUpdateCache and Parallel Matching is tested for a wide
   ;; variety of different cases rather than a few cases cases specific to it.
   [f]
   (f)
-  (with-redefs [uc/get-ordered-update-cache ca/get-cancelling-update-cache]
-    (f)))
+  (binding [platform/*parallel-match* true]
+    (with-redefs [uc/get-ordered-update-cache ca/get-cancelling-update-cache]
+      (f))))
 
 (defn join-filter-equals
   "Intended to be a test function that is the same as equals, but is not visible to Clara as such

@@ -332,8 +332,9 @@
     (when (or (not (get-in production [:props :no-loop]))
               (not (= production (get-in *rule-context* [:node :production]))))
 
-      (let [activations (platform/eager-for [token tokens]
-                                            (->Activation node token))]
+      (let [activations (platform/eager-for
+                         [token tokens]
+                         (->Activation node token))]
 
         (l/add-activations! listener node activations)
 
@@ -349,8 +350,9 @@
     (l/left-retract! listener node tokens)
 
     ;; Remove pending activations triggered by the retracted tokens.
-    (let [activations (platform/eager-for [token tokens]
-                                          (->Activation node token))
+    (let [activations (platform/eager-for
+                       [token tokens]
+                       (->Activation node token))
 
           ;; We attempt to remove a pending activation for all tokens retracted, but our expectation
           ;; is that each token may remove a pending activation
@@ -493,18 +495,16 @@
                      :conditions-and-rules conditions-and-rules}
                     cause))))
 
-(defn- alpha-node-matches
-  [facts env activation node]
-  (platform/eager-for [fact facts
-                       :let [bindings (try
-                                        (activation fact env)
-                                        (catch Exception e
-                                          (throw-condition-exception {:cause e
-                                                                      :node node
-                                                                      :fact fact
-                                                                      :env env})))]
-                       :when bindings]           ; FIXME: add env.
-                      [fact bindings]))
+(defn- alpha-node-match->Element
+  [fact env activation node]
+  (try
+    (when-let [bindings (activation fact env)]
+      (->Element fact bindings))
+    (catch Exception e
+      (throw-condition-exception {:cause e
+                                  :node node
+                                  :fact fact
+                                  :env env}))))
 
 ;; Record representing alpha nodes in the Rete network,
 ;; each of which evaluates a single condition and
@@ -513,26 +513,28 @@
 
   IAlphaActivate
   (alpha-activate [node facts memory transport listener]
-    (let [fact-binding-pairs (alpha-node-matches facts env activation node)]
-      (l/alpha-activate! listener node (map first fact-binding-pairs))
+    (let [match-elements (platform/match-for
+                          [fact facts]
+                          (alpha-node-match->Element fact env activation node))]
+      (l/alpha-activate! listener node (map :fact match-elements))
       (send-elements
        transport
        memory
        listener
        children
-       (platform/eager-for [[fact bindings] fact-binding-pairs]
-                           (->Element fact bindings)))))
+       match-elements)))
 
   (alpha-retract [node facts memory transport listener]
-    (let [fact-binding-pairs (alpha-node-matches facts env activation node)]
-      (l/alpha-retract! listener node (map first fact-binding-pairs))
+    (let [match-elements (platform/match-for
+                          [fact facts]
+                          (alpha-node-match->Element fact env activation node))]
+      (l/alpha-retract! listener node (map :fact match-elements))
       (retract-elements
        transport
        memory
        listener
        children
-       (platform/eager-for [[fact bindings] fact-binding-pairs]
-                           (->Element fact bindings))))))
+       match-elements))))
 
 (defrecord RootJoinNode [id condition children binding-keys]
   ILeftActivate
@@ -553,7 +555,7 @@
 
     (l/right-activate! listener node elements)
 
-;; Add elements to the working memory to support analysis tools.
+    ;; Add elements to the working memory to support analysis tools.
     (mem/add-elements! memory node join-bindings elements)
     ;; Simply create tokens and send it downstream.
     (send-tokens
@@ -561,8 +563,9 @@
      memory
      listener
      children
-     (platform/eager-for [{:keys [fact bindings] :as element} elements]
-                         (->Token [[fact (:id node)]] bindings))))
+     (platform/eager-for
+      [{:keys [fact bindings] :as element} elements]
+      (->Token [[fact (:id node)]] bindings))))
 
   (right-retract [node join-bindings elements memory transport listener]
 
@@ -574,8 +577,9 @@
      memory
      listener
      children
-     (platform/eager-for [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)]
-                         (->Token [[fact (:id node)]] bindings))))
+     (platform/eager-for
+      [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)]
+      (->Token [[fact (:id node)]] bindings))))
 
   IConditionNode
   (get-condition-description [this]
@@ -596,11 +600,12 @@
      memory
      listener
      children
-     (platform/eager-for [element (mem/get-elements memory node join-bindings)
-                          token tokens
-                          :let [fact (:fact element)
-                                fact-binding (:bindings element)]]
-                         (->Token (conj (:matches token) [fact id]) (conj fact-binding (:bindings token))))))
+     (platform/eager-for
+      [element (mem/get-elements memory node join-bindings)
+       token tokens
+       :let [fact (:fact element)
+             fact-binding (:bindings element)]]
+      (->Token (conj (:matches token) [fact id]) (conj fact-binding (:bindings token))))))
 
   (left-retract [node join-bindings tokens memory transport listener]
     (l/left-retract! listener node tokens)
@@ -609,11 +614,12 @@
      memory
      listener
      children
-     (platform/eager-for [token (mem/remove-tokens! memory node join-bindings tokens)
-                          element (mem/get-elements memory node join-bindings)
-                          :let [fact (:fact element)
-                                fact-bindings (:bindings element)]]
-                         (->Token (conj (:matches token) [fact id]) (conj fact-bindings (:bindings token))))))
+     (platform/eager-for
+      [token (mem/remove-tokens! memory node join-bindings tokens)
+       element (mem/get-elements memory node join-bindings)
+       :let [fact (:fact element)
+             fact-bindings (:bindings element)]]
+      (->Token (conj (:matches token) [fact id]) (conj fact-bindings (:bindings token))))))
 
   (get-join-keys [node] binding-keys)
 
@@ -628,9 +634,10 @@
      memory
      listener
      children
-     (platform/eager-for [token (mem/get-tokens memory node join-bindings)
-                          {:keys [fact bindings] :as element} elements]
-                         (->Token (conj (:matches token) [fact id]) (conj (:bindings token) bindings)))))
+     (platform/eager-for
+      [token (mem/get-tokens memory node join-bindings)
+       {:keys [fact bindings] :as element} elements]
+      (->Token (conj (:matches token) [fact id]) (conj (:bindings token) bindings)))))
 
   (right-retract [node join-bindings elements memory transport listener]
     (l/right-retract! listener node elements)
@@ -639,9 +646,10 @@
      memory
      listener
      children
-     (platform/eager-for [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)
-                          token (mem/get-tokens memory node join-bindings)]
-                         (->Token (conj (:matches token) [fact id]) (conj (:bindings token) bindings)))))
+     (platform/eager-for
+      [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)
+       token (mem/get-tokens memory node join-bindings)]
+      (->Token (conj (:matches token) [fact id]) (conj (:bindings token) bindings)))))
 
   IConditionNode
   (get-condition-description [this]
@@ -660,41 +668,47 @@
                                                                           fact-bindings)})))]
     beta-bindings))
 
+(defn expression-join-node-match->Token
+  [element token node id join-filter-fn env]
+  (let [fact (:fact element)
+        fact-binding (:bindings element)
+        beta-bindings (join-node-matches node join-filter-fn token fact fact-binding env)]
+    (when beta-bindings
+      (->Token (conj (:matches token) [fact id])
+               (conj fact-binding (:bindings token) beta-bindings)))))
+
 (defrecord ExpressionJoinNode [id condition join-filter-fn children binding-keys]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport listener]
     ;; Add token to the node's working memory for future right activations.
     (mem/add-tokens! memory node join-bindings tokens)
     (l/left-activate! listener node tokens)
-    (send-tokens
-     transport
-     memory
-     listener
-     children
-     (platform/eager-for [element (mem/get-elements memory node join-bindings)
-                          token tokens
-                          :let [fact (:fact element)
-                                fact-binding (:bindings element)
-                                beta-bindings (join-node-matches node join-filter-fn token fact fact-binding {})]
-                          :when beta-bindings]
-                         (->Token (conj (:matches token) [fact id])
-                                  (conj fact-binding (:bindings token) beta-bindings)))))
+    (let [elements (mem/get-elements memory node join-bindings)
+          matched-tokens (platform/match-for
+                          [element elements
+                           token tokens]
+                          (expression-join-node-match->Token element token node id join-filter-fn (:env condition)))]
+      (send-tokens
+       transport
+       memory
+       listener
+       children
+       matched-tokens)))
 
   (left-retract [node join-bindings tokens memory transport listener]
     (l/left-retract! listener node tokens)
-    (retract-tokens
-     transport
-     memory
-     listener
-     children
-     (platform/eager-for [token (mem/remove-tokens! memory node join-bindings tokens)
-                          element (mem/get-elements memory node join-bindings)
-                          :let [fact (:fact element)
-                                fact-bindings (:bindings element)
-                                beta-bindings (join-node-matches node join-filter-fn token fact fact-bindings {})]
-                          :when beta-bindings]
-                         (->Token (conj (:matches token) [fact id])
-                                  (conj fact-bindings (:bindings token) beta-bindings)))))
+    (let [tokens (mem/remove-tokens! memory node join-bindings tokens)
+          elements (mem/get-elements memory node join-bindings)
+          matched-tokens (platform/match-for
+                          [element elements
+                           token tokens]
+                          (expression-join-node-match->Token element token node id join-filter-fn (:env condition)))]
+      (retract-tokens
+       transport
+       memory
+       listener
+       children
+       matched-tokens)))
 
   (get-join-keys [node] binding-keys)
 
@@ -702,33 +716,34 @@
 
   IRightActivate
   (right-activate [node join-bindings elements memory transport listener]
-    (mem/add-elements! memory node join-bindings elements)
-    (l/right-activate! listener node elements)
-    (send-tokens
-     transport
-     memory
-     listener
-     children
-     (platform/eager-for [token (mem/get-tokens memory node join-bindings)
-                          {:keys [fact bindings] :as element} elements
-                          :let [beta-bindings (join-node-matches node join-filter-fn token fact bindings {})]
-                          :when beta-bindings]
-                         (->Token (conj (:matches token) [fact id])
-                                  (conj (:bindings token) bindings beta-bindings)))))
+    (let [tokens (mem/get-tokens memory node join-bindings)
+          matched-tokens (platform/match-for
+                          [element elements
+                           token tokens]
+                          (expression-join-node-match->Token element token node id join-filter-fn (:env condition)))]
+      (mem/add-elements! memory node join-bindings elements)
+      (l/right-activate! listener node elements)
+      (send-tokens
+       transport
+       memory
+       listener
+       children
+       matched-tokens)))
 
   (right-retract [node join-bindings elements memory transport listener]
     (l/right-retract! listener node elements)
-    (retract-tokens
-     transport
-     memory
-     listener
-     children
-     (platform/eager-for [{:keys [fact bindings] :as element} (mem/remove-elements! memory node join-bindings elements)
-                          token (mem/get-tokens memory node join-bindings)
-                          :let [beta-bindings (join-node-matches node join-filter-fn token fact bindings {})]
-                          :when beta-bindings]
-                         (->Token (conj (:matches token) [fact id])
-                                  (conj (:bindings token) bindings beta-bindings)))))
+    (let [elements (mem/remove-elements! memory node join-bindings elements)
+          tokens (mem/get-tokens memory node join-bindings)
+          matched-tokens (platform/match-for
+                          [element elements
+                           token tokens]
+                          (expression-join-node-match->Token element token node id join-filter-fn (:env condition)))]
+      (retract-tokens
+       transport
+       memory
+       listener
+       children
+       matched-tokens)))
 
   IConditionNode
   (get-condition-description [this]
@@ -791,6 +806,14 @@
           (join-node-matches node join-filter-fn token fact bindings (:env condition)))
         elements))
 
+(defn negation-join-node-not-match->Token
+  [node token elements join-filter-fn condition]
+  (when-not (some (fn negation-join-match
+                    [{:keys [fact bindings]}]
+                    (join-node-matches node join-filter-fn token fact bindings (:env condition)))
+                  elements)
+    token))
+
 ;; A specialization of the NegationNode that supports additional tests
 ;; that have to occur on the beta side of the network. The key difference between this and the simple
 ;; negation node is the join-filter-fn, which allows negation tests to
@@ -808,13 +831,13 @@
                  listener
                  children
                  (let [elements (mem/get-elements memory node join-bindings)]
-                   (platform/eager-for [token tokens
-                                        :when (not (matches-some-facts? node
-                                                                        token
-                                                                        elements
-                                                                        join-filter-fn
-                                                                        condition))]
-                                       token))))
+                   (platform/match-for
+                    [token tokens]
+                    (negation-join-node-not-match->Token node
+                                                         token
+                                                         elements
+                                                         join-filter-fn
+                                                         condition)))))
 
   (left-retract [node join-bindings tokens memory transport listener]
     (l/left-retract! listener node tokens)
@@ -823,17 +846,16 @@
                     memory
                     listener
                     children
-
                     ;; Retract only if it previously had no matches in the negation node,
                     ;; and therefore had an activation.
                     (let [elements (mem/get-elements memory node join-bindings)]
-                      (platform/eager-for [token tokens
-                                           :when (not (matches-some-facts? node
-                                                                           token
-                                                                           elements
-                                                                           join-filter-fn
-                                                                           condition))]
-                                          token))))
+                      (platform/match-for
+                       [token tokens]
+                       (negation-join-node-not-match->Token node
+                                                            token
+                                                            elements
+                                                            join-filter-fn
+                                                            condition)))))
 
   (get-join-keys [node] binding-keys)
 
@@ -848,24 +870,23 @@
                       memory
                       listener
                       children
-                      (platform/eager-for [token (mem/get-tokens memory node join-bindings)
-
-                                           ;; Retract downstream if the token now has matching elements and didn't before.
-                                           ;; We check the new elements first in the expectation that the new elements will be
-                                           ;; smaller than the previous elements most of the time
-                                           ;; and that the time to check the elements will be proportional
-                                           ;; to the number of elements.
-                                           :when (and (matches-some-facts? node
-                                                                           token
-                                                                           elements
-                                                                           join-filter-fn
-                                                                           condition)
-                                                      (not (matches-some-facts? node
-                                                                                token
-                                                                                previous-elements
-                                                                                join-filter-fn
-                                                                                condition)))]
-                                          token))
+                      (platform/match-for
+                       [token (mem/get-tokens memory node join-bindings)]
+                        ;; Retract downstream if the token now has matching elements and didn't before.
+                        ;; We check the new elements first in the expectation that the new elements will be
+                        ;; smaller than the previous elements most of the time
+                        ;; and that the time to check the elements will be proportional
+                        ;; to the number of elements.
+                       (when-not (negation-join-node-not-match->Token node
+                                                                      token
+                                                                      elements
+                                                                      join-filter-fn
+                                                                      condition)
+                         (negation-join-node-not-match->Token node
+                                                              token
+                                                              previous-elements
+                                                              join-filter-fn
+                                                              condition))))
       ;; Adding the elements will mutate the previous-elements since, on the JVM, the LocalMemory
       ;; currently returns a mutable List from get-elements after changes in issue 184.  We need to use the
       ;; new and old elements in the logic above as separate collections.  Therefore we need to delay updating the
@@ -882,21 +903,20 @@
                  listener
                  children
                  (let [remaining-elements (mem/get-elements memory node join-bindings)]
-                   (platform/eager-for [token (mem/get-tokens memory node join-bindings)
-
-                                        ;; Propagate tokens when some of the retracted facts joined
-                                        ;; but none of the remaining facts do.
-                                        :when (and (matches-some-facts? node
-                                                                        token
-                                                                        elements
-                                                                        join-filter-fn
-                                                                        condition)
-                                                   (not (matches-some-facts? node
-                                                                             token
-                                                                             remaining-elements
-                                                                             join-filter-fn
-                                                                             condition)))]
-                                       token))))
+                   (platform/match-for
+                    [token (mem/get-tokens memory node join-bindings)]
+                     ;; Propagate tokens when some of the retracted facts joined
+                     ;; but none of the remaining facts do.
+                    (when-not (negation-join-node-not-match->Token node
+                                                                   token
+                                                                   elements
+                                                                   join-filter-fn
+                                                                   condition)
+                      (negation-join-node-not-match->Token node
+                                                           token
+                                                           remaining-elements
+                                                           join-filter-fn
+                                                           condition))))))
 
   IConditionNode
   (get-condition-description [this]
@@ -906,7 +926,7 @@
                              constraints)]
       [:not (into [type] full-constraints)])))
 
-(defn- test-node-matches
+(defn- test-node-match->Token
   [node test-handler env token]
   (let [test-result (try
                       (test-handler token env)
@@ -915,7 +935,8 @@
                                                     :node node
                                                     :env env
                                                     :bindings (:bindings token)})))]
-    test-result))
+    (when test-result
+      token)))
 
 ;; The test node represents a Rete extension in which an arbitrary test condition is run
 ;; against bindings from ancestor nodes. Since this node
@@ -929,10 +950,9 @@
      memory
      listener
      children
-     (platform/eager-for
-      [token tokens
-       :when (test-node-matches node (:handler test) env token)]
-      token)))
+     (platform/match-for
+      [token tokens]
+      (test-node-match->Token node (:handler test) env token))))
 
   (left-retract [node join-bindings tokens memory transport listener]
     (l/left-retract! listener node tokens)
@@ -1112,8 +1132,9 @@
   IAccumRightActivate
   (pre-reduce [node elements]
     ;; Return a seq tuples with the form [binding-group facts-from-group-elements].
-    (platform/eager-for [[bindings element-group] (platform/group-by-seq :bindings elements)]
-                        [bindings (mapv :fact element-group)]))
+    (platform/eager-for
+     [[bindings element-group] (platform/group-by-seq :bindings elements)]
+     [bindings (mapv :fact element-group)]))
 
   (right-activate-reduced [node join-bindings fact-seq memory transport listener]
 
@@ -1424,7 +1445,7 @@
                                 converted-result join-bindings transport memory listener))))
 
         ;; Propagate nothing if the above conditions don't apply.
-        :default nil)))
+        :else nil)))
 
   (left-retract [node join-bindings tokens memory transport listener]
 
@@ -1483,8 +1504,9 @@
     ;; Return a map of bindings to the candidate facts that match them. This accumulator
     ;; depends on the values from parent facts, so we defer actually running the accumulator
     ;; until we have a token.
-    (platform/eager-for [[bindings element-group] (platform/group-by-seq :bindings elements)]
-                        [bindings (map :fact element-group)]))
+    (platform/eager-for
+     [[bindings element-group] (platform/group-by-seq :bindings elements)]
+     [bindings (map :fact element-group)]))
 
   (right-activate-reduced [node join-bindings binding-candidates-seq memory transport listener]
 
@@ -1715,10 +1737,11 @@
 (defn variables-as-keywords
   "Returns symbols in the given s-expression that start with '?' as keywords"
   [expression]
-  (into #{} (platform/eager-for [item (tree-seq coll? seq expression)
-                                 :when (and (symbol? item)
-                                            (= \? (first (name item))))]
-                                (keyword item))))
+  (into #{} (platform/eager-for
+             [item (tree-seq coll? seq expression)
+              :when (and (symbol? item)
+                         (= \? (first (name item))))]
+             (keyword item))))
 
 (defn conj-rulebases
   "DEPRECATED. Simply concat sequences of rules and queries.
@@ -1877,90 +1900,46 @@
   ;; but we kept a one-argument version of the fire-rules in case anyone is calling the fire-rules protocol function or method on the session directly.
   (fire-rules [session] (fire-rules session {}))
   (fire-rules [session opts]
+    (binding [platform/*parallel-match* (or (:parallel-match opts) platform/*parallel-match*)]
+      (let [transient-memory (mem/to-transient memory)
+            transient-listener (l/to-transient listener)]
 
-    (let [transient-memory (mem/to-transient memory)
-          transient-listener (l/to-transient listener)]
+        (if-not (:cancelling opts)
+          ;; We originally performed insertions and retractions immediately after the insert and retract calls,
+          ;; but this had the downside of making a pattern like "Retract facts, insert other facts, and fire the rules"
+          ;; perform at least three transitions between a persistent and transient memory.  Delaying the actual execution
+          ;; of the insertions and retractions until firing the rules allows us to cut this down to a single transition
+          ;; between persistent and transient memory.  There is some cost to the runtime dispatch on operation types here,
+          ;; but this is presumably less significant than the cost of memory transitions.
+          ;;
+          ;; We perform the insertions and retractions in the same order as they were applied to the session since
+          ;; if a fact is not in the session, retracted, and then subsequently inserted it should be in the session at
+          ;; the end.
+          (do
+            (doseq [{op-type :type facts :facts} pending-operations]
 
-      (if-not (:cancelling opts)
-        ;; We originally performed insertions and retractions immediately after the insert and retract calls,
-        ;; but this had the downside of making a pattern like "Retract facts, insert other facts, and fire the rules"
-        ;; perform at least three transitions between a persistent and transient memory.  Delaying the actual execution
-        ;; of the insertions and retractions until firing the rules allows us to cut this down to a single transition
-        ;; between persistent and transient memory.  There is some cost to the runtime dispatch on operation types here,
-        ;; but this is presumably less significant than the cost of memory transitions.
-        ;;
-        ;; We perform the insertions and retractions in the same order as they were applied to the session since
-        ;; if a fact is not in the session, retracted, and then subsequently inserted it should be in the session at
-        ;; the end.
-        (do
-          (doseq [{op-type :type facts :facts} pending-operations]
+              (case op-type
 
-            (case op-type
+                :insertion
+                (do
+                  (l/insert-facts! transient-listener nil nil facts)
 
-              :insertion
-              (do
-                (l/insert-facts! transient-listener nil nil facts)
+                  (binding [*pending-external-retractions* (atom [])]
+                    ;; Bind the external retractions cache so that any logical retractions as a result
+                    ;; of these insertions can be cached and executed as a batch instead of eagerly realizing
+                    ;; them.  An external insertion of a fact that matches
+                    ;; a negation or accumulator condition can cause logical retractions.
+                    (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
+                            root alpha-roots]
+                      (alpha-activate root fact-group transient-memory transport transient-listener))
+                    (external-retract-loop get-alphas-fn transient-memory transport transient-listener)))
 
-                (binding [*pending-external-retractions* (atom [])]
-                  ;; Bind the external retractions cache so that any logical retractions as a result
-                  ;; of these insertions can be cached and executed as a batch instead of eagerly realizing
-                  ;; them.  An external insertion of a fact that matches
-                  ;; a negation or accumulator condition can cause logical retractions.
-                  (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
-                          root alpha-roots]
-                    (alpha-activate root fact-group transient-memory transport transient-listener))
-                  (external-retract-loop get-alphas-fn transient-memory transport transient-listener)))
+                :retraction
+                (do
+                  (l/retract-facts! transient-listener nil nil facts)
 
-              :retraction
-              (do
-                (l/retract-facts! transient-listener nil nil facts)
-
-                (binding [*pending-external-retractions* (atom facts)]
-                  (external-retract-loop get-alphas-fn transient-memory transport transient-listener)))))
-
-          (fire-rules* rulebase
-                       (:production-nodes rulebase)
-                       transient-memory
-                       transport
-                       transient-listener
-                       get-alphas-fn
-                       (uc/get-ordered-update-cache)))
-
-        (let [insertions (sequence
-                          (comp (filter (fn [pending-op]
-                                          (= (:type pending-op)
-                                             :insertion)))
-                                (mapcat :facts))
-                          pending-operations)
-
-              retractions (sequence
-                           (comp (filter (fn [pending-op]
-                                           (= (:type pending-op)
-                                              :retraction)))
-                                 (mapcat :facts))
-                           pending-operations)
-
-              update-cache (ca/get-cancelling-update-cache)]
-
-          (binding [*current-session* {:rulebase rulebase
-                                       :transient-memory transient-memory
-                                       :transport transport
-                                       :insertions (atom 0)
-                                       :get-alphas-fn get-alphas-fn
-                                       :pending-updates update-cache
-                                       :listener transient-listener}]
-
-            ;; Insertions should come before retractions so that if we insert and then retract the same
-            ;; fact that is not already in the session the end result will be that the session won't have that fact.
-            ;; If retractions came first then we'd first retract a fact that isn't in the session, which doesn't do anything,
-            ;; and then later we would insert the fact.
-            (doseq [[alpha-roots fact-group] (get-alphas-fn insertions)
-                    root alpha-roots]
-              (alpha-activate root fact-group transient-memory transport transient-listener))
-
-            (doseq [[alpha-roots fact-group] (get-alphas-fn retractions)
-                    root alpha-roots]
-              (alpha-retract root fact-group transient-memory transport transient-listener))
+                  (binding [*pending-external-retractions* (atom facts)]
+                    (external-retract-loop get-alphas-fn transient-memory transport transient-listener)))))
 
             (fire-rules* rulebase
                          (:production-nodes rulebase)
@@ -1968,16 +1947,60 @@
                          transport
                          transient-listener
                          get-alphas-fn
-                         ;; This continues to use the cancelling cache after the first batch of insertions and retractions.
-                         ;; If this is suboptimal for some workflows we can revisit this.
-                         update-cache))))
+                         (uc/get-ordered-update-cache)))
 
-      (LocalSession. rulebase
-                     (mem/to-persistent! transient-memory)
-                     transport
-                     (l/to-persistent! transient-listener)
-                     get-alphas-fn
-                     [])))
+          (let [insertions (sequence
+                            (comp (filter (fn [pending-op]
+                                            (= (:type pending-op)
+                                               :insertion)))
+                                  (mapcat :facts))
+                            pending-operations)
+
+                retractions (sequence
+                             (comp (filter (fn [pending-op]
+                                             (= (:type pending-op)
+                                                :retraction)))
+                                   (mapcat :facts))
+                             pending-operations)
+
+                update-cache (ca/get-cancelling-update-cache)]
+
+            (binding [*current-session* {:rulebase rulebase
+                                         :transient-memory transient-memory
+                                         :transport transport
+                                         :insertions (atom 0)
+                                         :get-alphas-fn get-alphas-fn
+                                         :pending-updates update-cache
+                                         :listener transient-listener}]
+
+              ;; Insertions should come before retractions so that if we insert and then retract the same
+              ;; fact that is not already in the session the end result will be that the session won't have that fact.
+              ;; If retractions came first then we'd first retract a fact that isn't in the session, which doesn't do anything,
+              ;; and then later we would insert the fact.
+              (doseq [[alpha-roots fact-group] (get-alphas-fn insertions)
+                      root alpha-roots]
+                (alpha-activate root fact-group transient-memory transport transient-listener))
+
+              (doseq [[alpha-roots fact-group] (get-alphas-fn retractions)
+                      root alpha-roots]
+                (alpha-retract root fact-group transient-memory transport transient-listener))
+
+              (fire-rules* rulebase
+                           (:production-nodes rulebase)
+                           transient-memory
+                           transport
+                           transient-listener
+                           get-alphas-fn
+                           ;; This continues to use the cancelling cache after the first batch of insertions and retractions.
+                           ;; If this is suboptimal for some workflows we can revisit this.
+                           update-cache))))
+
+        (LocalSession. rulebase
+                       (mem/to-persistent! transient-memory)
+                       transport
+                       (l/to-persistent! transient-listener)
+                       get-alphas-fn
+                       []))))
 
   (query [session query params]
     (let [query-node (get-in rulebase [:query-nodes query])]
