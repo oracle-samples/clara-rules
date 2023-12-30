@@ -17,6 +17,7 @@
    (= value ?value)
    (do (Thread/sleep 50) (pos? ?value))]
   =>
+  (println "number:" ?value)
   (insert! {:type :result
             :value (+ ?value 100)}))
 
@@ -26,6 +27,7 @@
    (do (Thread/sleep 50) (pos? ?value))]
   =>
   (println "result:" ?value)
+  (Thread/sleep 50)
   (insert! {:type :output
             :value (inc ?value)}))
 
@@ -42,7 +44,7 @@
 
 (comment
   (time
-   (-> (fire-rules session)
+   (-> (fire-rules session {:parallel-compute true})
        (query test-slow-query)
        (count)))
   (do

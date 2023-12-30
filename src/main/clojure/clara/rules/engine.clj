@@ -513,7 +513,7 @@
 
   IAlphaActivate
   (alpha-activate [node facts memory transport listener]
-    (let [match-elements (platform/match-for
+    (let [match-elements (platform/compute-for
                           [fact facts]
                           (alpha-node-match->Element fact env activation node))]
       (l/alpha-activate! listener node (map :fact match-elements))
@@ -525,7 +525,7 @@
        match-elements)))
 
   (alpha-retract [node facts memory transport listener]
-    (let [match-elements (platform/match-for
+    (let [match-elements (platform/compute-for
                           [fact facts]
                           (alpha-node-match->Element fact env activation node))]
       (l/alpha-retract! listener node (map :fact match-elements))
@@ -684,7 +684,7 @@
     (mem/add-tokens! memory node join-bindings tokens)
     (l/left-activate! listener node tokens)
     (let [elements (mem/get-elements memory node join-bindings)
-          matched-tokens (platform/match-for
+          matched-tokens (platform/compute-for
                           [element elements
                            token tokens]
                           (expression-join-node-match->Token element token node id join-filter-fn (:env condition)))]
@@ -699,7 +699,7 @@
     (l/left-retract! listener node tokens)
     (let [tokens (mem/remove-tokens! memory node join-bindings tokens)
           elements (mem/get-elements memory node join-bindings)
-          matched-tokens (platform/match-for
+          matched-tokens (platform/compute-for
                           [element elements
                            token tokens]
                           (expression-join-node-match->Token element token node id join-filter-fn (:env condition)))]
@@ -717,7 +717,7 @@
   IRightActivate
   (right-activate [node join-bindings elements memory transport listener]
     (let [tokens (mem/get-tokens memory node join-bindings)
-          matched-tokens (platform/match-for
+          matched-tokens (platform/compute-for
                           [element elements
                            token tokens]
                           (expression-join-node-match->Token element token node id join-filter-fn (:env condition)))]
@@ -734,7 +734,7 @@
     (l/right-retract! listener node elements)
     (let [elements (mem/remove-elements! memory node join-bindings elements)
           tokens (mem/get-tokens memory node join-bindings)
-          matched-tokens (platform/match-for
+          matched-tokens (platform/compute-for
                           [element elements
                            token tokens]
                           (expression-join-node-match->Token element token node id join-filter-fn (:env condition)))]
@@ -831,7 +831,7 @@
                  listener
                  children
                  (let [elements (mem/get-elements memory node join-bindings)]
-                   (platform/match-for
+                   (platform/compute-for
                     [token tokens]
                     (negation-join-node-not-match->Token node
                                                          token
@@ -849,7 +849,7 @@
                     ;; Retract only if it previously had no matches in the negation node,
                     ;; and therefore had an activation.
                     (let [elements (mem/get-elements memory node join-bindings)]
-                      (platform/match-for
+                      (platform/compute-for
                        [token tokens]
                        (negation-join-node-not-match->Token node
                                                             token
@@ -870,7 +870,7 @@
                       memory
                       listener
                       children
-                      (platform/match-for
+                      (platform/compute-for
                        [token (mem/get-tokens memory node join-bindings)]
                         ;; Retract downstream if the token now has matching elements and didn't before.
                         ;; We check the new elements first in the expectation that the new elements will be
@@ -903,7 +903,7 @@
                  listener
                  children
                  (let [remaining-elements (mem/get-elements memory node join-bindings)]
-                   (platform/match-for
+                   (platform/compute-for
                     [token (mem/get-tokens memory node join-bindings)]
                      ;; Propagate tokens when some of the retracted facts joined
                      ;; but none of the remaining facts do.
@@ -950,7 +950,7 @@
      memory
      listener
      children
-     (platform/match-for
+     (platform/compute-for
       [token tokens]
       (test-node-match->Token node (:handler test) env token))))
 
@@ -1779,78 +1779,81 @@
           (do
 
             ;; If there are activations, fire them.
-            (let [activations (mem/pop-activations! transient-memory 10)]
-              (doseq [{:keys [node token] :as activation} activations]
-                ;; Use vectors for the insertion caches so that within an insertion type
-                ;; (unconditional or logical) all insertions are done in order after the into
-                ;; calls in insert-facts!.  This shouldn't have a functional impact, since any ordering
-                ;; should be valid, but makes traces less confusing to end users.  It also prevents any laziness
-                ;; in the sequences.
-                (let [batched-logical-insertions (atom [])
-                      batched-unconditional-insertions (atom [])
-                      batched-rhs-retractions (atom [])]
-                  (binding [*rule-context* {:token token
-                                            :node node
-                                            :batched-logical-insertions batched-logical-insertions
-                                            :batched-unconditional-insertions batched-unconditional-insertions
-                                            :batched-rhs-retractions batched-rhs-retractions}]
+            (let [activations (mem/pop-activations! transient-memory Long/MAX_VALUE)
+                  rhs-activation-results
+                  (platform/compute-for
+                   [{:keys [node token] :as activation} activations]
+                    ;; Use vectors for the insertion caches so that within an insertion type
+                    ;; (unconditional or logical) all insertions are done in order after the into
+                    ;; calls in insert-facts!.  This shouldn't have a functional impact, since any ordering
+                    ;; should be valid, but makes traces less confusing to end users.  It also prevents any laziness
+                    ;; in the sequences.
+                   (let [batched-logical-insertions (atom [])
+                         batched-unconditional-insertions (atom [])
+                         batched-rhs-retractions (atom [])]
+                     (binding [*rule-context* {:token token
+                                               :node node
+                                               :batched-logical-insertions batched-logical-insertions
+                                               :batched-unconditional-insertions batched-unconditional-insertions
+                                               :batched-rhs-retractions batched-rhs-retractions}]
 
-                    ;; Fire the rule itself.
-                    (try
-                      ((:rhs node) token (:env (:production node)))
-                      ;; Don't do anything if a given insertion type has no corresponding
-                      ;; facts to avoid complicating traces.  Note that since each no RHS's of
-                      ;; downstream rules are fired here everything is governed by truth maintenance.
-                      ;; Therefore, the reordering of retractions and insertions should have no impact
-                      ;; assuming that the evaluation of rule conditions is pure, which is a general expectation
-                      ;; of the rules engine.
-                      ;;
-                      ;; Bind the contents of the cache atoms after the RHS is fired since they are used twice
-                      ;; below.  They will be dereferenced again if an exception is caught, but in the error
-                      ;; case we aren't worried about performance.
-                      (let [retrieved-unconditional-insertions @batched-unconditional-insertions
-                            retrieved-logical-insertions @batched-logical-insertions
-                            retrieved-rhs-retractions @batched-rhs-retractions]
-                        (l/fire-activation! listener
-                                            activation
-                                            {:unconditional-insertions retrieved-unconditional-insertions
-                                             :logical-insertions retrieved-logical-insertions
-                                             :rhs-retractions retrieved-rhs-retractions})
-                        (when-let [batched (seq retrieved-unconditional-insertions)]
-                          (flush-insertions! batched true))
-                        (when-let [batched (seq retrieved-logical-insertions)]
-                          (flush-insertions! batched false))
-                        (when-let [batched (seq retrieved-rhs-retractions)]
-                          (flush-rhs-retractions! batched)))
-                      (catch Exception e
-                        ;; If the rule fired an exception, help debugging by attaching
-                        ;; details about the rule itself, cached insertions, and any listeners
-                        ;; while propagating the cause.
-                        (let [production (:production node)
-                              rule-name (:name production)
-                              rhs (:rhs production)]
-                          (throw (ex-info (str "Exception in " (if rule-name rule-name (pr-str rhs))
-                                               " with bindings " (pr-str (:bindings token)))
-                                          {:bindings (:bindings token)
-                                           :name rule-name
-                                           :rhs rhs
-                                           :batched-logical-insertions @batched-logical-insertions
-                                           :batched-unconditional-insertions @batched-unconditional-insertions
-                                           :batched-rhs-retractions @batched-rhs-retractions
-                                           :listeners (try
-                                                        (let [p-listener (l/to-persistent! listener)]
-                                                          (if (l/null-listener? p-listener)
-                                                            []
-                                                            (l/get-children p-listener)))
-                                                        (catch Exception listener-exception
-                                                          listener-exception))}
-                                          e)))))
-
-                    ;; Explicitly flush updates if we are in a no-loop rule, so the no-loop
-                    ;; will be in context for child rules.
-                    (when (some-> node :production :props :no-loop)
-                      (flush-updates *current-session*))))))
-
+                        ;; Fire the rule itself.
+                       (try
+                         ((:rhs node) token (:env (:production node)))
+                          ;; Don't do anything if a given insertion type has no corresponding
+                          ;; facts to avoid complicating traces.  Note that since each no RHS's of
+                          ;; downstream rules are fired here everything is governed by truth maintenance.
+                          ;; Therefore, the reordering of retractions and insertions should have no impact
+                          ;; assuming that the evaluation of rule conditions is pure, which is a general expectation
+                          ;; of the rules engine.
+                          ;;
+                          ;; Bind the contents of the cache atoms after the RHS is fired since they are used twice
+                          ;; below.  They will be dereferenced again if an exception is caught, but in the error
+                          ;; case we aren't worried about performance.
+                         (let [resulting-ops {:unconditional-insertions @batched-unconditional-insertions
+                                              :logical-insertions @batched-logical-insertions
+                                              :rhs-retractions @batched-rhs-retractions}]
+                           (l/fire-activation! listener activation resulting-ops)
+                           {:token token :node node :ops resulting-ops})
+                         (catch Exception e
+                            ;; If the rule fired an exception, help debugging by attaching
+                            ;; details about the rule itself, cached insertions, and any listeners
+                            ;; while propagating the cause.
+                           (let [production (:production node)
+                                 rule-name (:name production)
+                                 rhs (:rhs production)]
+                             (throw (ex-info (str "Exception in " (if rule-name rule-name (pr-str rhs))
+                                                  " with bindings " (pr-str (:bindings token)))
+                                             {:bindings (:bindings token)
+                                              :name rule-name
+                                              :rhs rhs
+                                              :batched-logical-insertions @batched-logical-insertions
+                                              :batched-unconditional-insertions @batched-unconditional-insertions
+                                              :batched-rhs-retractions @batched-rhs-retractions
+                                              :listeners (try
+                                                           (let [p-listener (l/to-persistent! listener)]
+                                                             (if (l/null-listener? p-listener)
+                                                               []
+                                                               (l/get-children p-listener)))
+                                                           (catch Exception listener-exception
+                                                             listener-exception))}
+                                             e))))))))]
+              (doseq [{:keys [token node ops]} rhs-activation-results
+                      :let [{:keys [unconditional-insertions
+                                    logical-insertions
+                                    rhs-retractions]} ops]]
+                (binding [*rule-context* {:token token
+                                          :node node}]
+                  (when-let [batched (seq unconditional-insertions)]
+                    (flush-insertions! batched true))
+                  (when-let [batched (seq logical-insertions)]
+                    (flush-insertions! batched false))
+                  (when-let [batched (seq rhs-retractions)]
+                    (flush-rhs-retractions! batched))
+                  ;; Explicitly flush updates if we are in a no-loop rule, so the no-loop
+                  ;; will be in context for child rules.
+                  (when (some-> node :production :props :no-loop)
+                    (flush-updates *current-session*)))))
             (recur (mem/next-activation-group transient-memory) next-group)))
 
         ;; There were no items to be activated, so flush any pending
@@ -1901,7 +1904,7 @@
   ;; but we kept a one-argument version of the fire-rules in case anyone is calling the fire-rules protocol function or method on the session directly.
   (fire-rules [session] (fire-rules session {}))
   (fire-rules [session opts]
-    (binding [platform/*parallel-match* (or (:parallel-match opts) platform/*parallel-match*)]
+    (binding [platform/*parallel-compute* (or (:parallel-compute opts) platform/*parallel-compute*)]
       (let [transient-memory (mem/to-transient memory)
             transient-listener (l/to-transient listener)]
 

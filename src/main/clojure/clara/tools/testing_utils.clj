@@ -71,7 +71,7 @@
   ;; variety of different cases rather than a few cases cases specific to it.
   [f]
   (f)
-  (binding [platform/*parallel-match* true]
+  (binding [platform/*parallel-compute* true]
     (with-redefs [uc/get-ordered-update-cache ca/get-cancelling-update-cache]
       (f))))
 

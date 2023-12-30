@@ -142,11 +142,11 @@
   [& body]
   `(doall (for ~@body)))
 
-(def ^:dynamic *parallel-match* false)
+(def ^:dynamic *parallel-compute* false)
 
-(defmacro match-for
+(defmacro compute-for
   [bindings & body]
-  `(if *parallel-match*
+  `(if *parallel-compute*
      (let [fut-seq# (eager-for [~@bindings]
                                (platform/completable-future
                                 ~@body))]
