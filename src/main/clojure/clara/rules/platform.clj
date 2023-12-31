@@ -159,19 +159,18 @@
 (defmacro produce-for
   [bindings prod-body & post-body]
   `(if *parallel-compute*
-     (let [fut-seq# (doall
-                     (for
-                      [~@bindings]
-                       (let [^CompletableFuture f# (async/flatten-completable-future
-                                                    (async/completable-future
-                                                     ~prod-body))]
-                         (if ~(some? post-body)
-                           (.thenApply f#
-                                       (reify Function
-                                         (apply [~'_ result#]
-                                           (binding [*production* result#]
-                                             ~@post-body))))
-                           f#))))
+     (let [fut-seq# (eager-for
+                     [~@bindings]
+                     (let [^CompletableFuture f# (async/flatten-completable-future
+                                                  (async/completable-future
+                                                   ~prod-body))]
+                       (if ~(some? post-body)
+                         (.thenApply f#
+                                     (reify Function
+                                       (apply [~'_ result#]
+                                         (binding [*production* result#]
+                                           ~@post-body))))
+                         f#)))
            ^BiFunction conj# (reify BiFunction
                                (apply [_ ~'results ~'result]
                                  (conj ~'results ~'result)))]

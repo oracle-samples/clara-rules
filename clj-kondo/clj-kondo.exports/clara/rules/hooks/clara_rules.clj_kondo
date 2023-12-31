@@ -398,6 +398,14 @@
                    merge {:clj-kondo/ignore [:clojure-lsp/unused-public-var]})]
     {:node new-node}))
 
+(defn analyze-produce-try-macro
+  [{:keys [:node]}]
+  (let [[& body] (rest (:children node))
+        new-node (api/list-node
+                    (list*
+                      (api/token-node 'try)
+                      body))]
+    {:node new-node}))
 
 (defn analyze-def-rules-test-macro
   [{:keys [:node]}]
