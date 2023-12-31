@@ -1,8 +1,10 @@
-[![Build Status](https://github.com/cerner/clara-rules/actions/workflows/clojure.yml/badge.svg)](https://github.com/cerner/clara-rules/actions/workflows/clojure.yml)
+[![Build Status](https://github.com/k13labs/clara-rules/actions/workflows/clojure.yml/badge.svg)](https://github.com/cerner/clara-rules/actions/workflows/clojure.yml)
 
 # _About_
 
 Clara is a forward-chaining rules engine written in Clojure(Script) with Java interoperability. It aims to simplify code with a developer-centric approach to expert systems. See [clara-rules.org](http://www.clara-rules.org) for more.
+
+NOTE: this fork only supports the JVM/Clojure, and not ClojureScript.
 
 # _Usage_
 
@@ -43,17 +45,20 @@ Here's a simple example. Complete documentation is at [clara-rules.org](http://w
 
 # _Building_
 
-Clara is built, tested, and deployed using [Leiningen](http://leiningen.org).  
+Clara is built, tested, and deployed using [Clojure Tools Deps](https://clojure.org/guides/deps_and_cli).
+
+CMake is used to simplify invocation of some commands.
 
 # _Availability_
 
-Clara releases are on [Clojars](https://clojars.org/). Simply add the following to your project:
+Clara releases for this project are on [Clojars](https://clojars.org/). Simply add the following to your project:
 
-[![Clojars Project](http://clojars.org/com.cerner/clara-rules/latest-version.svg)](http://clojars.org/com.cerner/clara-rules)
+[![Clojars Project](http://clojars.org/com.github.k13labs/clara-rules/latest-version.svg)](http://clojars.org/com.github.k13labs/clara-rules)
 
 # _Communication_
 
-Questions can be posted to the [Clara Rules Google Group](https://groups.google.com/forum/?hl=en#!forum/clara-rules) or the [Slack channel](https://clojurians.slack.com/messages/clara/).  
+- Questions about Clara rules can be posted to the [Clara Rules Google Group](https://groups.google.com/forum/?hl=en#!forum/clara-rules) or the [Slack channel](https://clojurians.slack.com/messages/clara/).
+- For any other questions or issues about this Clara rules fork specifically feel free to browse or open a [Github Issue](https://github.com/k13labs/clara-rules/issues).
 
 # Contributing
 
@@ -68,5 +73,3 @@ Licensed under the Apache License, Version 2.0 (the "License"); you may not use 
 &nbsp;&nbsp;&nbsp;&nbsp;http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
-
-

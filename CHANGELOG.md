@@ -1,8 +1,9 @@
 This is a history of changes to k13labs/clara-rules.
 
-# 0.9.0
-* strip cljs support, general cleanup.
-* integrate with collections from ham-fisted for performance gains.
+# 0.9.0-SNAPSHOT
+* Add parallel support to Node and RHS activation.
+* Remove ClojureScript support, general cleanup.
+* Replace mutable/transient collections with [ham-fisted](https://github.com/cnuernber/ham-fisted) data structures.
 
 This is a history of changes to clara-rules prior to forking to k13labs/clara-rules.
 
