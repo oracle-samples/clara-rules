@@ -1781,63 +1781,59 @@
             ;; If there are activations, fire them.
             (let [activations (mem/pop-activations! transient-memory Long/MAX_VALUE)
                   rhs-activation-results
-                  (platform/compute-for
-                   [{:keys [node token] :as activation} activations]
-                    ;; Use vectors for the insertion caches so that within an insertion type
-                    ;; (unconditional or logical) all insertions are done in order after the into
-                    ;; calls in insert-facts!.  This shouldn't have a functional impact, since any ordering
-                    ;; should be valid, but makes traces less confusing to end users.  It also prevents any laziness
-                    ;; in the sequences.
-                   (let [batched-logical-insertions (atom [])
-                         batched-unconditional-insertions (atom [])
-                         batched-rhs-retractions (atom [])]
-                     (binding [*rule-context* {:token token
-                                               :node node
-                                               :batched-logical-insertions batched-logical-insertions
-                                               :batched-unconditional-insertions batched-unconditional-insertions
-                                               :batched-rhs-retractions batched-rhs-retractions}]
-
-                        ;; Fire the rule itself.
-                       (try
-                         ((:rhs node) token (:env (:production node)))
-                          ;; Don't do anything if a given insertion type has no corresponding
-                          ;; facts to avoid complicating traces.  Note that since each no RHS's of
-                          ;; downstream rules are fired here everything is governed by truth maintenance.
-                          ;; Therefore, the reordering of retractions and insertions should have no impact
-                          ;; assuming that the evaluation of rule conditions is pure, which is a general expectation
-                          ;; of the rules engine.
-                          ;;
-                          ;; Bind the contents of the cache atoms after the RHS is fired since they are used twice
-                          ;; below.  They will be dereferenced again if an exception is caught, but in the error
-                          ;; case we aren't worried about performance.
-                         (let [resulting-ops {:unconditional-insertions @batched-unconditional-insertions
-                                              :logical-insertions @batched-logical-insertions
-                                              :rhs-retractions @batched-rhs-retractions}]
-                           (l/fire-activation! listener activation resulting-ops)
-                           {:token token :node node :ops resulting-ops})
-                         (catch Exception e
-                            ;; If the rule fired an exception, help debugging by attaching
-                            ;; details about the rule itself, cached insertions, and any listeners
-                            ;; while propagating the cause.
-                           (let [production (:production node)
-                                 rule-name (:name production)
-                                 rhs (:rhs production)]
-                             (throw (ex-info (str "Exception in " (if rule-name rule-name (pr-str rhs))
-                                                  " with bindings " (pr-str (:bindings token)))
-                                             {:bindings (:bindings token)
-                                              :name rule-name
-                                              :rhs rhs
-                                              :batched-logical-insertions @batched-logical-insertions
-                                              :batched-unconditional-insertions @batched-unconditional-insertions
-                                              :batched-rhs-retractions @batched-rhs-retractions
-                                              :listeners (try
-                                                           (let [p-listener (l/to-persistent! listener)]
-                                                             (if (l/null-listener? p-listener)
-                                                               []
-                                                               (l/get-children p-listener)))
-                                                           (catch Exception listener-exception
-                                                             listener-exception))}
-                                             e))))))))]
+                  (platform/produce-for
+                   [{:keys [node token] :as activation} activations
+                     ;; Use vectors for the insertion caches so that within an insertion type
+                     ;; (unconditional or logical) all insertions are done in order after the into
+                     ;; calls in insert-facts!.  This shouldn't have a functional impact, since any ordering
+                     ;; should be valid, but makes traces less confusing to end users.  It also prevents any laziness
+                     ;; in the sequences.
+                    :let [batched-logical-insertions (atom [])
+                          batched-unconditional-insertions (atom [])
+                          batched-rhs-retractions (atom [])
+                          rule-context {:token token
+                                        :node node
+                                        :batched-logical-insertions batched-logical-insertions
+                                        :batched-unconditional-insertions batched-unconditional-insertions
+                                        :batched-rhs-retractions batched-rhs-retractions}]]
+                    ;;; this the production expression, which could return an async result if parallel computing
+                   (binding [*rule-context* rule-context]
+                      ;; Fire the rule itself.
+                     (platform/produce-try
+                      ((:rhs node) token (:env (:production node)))
+                      (catch Exception e
+                          ;; If the rule fired an exception, help debugging by attaching
+                          ;; details about the rule itself, cached insertions, and any listeners
+                          ;; while propagating the cause.
+                        (let [production (:production node)
+                              rule-name (:name production)
+                              rhs (:rhs production)]
+                          (throw (ex-info (str "Exception in " (if rule-name rule-name (pr-str rhs))
+                                               " with bindings " (pr-str (:bindings token)))
+                                          {:bindings (:bindings token)
+                                           :name rule-name
+                                           :rhs rhs
+                                           :batched-logical-insertions @batched-logical-insertions
+                                           :batched-unconditional-insertions @batched-unconditional-insertions
+                                           :batched-rhs-retractions @batched-rhs-retractions
+                                           :listeners (try
+                                                        (let [p-listener (l/to-persistent! listener)]
+                                                          (if (l/null-listener? p-listener)
+                                                            []
+                                                            (l/get-children p-listener)))
+                                                        (catch Exception listener-exception
+                                                          listener-exception))}
+                                          e))))))
+                    ;;; this the post-production expression, which runs after the production is activated
+                   (binding [*rule-context* rule-context]
+                      ;; Bind the contents of the cache atoms after the RHS is fired since they are used twice
+                      ;; below.  They will be dereferenced again if an exception is caught, but in the error
+                      ;; case we aren't worried about performance.
+                     (let [resulting-ops {:unconditional-insertions @batched-unconditional-insertions
+                                          :logical-insertions @batched-logical-insertions
+                                          :rhs-retractions @batched-rhs-retractions}]
+                       (l/fire-activation! listener activation resulting-ops)
+                       {:token token :node node :ops resulting-ops})))]
               (doseq [{:keys [token node ops]} rhs-activation-results
                       :let [{:keys [unconditional-insertions
                                     logical-insertions

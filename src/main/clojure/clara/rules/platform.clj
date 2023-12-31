@@ -1,19 +1,13 @@
 (ns clara.rules.platform
   "This namespace is for internal use and may move in the future.
   Platform unified code Clojure/ClojureScript."
-  (:require
-   [ham-fisted.function :as f])
-  (:import
-   [clojure.lang Var]
-   [java.lang IllegalArgumentException]
-   [java.util LinkedHashMap]
-   [java.util.concurrent
-    ExecutionException
-    CompletableFuture
-    ExecutorService
-    ForkJoinPool
-    Future]
-   [java.util.function Function]))
+  (:require [clara.rules.platform.async :as async])
+  (:import [java.lang IllegalArgumentException]
+           [java.util LinkedHashMap]
+           [java.util.concurrent
+            CompletableFuture
+            ExecutionException]
+           [java.util.function Function BiFunction]))
 
 (defn throw-error
   "Throw an error with the given description string."
@@ -112,31 +106,6 @@
          ~@(for [[tl] binding-pairs]
              `(.remove ~tl))))))
 
-(def ^:dynamic *thread-pool* (ForkJoinPool/commonPool))
-
-(defmacro completable-future
-  "Asynchronously invokes the body inside a completable future, preserves the current thread binding frame,
-  using by default the `ForkJoinPool/commonPool`, the pool used can be specified via `*thread-pool*` binding."
-  ^CompletableFuture [& body]
-  `(let [binding-frame# (Var/cloneThreadBindingFrame) ;;; capture the thread local binding frame before start
-         ^CompletableFuture result# (CompletableFuture.) ;;; this is the CompletableFuture being returned
-         ^ExecutorService pool# (or *thread-pool* (ForkJoinPool/commonPool))
-         ^Runnable fbody# (fn do-complete#
-                            []
-                            (try
-                              (Var/resetThreadBindingFrame binding-frame#) ;;; set the Clojure binding frame captured above
-                              (.complete result# (do ~@body)) ;;; send the result of evaluating the body to the CompletableFuture
-                              (catch Throwable ~'e
-                                (.completeExceptionally result# ~'e)))) ;;; if we catch an exception we send it to the CompletableFuture
-         ^Future fut# (.submit pool# fbody#)
-         ^Function cancel# (f/function
-                            [~'_]
-                            (future-cancel fut#))] ;;; submit the work to the pool and get the FutureTask doing the work
-     ;;; if the CompletableFuture returns exceptionally
-     ;;; then cancel the Future which is currently doing the work
-     (.exceptionally result# cancel#)
-     result#))
-
 (defmacro eager-for
   "A for wrapped with a doall to force realisation. Usage is the same as regular for."
   [& body]
@@ -145,19 +114,81 @@
 (def ^:dynamic *parallel-compute* false)
 
 (defmacro compute-for
-  [bindings & body]
+  [bindings body]
   `(if *parallel-compute*
-     (let [fut-seq# (eager-for [~@bindings]
-                               (platform/completable-future
-                                ~@body))]
+     (let [fut-seq# (eager-for
+                     [~@bindings]
+                     (async/completable-future
+                      ~body))]
        (try
-         (eager-for [fut# fut-seq#
-                     :let [match# @fut#]
-                     :when match#]
-                    match#)
+         (eager-for
+          [fut# fut-seq#
+           :let [result# @fut#]
+           :when result#]
+          result#)
          (catch ExecutionException e#
-           (throw (ex-cause e#)))))
-     (eager-for [~@bindings
-                 :let [match# (do ~@body)]
-                 :when match#]
-                match#)))
+           (if-let [cause# (ex-cause e#)]
+             (throw cause#)
+             (throw e#)))))
+     (eager-for
+      [~@bindings
+       :let [result# ~body]
+       :when result#]
+      result#)))
+
+(def ^:dynamic *production* nil)
+
+(defmacro produce-try
+  [body & catch-finally]
+  `(if *parallel-compute*
+     (let [result# (try
+                     ~body
+                     ~@catch-finally)]
+       (if (instance? CompletableFuture result#)
+         (.exceptionally ^CompletableFuture result#
+                         (reify Function
+                           (apply [_# e#]
+                             (try
+                               (throw e#)
+                               ~@catch-finally))))
+         result#))
+     (try
+       ~body
+       ~@catch-finally)))
+
+(defmacro produce-for
+  [bindings prod-body & post-body]
+  `(if *parallel-compute*
+     (let [fut-seq# (doall
+                     (for
+                      [~@bindings]
+                       (let [^CompletableFuture f# (async/flatten-completable-future
+                                                    (async/completable-future
+                                                     ~prod-body))]
+                         (if ~(some? post-body)
+                           (.thenApply f#
+                                       (reify Function
+                                         (apply [~'_ result#]
+                                           (binding [*production* result#]
+                                             ~@post-body))))
+                           f#))))
+           ^BiFunction conj# (reify BiFunction
+                               (apply [_ ~'results ~'result]
+                                 (conj ~'results ~'result)))]
+       (loop [[^CompletableFuture fut# & more#] fut-seq#
+              ^CompletableFuture res-fut# (CompletableFuture/completedFuture [])]
+         (if-not fut#
+           (try
+             @res-fut#
+             (catch ExecutionException e#
+               (if-let [cause# (ex-cause e#)]
+                 (throw cause#)
+                 (throw e#))))
+           (recur more# (.thenCombine res-fut# fut# conj#)))))
+     (eager-for
+      [~@bindings
+       :let [result# ~prod-body]]
+      (if ~(some? post-body)
+        (binding [*production* result#]
+          ~@post-body)
+        result#))))

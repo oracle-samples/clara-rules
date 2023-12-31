@@ -7,6 +7,7 @@
                                  insert-all insert-all!
                                  insert insert!
                                  retract retract!]]
+            [clojure.core.async :refer [go timeout <!]]
             [clara.rules.compiler :refer [clear-session-cache!]]
             [clara.rules.platform :as platform]
             [clara.rules.engine :as eng]
@@ -15,21 +16,22 @@
 (defrule test-slow-rule-1
   [:number [{:keys [value]}]
    (= value ?value)
-   (do (Thread/sleep 50) (pos? ?value))]
+   (pos? ?value)]
   =>
-  (println "number:" ?value)
-  (insert! {:type :result
-            :value (+ ?value 100)}))
+  (go
+    (<! (timeout 50))
+    (insert! {:type :result
+              :value (+ ?value 100)})))
 
 (defrule test-slow-rule-2
   [:result [{:keys [value]}]
    (= value ?value)
-   (do (Thread/sleep 50) (pos? ?value))]
+   (pos? ?value)]
   =>
-  (println "result:" ?value)
-  (Thread/sleep 50)
-  (insert! {:type :output
-            :value (inc ?value)}))
+  (go
+    (<! (timeout 50))
+    (insert! {:type :output
+              :value (inc ?value)})))
 
 (defquery test-slow-query
   []
