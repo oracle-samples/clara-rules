@@ -1,4 +1,4 @@
-[![Build Status](https://github.com/k13labs/clara-rules/actions/workflows/clojure.yml/badge.svg)](https://github.com/cerner/clara-rules/actions/workflows/clojure.yml)
+[![Build Status](https://github.com/k13labs/clara-rules/actions/workflows/clojure.yml/badge.svg)](https://github.com/k13labs/clara-rules/actions/workflows/clojure.yml)
 
 # _About_
 
