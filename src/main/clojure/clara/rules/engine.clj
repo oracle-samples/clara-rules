@@ -1752,7 +1752,9 @@
 
 (defn fire-rules*
   "Fire rules for the given nodes."
-  [rulebase nodes transient-memory transport listener get-alphas-fn update-cache]
+  [rulebase nodes transient-memory transport
+   listener get-alphas-fn update-cache
+   pop-activations-batch-size]
   (binding [*current-session* {:rulebase rulebase
                                :transient-memory transient-memory
                                :transport transport
@@ -1779,7 +1781,7 @@
           (do
 
             ;; If there are activations, fire them.
-            (let [activations (mem/pop-activations! transient-memory Long/MAX_VALUE)
+            (let [activations (mem/pop-activations! transient-memory pop-activations-batch-size)
                   rhs-activation-results
                   (platform/produce-for
                    [{:keys [node token] :as activation} activations
@@ -1902,7 +1904,11 @@
   (fire-rules [session opts]
     (binding [platform/*parallel-compute* (or (:parallel-compute opts) platform/*parallel-compute*)]
       (let [transient-memory (mem/to-transient memory)
-            transient-listener (l/to-transient listener)]
+            transient-listener (l/to-transient listener)
+            parallel-batch-size (if platform/*parallel-compute*
+                                  (or (:parallel-batch-size opts)
+                                      (.. Runtime getRuntime availableProcessors))
+                                  1)]
 
         (if-not (:cancelling opts)
           ;; We originally performed insertions and retractions immediately after the insert and retract calls,
@@ -1947,7 +1953,8 @@
                          transport
                          transient-listener
                          get-alphas-fn
-                         (uc/get-ordered-update-cache)))
+                         (uc/get-ordered-update-cache)
+                         parallel-batch-size))
 
           (let [insertions (sequence
                             (comp (filter (fn [pending-op]
@@ -1993,7 +2000,8 @@
                            get-alphas-fn
                            ;; This continues to use the cancelling cache after the first batch of insertions and retractions.
                            ;; If this is suboptimal for some workflows we can revisit this.
-                           update-cache))))
+                           update-cache
+                           parallel-batch-size))))
 
         (LocalSession. rulebase
                        (mem/to-persistent! transient-memory)
