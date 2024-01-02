@@ -1,7 +1,6 @@
 .PHONY: repl test clean compile-main-java compile-test-java deploy install format-check format-fix
 
 SHELL := /bin/bash
-VERSION := 0.9.0-SNAPSHOT
 
 compile-main-java:
 	clojure -T:build compile-main-java
@@ -29,12 +28,7 @@ lint: compile-test-java
 	clojure -M:dev:test:clj-kondo --lint "src/main:src/test" --fail-level "error"
 
 build: compile-main-java
-	clojure -Spom
-	clojure -X:jar \
-		:sync-pom true \
-		:group-id "com.github.k13labs" \
-		:artifact-id "clara-rules" \
-		:version '"$(VERSION)"'
+	clojure -X:jar :sync-pom true
 
 deploy: clean build
 	clojure -X:deploy-maven

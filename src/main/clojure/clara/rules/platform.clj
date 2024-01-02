@@ -1,13 +1,13 @@
 (ns clara.rules.platform
   "This namespace is for internal use and may move in the future.
   Platform unified code Clojure/ClojureScript."
-  (:require [clara.rules.platform.async :as async])
+  (:require [futurama.core :refer [!<!
+                                   !<!!
+                                   async
+                                   async?
+                                   completable-future]])
   (:import [java.lang IllegalArgumentException]
-           [java.util LinkedHashMap]
-           [java.util.concurrent
-            CompletableFuture
-            ExecutionException]
-           [java.util.function Function BiFunction]))
+           [java.util LinkedHashMap]))
 
 (defn throw-error
   "Throw an error with the given description string."
@@ -118,18 +118,18 @@
   `(if *parallel-compute*
      (let [fut-seq# (eager-for
                      [~@bindings]
-                     (async/completable-future
+                     (completable-future
                       ~body))]
-       (try
-         (eager-for
-          [fut# fut-seq#
-           :let [result# @fut#]
-           :when result#]
-          result#)
-         (catch ExecutionException e#
-           (if-let [cause# (ex-cause e#)]
-             (throw cause#)
-             (throw e#)))))
+       (!<!!
+        (async
+         (loop [[res-fut# & more#] fut-seq#
+                results# []]
+           (if (nil? res-fut#)
+             results#
+             (recur more#
+                    (if-let [result# (!<! res-fut#)]
+                      (conj results# result#)
+                      results#)))))))
      (eager-for
       [~@bindings
        :let [result# ~body]
@@ -144,13 +144,11 @@
      (let [result# (try
                      ~body
                      ~@catch-finally)]
-       (if (instance? CompletableFuture result#)
-         (.exceptionally ^CompletableFuture result#
-                         (reify Function
-                           (apply [_# e#]
-                             (try
-                               (throw e#)
-                               ~@catch-finally))))
+       (if (async? result#)
+         (async
+          (try
+            (!<! result#)
+            ~@catch-finally))
          result#))
      (try
        ~body
@@ -159,31 +157,21 @@
 (defmacro produce-for
   [bindings prod-body & post-body]
   `(if *parallel-compute*
-     (let [fut-seq# (eager-for
+     (let [res-seq# (eager-for
                      [~@bindings]
-                     (let [^CompletableFuture f# (async/flatten-completable-future
-                                                  (async/completable-future
-                                                   ~prod-body))]
-                       (if ~(some? post-body)
-                         (.thenApply f#
-                                     (reify Function
-                                       (apply [~'_ result#]
-                                         (binding [*production* result#]
-                                           ~@post-body))))
-                         f#)))
-           ^BiFunction conj# (reify BiFunction
-                               (apply [_ ~'results ~'result]
-                                 (conj ~'results ~'result)))]
-       (loop [[^CompletableFuture fut# & more#] fut-seq#
-              ^CompletableFuture res-fut# (CompletableFuture/completedFuture [])]
-         (if-not fut#
-           (try
-             @res-fut#
-             (catch ExecutionException e#
-               (if-let [cause# (ex-cause e#)]
-                 (throw cause#)
-                 (throw e#))))
-           (recur more# (.thenCombine res-fut# fut# conj#)))))
+                     (async
+                      (let [result# (!<! ~prod-body)]
+                        (if ~(some? post-body)
+                          (binding [*production* result#]
+                            ~@post-body)
+                          result#))))]
+       (!<!!
+        (async
+         (loop [[result# & more#] res-seq#
+                results# []]
+           (if-not result#
+             results#
+             (recur more# (conj results# (!<! result#))))))))
      (eager-for
       [~@bindings
        :let [result# ~prod-body]]
