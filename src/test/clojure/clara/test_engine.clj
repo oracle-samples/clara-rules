@@ -57,8 +57,3 @@
       (is (< 0.1 lower mean 0.15)) ;;; our lower and mean values should be between 100ms and 150ms
       (is (< 0.1 mean upper 0.2)) ;;; our mean and upper values should be lower than 200ms
       (report-result result))))
-
-(comment
-  (do
-    (clear-ns-productions!)
-    (clear-session-cache!)))
