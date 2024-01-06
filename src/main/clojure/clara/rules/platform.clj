@@ -5,8 +5,10 @@
                                    !<!!
                                    async
                                    async?
-                                   completable-future]])
+                                   completable-future]]
+            [clojure.core.async :as async])
   (:import [java.lang IllegalArgumentException]
+           [java.util.concurrent CompletableFuture]
            [java.util LinkedHashMap]))
 
 (defn throw-error
@@ -111,71 +113,10 @@
   [& body]
   `(doall (for ~@body)))
 
-(def ^:dynamic *parallel-compute* false)
-
 (defmacro compute-for
-  [bindings body]
-  `(if *parallel-compute*
-     (let [fut-seq# (eager-for
-                     [~@bindings]
-                     (completable-future
-                      ~body))]
-       (!<!!
-        (async
-         (loop [[res-fut# & more#] fut-seq#
-                results# []]
-           (if (nil? res-fut#)
-             results#
-             (recur more#
-                    (if-let [result# (!<! res-fut#)]
-                      (conj results# result#)
-                      results#)))))))
-     (eager-for
-      [~@bindings
-       :let [result# ~body]
-       :when result#]
-      result#)))
-
-(def ^:dynamic *production* nil)
-
-(defmacro produce-try
-  [body & catch-finally]
-  `(if *parallel-compute*
-     (let [result# (try
-                     ~body
-                     ~@catch-finally)]
-       (if (async? result#)
-         (async
-          (try
-            (!<! result#)
-            ~@catch-finally))
-         result#))
-     (try
-       ~body
-       ~@catch-finally)))
-
-(defmacro produce-for
-  [bindings prod-body & post-body]
-  `(if *parallel-compute*
-     (let [res-seq# (eager-for
-                     [~@bindings]
-                     (async
-                      (let [result# (!<! ~prod-body)]
-                        (if ~(some? post-body)
-                          (binding [*production* result#]
-                            ~@post-body)
-                          result#))))]
-       (!<!!
-        (async
-         (loop [[result# & more#] res-seq#
-                results# []]
-           (if-not result#
-             results#
-             (recur more# (conj results# (!<! result#))))))))
-     (eager-for
-      [~@bindings
-       :let [result# ~prod-body]]
-      (if ~(some? post-body)
-        (binding [*production* result#]
-          ~@post-body)
-        result#))))
+  [bindings & body]
+  `(eager-for
+    [~@bindings
+     :let [result# (do ~@body)]
+     :when result#]
+    result#))

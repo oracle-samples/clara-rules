@@ -71,9 +71,8 @@
   ;; variety of different cases rather than a few cases cases specific to it.
   [f]
   (f)
-  (binding [platform/*parallel-compute* true]
-    (with-redefs [uc/get-ordered-update-cache ca/get-cancelling-update-cache]
-      (f))))
+  (with-redefs [uc/get-ordered-update-cache ca/get-cancelling-update-cache]
+    (f)))
 
 (defn join-filter-equals
   "Intended to be a test function that is the same as equals, but is not visible to Clara as such

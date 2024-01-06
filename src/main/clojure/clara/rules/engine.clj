@@ -6,7 +6,12 @@
             [clara.rules.listener :as l]
             [clara.rules.platform :as platform]
             [clara.rules.update-cache.core :as uc]
-            [clara.rules.update-cache.cancelling :as ca]))
+            [clara.rules.update-cache.cancelling :as ca]
+            [futurama.core :refer [async
+                                   async?
+                                   !<!
+                                   !<!*
+                                   !<!!]]))
 
 ;; The accumulator is a Rete extension to run an accumulation (such as sum, average, or similar operation)
 ;; over a collection of values passing through the Rete network. This object defines the behavior
@@ -72,6 +77,8 @@
   ;; as well in case anyone is directly calling the fire-rules protocol function or interface method on the LocalSession.
   ;; The two-argument version of fire-rules was added for issue 249.
   (fire-rules [session] [session opts])
+  ;; These return an async result - CompletableFuture
+  (fire-rules-async [session] [session opts])
 
   ;; Runs a query agains thte session.
   (query [session query params])
@@ -1750,117 +1757,145 @@
   [base1 base2]
   (concat base1 base2))
 
-(defn fire-rules*
+(defn- fire-activation*
+  [activation]
+  (let [{:keys [node
+                token]} activation
+        {:keys [listener]} *current-session*
+        {:keys [batched-logical-insertions
+                batched-rhs-retractions
+                batched-unconditional-insertions]} *rule-context*
+        ->activation-output
+        (fn activation-output
+          ;; We don't actually care what was returned from the activation
+          [_]
+          ;; Bind the contents of the cache atoms after the RHS is fired since they are used twice
+          ;; below.  They will be dereferenced again if an exception is caught, but in the error
+          ;; case we aren't worried about performance.
+          (let [resulting-ops {:unconditional-insertions @batched-unconditional-insertions
+                               :logical-insertions @batched-logical-insertions
+                               :rhs-retractions @batched-rhs-retractions}]
+            (l/fire-activation! listener activation resulting-ops)
+            {:token token :node node :ops resulting-ops}))
+        ->activation-ex-args
+        (fn activation-ex-args
+          [e]
+          (let [production (:production node)
+                rule-name (:name production)
+                rhs (:rhs production)]
+            [(str "Exception in " (if rule-name rule-name (pr-str rhs))
+                  " with bindings " (pr-str (:bindings token)))
+             {:bindings (:bindings token)
+              :name rule-name
+              :rhs rhs
+              :batched-logical-insertions @batched-logical-insertions
+              :batched-unconditional-insertions @batched-unconditional-insertions
+              :batched-rhs-retractions @batched-rhs-retractions
+              :listeners (try
+                           (let [p-listener (l/to-persistent! listener)]
+                             (if (l/null-listener? p-listener)
+                               []
+                               (l/get-children p-listener)))
+                           (catch Exception listener-exception
+                             listener-exception))}
+             e]))]
+    (try
+      ;; Actually fire the rule RHS
+      (let [result ((:rhs node) token (:env (:production node)))]
+        (if (async? result)
+          (async
+           (try
+             (->activation-output (!<! result))
+             (catch Exception e
+               (let [[msg info cause] (->activation-ex-args e)]
+                 (throw (ex-info msg info cause))))))
+          (->activation-output result)))
+      (catch Exception e
+        ;; If the rule fired an exception, help debugging by attaching
+        ;; details about the rule itself, cached insertions, and any listeners
+        ;; while propagating the cause.
+        (let [[msg info cause] (->activation-ex-args e)]
+          (throw (ex-info msg info cause)))))))
+
+(defn fire-rules-async*
   "Fire rules for the given nodes."
-  [rulebase nodes transient-memory transport
+  [rulebase transient-memory transport
    listener get-alphas-fn update-cache
    pop-activations-batch-size]
-  (binding [*current-session* {:rulebase rulebase
-                               :transient-memory transient-memory
-                               :transport transport
-                               :insertions (atom 0)
-                               :get-alphas-fn get-alphas-fn
-                               :pending-updates update-cache
-                               :listener listener}]
+  (async
+   (binding [*current-session* {:rulebase rulebase
+                                :transient-memory transient-memory
+                                :transport transport
+                                :insertions (atom 0)
+                                :get-alphas-fn get-alphas-fn
+                                :pending-updates update-cache
+                                :listener listener}]
 
-    (loop [next-group (mem/next-activation-group transient-memory)
-           last-group nil]
+     (loop [next-group (mem/next-activation-group transient-memory)
+            last-group nil]
 
-      (if next-group
+       (if next-group
 
-        (if (and last-group (not= last-group next-group))
+         (if (and last-group (not= last-group next-group))
 
-          ;; We have changed groups, so flush the updates from the previous
-          ;; group before continuing.
-          (do
-            (flush-updates *current-session*)
-            (let [upcoming-group (mem/next-activation-group transient-memory)]
-              (l/activation-group-transition! listener next-group upcoming-group)
-              (recur upcoming-group next-group)))
+            ;; We have changed groups, so flush the updates from the previous
+            ;; group before continuing.
+           (do
+             (flush-updates *current-session*)
+             (let [upcoming-group (mem/next-activation-group transient-memory)]
+               (l/activation-group-transition! listener next-group upcoming-group)
+               (recur upcoming-group next-group)))
 
-          (do
+           (do
 
-            ;; If there are activations, fire them.
-            (let [activations (mem/pop-activations! transient-memory pop-activations-batch-size)
-                  rhs-activation-results
-                  (platform/produce-for
-                   [{:keys [node token] :as activation} activations
-                     ;; Use vectors for the insertion caches so that within an insertion type
-                     ;; (unconditional or logical) all insertions are done in order after the into
-                     ;; calls in insert-facts!.  This shouldn't have a functional impact, since any ordering
-                     ;; should be valid, but makes traces less confusing to end users.  It also prevents any laziness
-                     ;; in the sequences.
-                    :let [batched-logical-insertions (atom [])
-                          batched-unconditional-insertions (atom [])
-                          batched-rhs-retractions (atom [])
-                          rule-context {:token token
-                                        :node node
-                                        :batched-logical-insertions batched-logical-insertions
-                                        :batched-unconditional-insertions batched-unconditional-insertions
-                                        :batched-rhs-retractions batched-rhs-retractions}]]
-                    ;;; this the production expression, which could return an async result if parallel computing
-                   (binding [*rule-context* rule-context]
-                      ;; Fire the rule itself.
-                     (platform/produce-try
-                      ((:rhs node) token (:env (:production node)))
-                      (catch Exception e
-                          ;; If the rule fired an exception, help debugging by attaching
-                          ;; details about the rule itself, cached insertions, and any listeners
-                          ;; while propagating the cause.
-                        (let [production (:production node)
-                              rule-name (:name production)
-                              rhs (:rhs production)]
-                          (throw (ex-info (str "Exception in " (if rule-name rule-name (pr-str rhs))
-                                               " with bindings " (pr-str (:bindings token)))
-                                          {:bindings (:bindings token)
-                                           :name rule-name
-                                           :rhs rhs
-                                           :batched-logical-insertions @batched-logical-insertions
-                                           :batched-unconditional-insertions @batched-unconditional-insertions
-                                           :batched-rhs-retractions @batched-rhs-retractions
-                                           :listeners (try
-                                                        (let [p-listener (l/to-persistent! listener)]
-                                                          (if (l/null-listener? p-listener)
-                                                            []
-                                                            (l/get-children p-listener)))
-                                                        (catch Exception listener-exception
-                                                          listener-exception))}
-                                          e))))))
-                    ;;; this the post-production expression, which runs after the production is activated
-                   (binding [*rule-context* rule-context]
-                      ;; Bind the contents of the cache atoms after the RHS is fired since they are used twice
-                      ;; below.  They will be dereferenced again if an exception is caught, but in the error
-                      ;; case we aren't worried about performance.
-                     (let [resulting-ops {:unconditional-insertions @batched-unconditional-insertions
-                                          :logical-insertions @batched-logical-insertions
-                                          :rhs-retractions @batched-rhs-retractions}]
-                       (l/fire-activation! listener activation resulting-ops)
-                       {:token token :node node :ops resulting-ops})))]
-              (doseq [{:keys [token node ops]} rhs-activation-results
-                      :let [{:keys [unconditional-insertions
-                                    logical-insertions
-                                    rhs-retractions]} ops]]
-                (binding [*rule-context* {:token token
-                                          :node node}]
-                  (when-let [batched (seq unconditional-insertions)]
-                    (flush-insertions! batched true))
-                  (when-let [batched (seq logical-insertions)]
-                    (flush-insertions! batched false))
-                  (when-let [batched (seq rhs-retractions)]
-                    (flush-rhs-retractions! batched))
-                  ;; Explicitly flush updates if we are in a no-loop rule, so the no-loop
-                  ;; will be in context for child rules.
-                  (when (some-> node :production :props :no-loop)
-                    (flush-updates *current-session*)))))
-            (recur (mem/next-activation-group transient-memory) next-group)))
+              ;; If there are activations, fire them.
+             (let [activations (mem/pop-activations! transient-memory pop-activations-batch-size)
+                   rhs-activations
+                   (platform/eager-for
+                    [{:keys [node token] :as activation} activations
+                      ;; Use vectors for the insertion caches so that within an insertion type
+                      ;; (unconditional or logical) all insertions are done in order after the into
+                      ;; calls in insert-facts!.  This shouldn't have a functional impact, since any ordering
+                      ;; should be valid, but makes traces less confusing to end users.  It also prevents any laziness
+                      ;; in the sequences.
+                     :let [batched-logical-insertions (atom [])
+                           batched-unconditional-insertions (atom [])
+                           batched-rhs-retractions (atom [])
+                           rule-context {:token token
+                                         :node node
+                                         :batched-logical-insertions batched-logical-insertions
+                                         :batched-unconditional-insertions batched-unconditional-insertions
+                                         :batched-rhs-retractions batched-rhs-retractions}]]
+                      ;;; this the production expression, which could return an async result if parallel computing
+                    (binding [*rule-context* rule-context]
+                      (fire-activation* activation)))]
+               (doseq [{:keys [token node ops]} (!<!* rhs-activations)
+                       :let [{:keys [unconditional-insertions
+                                     logical-insertions
+                                     rhs-retractions]} ops]]
+                 (binding [*rule-context* {:token token
+                                           :node node}]
+                   (when-let [batched (seq unconditional-insertions)]
+                     (flush-insertions! batched true))
+                   (when-let [batched (seq logical-insertions)]
+                     (flush-insertions! batched false))
+                   (when-let [batched (seq rhs-retractions)]
+                     (flush-rhs-retractions! batched))
+                    ;; Explicitly flush updates if we are in a no-loop rule, so the no-loop
+                    ;; will be in context for child rules.
+                   (when (some-> node :production :props :no-loop)
+                     (flush-updates *current-session*)))))
+             (recur (mem/next-activation-group transient-memory) next-group)))
 
-        ;; There were no items to be activated, so flush any pending
-        ;; updates and recur with a potential new activation group
-        ;; since a flushed item may have triggered one.
-        (when (flush-updates *current-session*)
-          (let [upcoming-group (mem/next-activation-group transient-memory)]
-            (l/activation-group-transition! listener next-group upcoming-group)
-            (recur upcoming-group next-group)))))))
+          ;; There were no items to be activated, so flush any pending
+          ;; updates and recur with a potential new activation group
+          ;; since a flushed item may have triggered one.
+         (when (flush-updates *current-session*)
+           (let [upcoming-group (mem/next-activation-group transient-memory)]
+             (l/activation-group-transition! listener next-group upcoming-group)
+             (recur upcoming-group next-group))))))))
+
+(declare ->LocalSession)
 
 (deftype LocalSession [rulebase memory transport listener get-alphas-fn pending-operations]
   ISession
@@ -1876,12 +1911,12 @@
                                                                                 facts
                                                                                 (into [] facts))))]
 
-      (LocalSession. rulebase
-                     memory
-                     transport
-                     listener
-                     get-alphas-fn
-                     new-pending-operations)))
+      (->LocalSession rulebase
+                      memory
+                      transport
+                      listener
+                      get-alphas-fn
+                      new-pending-operations)))
 
   (retract [session facts]
 
@@ -1891,26 +1926,29 @@
                                                                                 facts
                                                                                 (into [] facts))))]
 
-      (LocalSession. rulebase
-                     memory
-                     transport
-                     listener
-                     get-alphas-fn
-                     new-pending-operations)))
+      (->LocalSession rulebase
+                      memory
+                      transport
+                      listener
+                      get-alphas-fn
+                      new-pending-operations)))
 
   ;; Prior to issue 249 we only had a one-argument fire-rules method.  clara.rules/fire-rules will always call the two-argument method now
   ;; but we kept a one-argument version of the fire-rules in case anyone is calling the fire-rules protocol function or method on the session directly.
-  (fire-rules [session] (fire-rules session {}))
+  (fire-rules [session]
+    (fire-rules session {}))
   (fire-rules [session opts]
-    (binding [platform/*parallel-compute* (or (:parallel-compute opts) platform/*parallel-compute*)]
-      (let [transient-memory (mem/to-transient memory)
-            transient-listener (l/to-transient listener)
-            parallel-batch-size (if platform/*parallel-compute*
-                                  (or (:parallel-batch-size opts)
-                                      (.. Runtime getRuntime availableProcessors))
-                                  1)]
+    (!<!! (fire-rules-async session opts)))
+  ;; These return CompletableFuture async results
+  (fire-rules-async [session]
+    (fire-rules-async session {}))
+  (fire-rules-async [session opts]
+    (async
+     (let [transient-memory (mem/to-transient memory)
+           transient-listener (l/to-transient listener)
+           parallel-batch-size (or (:parallel-batch-size opts) 1)]
 
-        (if-not (:cancelling opts)
+       (if-not (:cancelling opts)
           ;; We originally performed insertions and retractions immediately after the insert and retract calls,
           ;; but this had the downside of making a pattern like "Retract facts, insert other facts, and fire the rules"
           ;; perform at least three transitions between a persistent and transient memory.  Delaying the actual execution
@@ -1921,89 +1959,87 @@
           ;; We perform the insertions and retractions in the same order as they were applied to the session since
           ;; if a fact is not in the session, retracted, and then subsequently inserted it should be in the session at
           ;; the end.
-          (do
-            (doseq [{op-type :type facts :facts} pending-operations]
+         (do
+           (doseq [{op-type :type facts :facts} pending-operations]
 
-              (case op-type
+             (case op-type
 
-                :insertion
-                (do
-                  (l/insert-facts! transient-listener nil nil facts)
+               :insertion
+               (do
+                 (l/insert-facts! transient-listener nil nil facts)
 
-                  (binding [*pending-external-retractions* (atom [])]
+                 (binding [*pending-external-retractions* (atom [])]
                     ;; Bind the external retractions cache so that any logical retractions as a result
                     ;; of these insertions can be cached and executed as a batch instead of eagerly realizing
                     ;; them.  An external insertion of a fact that matches
                     ;; a negation or accumulator condition can cause logical retractions.
-                    (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
-                            root alpha-roots]
-                      (alpha-activate root fact-group transient-memory transport transient-listener))
-                    (external-retract-loop get-alphas-fn transient-memory transport transient-listener)))
+                   (doseq [[alpha-roots fact-group] (get-alphas-fn facts)
+                           root alpha-roots]
+                     (alpha-activate root fact-group transient-memory transport transient-listener))
+                   (external-retract-loop get-alphas-fn transient-memory transport transient-listener)))
 
-                :retraction
-                (do
-                  (l/retract-facts! transient-listener nil nil facts)
+               :retraction
+               (do
+                 (l/retract-facts! transient-listener nil nil facts)
 
-                  (binding [*pending-external-retractions* (atom facts)]
-                    (external-retract-loop get-alphas-fn transient-memory transport transient-listener)))))
+                 (binding [*pending-external-retractions* (atom facts)]
+                   (external-retract-loop get-alphas-fn transient-memory transport transient-listener)))))
 
-            (fire-rules* rulebase
-                         (:production-nodes rulebase)
-                         transient-memory
-                         transport
-                         transient-listener
-                         get-alphas-fn
-                         (uc/get-ordered-update-cache)
-                         parallel-batch-size))
+           (!<! (fire-rules-async* rulebase
+                                   transient-memory
+                                   transport
+                                   transient-listener
+                                   get-alphas-fn
+                                   (uc/get-ordered-update-cache)
+                                   parallel-batch-size)))
 
-          (let [insertions (sequence
+         (let [insertions (sequence
+                           (comp (filter (fn [pending-op]
+                                           (= (:type pending-op)
+                                              :insertion)))
+                                 (mapcat :facts))
+                           pending-operations)
+
+               retractions (sequence
                             (comp (filter (fn [pending-op]
                                             (= (:type pending-op)
-                                               :insertion)))
+                                               :retraction)))
                                   (mapcat :facts))
                             pending-operations)
 
-                retractions (sequence
-                             (comp (filter (fn [pending-op]
-                                             (= (:type pending-op)
-                                                :retraction)))
-                                   (mapcat :facts))
-                             pending-operations)
+               update-cache (ca/get-cancelling-update-cache)]
 
-                update-cache (ca/get-cancelling-update-cache)]
-
-            (binding [*current-session* {:rulebase rulebase
-                                         :transient-memory transient-memory
-                                         :transport transport
-                                         :insertions (atom 0)
-                                         :get-alphas-fn get-alphas-fn
-                                         :pending-updates update-cache
-                                         :listener transient-listener}]
+           (binding [*current-session* {:rulebase rulebase
+                                        :transient-memory transient-memory
+                                        :transport transport
+                                        :insertions (atom 0)
+                                        :get-alphas-fn get-alphas-fn
+                                        :pending-updates update-cache
+                                        :listener transient-listener}]
 
               ;; Insertions should come before retractions so that if we insert and then retract the same
               ;; fact that is not already in the session the end result will be that the session won't have that fact.
               ;; If retractions came first then we'd first retract a fact that isn't in the session, which doesn't do anything,
               ;; and then later we would insert the fact.
-              (doseq [[alpha-roots fact-group] (get-alphas-fn insertions)
-                      root alpha-roots]
-                (alpha-activate root fact-group transient-memory transport transient-listener))
+             (doseq [[alpha-roots fact-group] (get-alphas-fn insertions)
+                     root alpha-roots]
+               (alpha-activate root fact-group transient-memory transport transient-listener))
 
-              (doseq [[alpha-roots fact-group] (get-alphas-fn retractions)
-                      root alpha-roots]
-                (alpha-retract root fact-group transient-memory transport transient-listener))
+             (doseq [[alpha-roots fact-group] (get-alphas-fn retractions)
+                     root alpha-roots]
+               (alpha-retract root fact-group transient-memory transport transient-listener))
 
-              (fire-rules* rulebase
-                           (:production-nodes rulebase)
-                           transient-memory
-                           transport
-                           transient-listener
-                           get-alphas-fn
-                           ;; This continues to use the cancelling cache after the first batch of insertions and retractions.
-                           ;; If this is suboptimal for some workflows we can revisit this.
-                           update-cache
-                           parallel-batch-size))))
+             (!<! (fire-rules-async* rulebase
+                                     transient-memory
+                                     transport
+                                     transient-listener
+                                     get-alphas-fn
+                                      ;; This continues to use the cancelling cache after the first batch of insertions and retractions.
+                                      ;; If this is suboptimal for some workflows we can revisit this.
+                                     update-cache
+                                     parallel-batch-size)))))
 
-        (LocalSession. rulebase
+       (->LocalSession rulebase
                        (mem/to-persistent! transient-memory)
                        transport
                        (l/to-persistent! transient-listener)
@@ -2038,6 +2074,10 @@
      :listeners (l/flatten-listener listener)
      :get-alphas-fn get-alphas-fn}))
 
+(defn ->LocalSession
+  [rulebase memory transport listener get-alphas-fn pending-operations]
+  (LocalSession. rulebase memory transport listener get-alphas-fn pending-operations))
+
 (defn assemble
   "Assembles a session from the given components, which must be a map
    containing the following:
@@ -2049,14 +2089,14 @@
    :get-alphas-fn The function used to return the alpha nodes for a fact of the given type."
 
   [{:keys [rulebase memory transport listeners get-alphas-fn]}]
-  (LocalSession. rulebase
-                 memory
-                 transport
-                 (if (> (count listeners) 0)
-                   (l/delegating-listener listeners)
-                   l/default-listener)
-                 get-alphas-fn
-                 []))
+  (->LocalSession rulebase
+                  memory
+                  transport
+                  (if (> (count listeners) 0)
+                    (l/delegating-listener listeners)
+                    l/default-listener)
+                  get-alphas-fn
+                  []))
 
 (defn with-listener
   "Return a new session with the listener added to the provided session,

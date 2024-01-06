@@ -1,12 +1,13 @@
 (ns clara.test-engine
   (:require [clara.rules :refer [mk-session
                                  fire-rules
+                                 fire-rules-async
                                  query
                                  defrule defquery
                                  insert-all
                                  insert!]]
             [clojure.core.async :refer [go timeout <!]]
-            [futurama.core :refer [async !<!]]
+            [futurama.core :refer [async !<! !<!!]]
             [clojure.test :refer [deftest testing is]]
             [criterium.core :refer [report-result
                                     with-progress-reporting
@@ -48,8 +49,7 @@
   (testing "parallel compute with large batch size for non-blocking io"
     (let [result (with-progress-reporting
                    (quick-benchmark
-                    (-> (fire-rules session {:parallel-compute true
-                                             :parallel-batch-size 100})
+                    (-> (!<!! (fire-rules-async session {:parallel-batch-size 100}))
                         (query test-slow-query)
                         (count))
                     {:verbose true}))
