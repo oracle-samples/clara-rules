@@ -86,8 +86,8 @@
         fn-name (com/mk-node-fn-name "ProductionNode" node-id "AE")]
     `(fn ~fn-name [~'?__token__  ~destructured-env]
        (async
-         (let [~@assignments]
-           ~rhs)))))
+        (let [~@assignments]
+          ~rhs)))))
 
 (defn test-fire-rules-async
   ([session]

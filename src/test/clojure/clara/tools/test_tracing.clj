@@ -132,7 +132,7 @@
     ;; Ensure expected events occur in order.
     (is (= [:add-facts :alpha-activate :right-activate :left-activate :add-activations :fire-activation
             :add-facts-logical :activation-group-transition :retract-facts :alpha-retract :right-retract
-            :left-retract :remove-activations :retract-facts-logical]
+            :left-retract :remove-activations :retract-facts-logical :activation-group-transition]
            (map :type session-trace)))
 
    ;; Ensure only the expected fact was indicated as retracted.
