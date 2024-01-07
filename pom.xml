@@ -4,13 +4,13 @@
   <packaging>jar</packaging>
   <groupId>com.github.k13labs</groupId>
   <artifactId>clara-rules</artifactId>
-  <version>0.9.0</version>
   <name>clara-rules</name>
+  <version>0.9.0</version>
   <scm>
+    <tag>0.9.0</tag>
     <url>https://github.com/k13labs/clara-rules</url>
     <connection>scm:git:git://github.com/k13labs/clara-rules.git</connection>
     <developerConnection>scm:git:ssh://git@github.com/k13labs/clara-rules.git</developerConnection>
-    <tag>0.9.0</tag>
   </scm>
   <licenses>
     <license>

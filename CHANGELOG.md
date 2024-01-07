@@ -1,8 +1,9 @@
 This is a history of changes to k13labs/clara-rules.
 
-# 0.9.0-SNAPSHOT
+# 0.9.0
 * Add parallel support to Node and RHS activation.
 * Remove ClojureScript support, general cleanup.
+* Refactor engine to support both fire-rules and fire-rules-async
 * Replace mutable/transient collections with [ham-fisted](https://github.com/cnuernber/ham-fisted) data structures.
 
 This is a history of changes to clara-rules prior to forking to k13labs/clara-rules.
