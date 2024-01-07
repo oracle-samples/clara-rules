@@ -1,5 +1,8 @@
 This is a history of changes to k13labs/clara-rules.
 
+# 0.9.1
+* Update docs and futurama version bump
+
 # 0.9.0
 * Add parallel support to Node and RHS activation.
 * Remove ClojureScript support, general cleanup.
