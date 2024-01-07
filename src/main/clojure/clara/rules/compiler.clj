@@ -291,7 +291,7 @@
       (vary-meta fact-symbol assoc :tag (symbol (.getName ^Class fact-type)))
       fact-symbol)))
 
-(defn- mk-node-fn-name
+(defn mk-node-fn-name
   "A simple helper function to maintain a consistent pattern for naming anonymous functions in the rulebase.
 
    node-type - expected to align with one of the types of nodes defined in clara.rules.engine, and node-type->abbreviated-type.

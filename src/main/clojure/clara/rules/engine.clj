@@ -243,7 +243,10 @@
 (defn- flush-updates
   "Flush all pending updates in the current session. Returns true if there were
    some items to flush, false otherwise"
-  [current-session]
+  [label current-session]
+  (when-not (-> current-session :pending-updates)
+    (throw (ex-info "session pending updates missing:" {:session current-session
+                                                        :label label})))
   (letfn [(flush-all [current-session flushed-items?]
             (let [{:keys [rulebase transient-memory transport insertions get-alphas-fn listener]} current-session
                   pending-updates (-> current-session :pending-updates uc/get-updates-and-reset!)]
@@ -1784,7 +1787,9 @@
             exception))))
 
 (defn- fire-activation!
-  "Fire the rule's RHS represented by the activation node"
+  "Fire the rule's RHS represented by the activation node,
+  if an activation returns an async result then it is handled
+  by blocking until it completes."
   [activation]
   (let [{:keys [node
                 token]} activation]
@@ -1796,7 +1801,9 @@
         (throw-activation-exception activation e)))))
 
 (defn- fire-activation-async!
-  "Fire the rule's RHS represented by the activation node"
+  "Fire the rule's RHS represented by the activation node,
+  if an activation returns an async result then it is handled
+  without blocking and the call returns an async result as well."
   [activation]
   (let [{:keys [node
                 token]} activation]
@@ -1828,6 +1835,7 @@
            :batched-rhs-retractions (atom []))))
 
 (defn- fire-activations!
+  "fire all activations in order"
   [activations fire-activations-handler]
   (platform/eager-for
    [activation activations]
@@ -1853,20 +1861,21 @@
       ;; Explicitly flush updates if we are in a no-loop rule, so the no-loop
       ;; will be in context for child rules.
       (when (some-> node :production :props :no-loop)
-        (flush-updates *current-session*)))))
+        (flush-updates :process-activations *current-session*)))))
 
 (defmacro ^:private do-fire-rules
+  "Instrument a session to fire rules activations then execute the fire-activations-body"
   [rulebase memory transport
    listener get-alphas-fn
    update-cache
    & fire-activations-body]
-  `(binding [~'clara.rules.engine/*current-session* {:rulebase ~rulebase
-                                                     :transient-memory ~memory
-                                                     :transport ~transport
-                                                     :insertions (atom 0)
-                                                     :get-alphas-fn ~get-alphas-fn
-                                                     :pending-updates ~update-cache
-                                                     :listener ~listener}]
+  `(binding [*current-session* {:rulebase ~rulebase
+                                :transient-memory ~memory
+                                :transport ~transport
+                                :insertions (atom 0)
+                                :get-alphas-fn ~get-alphas-fn
+                                :pending-updates ~update-cache
+                                :listener ~listener}]
      (loop [next-group# (mem/next-activation-group ~memory)
             last-group# nil]
        (if next-group#
@@ -1874,7 +1883,7 @@
            ;; We have changed groups, so flush the updates from the previous
            ;; group before continuing.
            (do
-             (flush-updates ~'clara.rules.engine/*current-session*)
+             (flush-updates :changed-group *current-session*)
              (let [upcoming-group# (mem/next-activation-group ~memory)]
                (l/activation-group-transition! ~listener next-group# upcoming-group#)
                (recur upcoming-group# next-group#)))
@@ -1885,13 +1894,13 @@
          ;; There were no items to be activated, so flush any pending
          ;; updates and recur with a potential new activation group
          ;; since a flushed item may have triggered one.
-         (when (flush-updates ~'clara.rules.engine/*current-session*)
+         (when (flush-updates :changing-groups *current-session*)
            (let [upcoming-group# (mem/next-activation-group ~memory)]
              (l/activation-group-transition! ~listener next-group# upcoming-group#)
              (recur upcoming-group# next-group#)))))))
 
 (defn- fire-rules!
-  "Fire rules for the given nodes supporting async behavior."
+  "Fire rules for the given nodes, sequentially one at a time"
   [{:keys [rulebase memory transport
            listener get-alphas-fn
            update-cache]}]

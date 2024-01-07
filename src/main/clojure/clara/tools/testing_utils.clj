@@ -7,8 +7,9 @@
             [clara.rules.update-cache.cancelling :as ca]
             [clara.rules.compiler :as com]
             [clara.rules.dsl :as dsl]
+            [clara.rules :as r]
             [clojure.test :refer [is]]
-            [clara.rules.platform :as platform]))
+            [futurama.core :refer [async !<!!]]))
 
 (defmacro def-rules-test
   "This macro allows creation of rules, queries, and sessions from arbitrary combinations of rules
@@ -65,13 +66,49 @@
                        ~@forms))]
     test-form))
 
+(defn test-compile-async-action
+  "Compile the right-hand-side action of a rule as an async action for testing"
+  [node-id binding-keys rhs env]
+  (let [rhs-bindings-used (com/variables-as-keywords rhs)
+
+        assignments (sequence
+                     (comp
+                      (filter rhs-bindings-used)
+                      (mapcat com/build-token-assignment))
+                     binding-keys)
+
+        ;; The destructured environment, if any.
+        destructured-env (if (> (count env) 0)
+                           {:keys (mapv #(symbol (name %)) (keys env))}
+                           '?__env__)
+
+        ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-action' to be used for this scenario
+        fn-name (com/mk-node-fn-name "ProductionNode" node-id "AE")]
+    `(fn ~fn-name [~'?__token__  ~destructured-env]
+       (async
+         (let [~@assignments]
+           ~rhs)))))
+
+(defn test-fire-rules-async
+  ([session]
+   (test-fire-rules-async session {}))
+  ([session opts]
+   (!<!! (r/fire-rules-async session (assoc opts :parallel-batch-size 100)))))
+
 (defn opts-fixture
   ;; For operations other than replace-facts uc/get-ordered-update-cache is currently
   ;; always used.  This fixture ensures that CancellingUpdateCache and Parallel Matching is tested for a wide
   ;; variety of different cases rather than a few cases cases specific to it.
   [f]
   (f)
+  (with-redefs [r/fire-rules test-fire-rules-async
+                com/compile-action test-compile-async-action]
+    (f))
   (with-redefs [uc/get-ordered-update-cache ca/get-cancelling-update-cache]
+    (f))
+  (with-redefs [r/fire-rules test-fire-rules-async
+                com/compile-action test-compile-async-action
+                uc/get-ordered-update-cache ca/get-cancelling-update-cache]
     (f)))
 
 (defn join-filter-equals
