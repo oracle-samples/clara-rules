@@ -1768,159 +1768,162 @@
            (frequencies (query retract2 q))))))
 
 (deftest test-rule-order-respected
-  (let [fire-order (atom [])
-        rule-A (dsl/parse-rule [[Cold]]
-                               (swap! fire-order conj :A))
-        rule-B (dsl/parse-rule [[Cold]]
-                               (swap! fire-order conj :B))]
+  ;; This does not apply when doing parallel testing
+  (when-not tu/parallel-testing
+    (let [fire-order (atom [])
+          rule-A (dsl/parse-rule [[Cold]]
+                                 (swap! fire-order conj :A))
+          rule-B (dsl/parse-rule [[Cold]]
+                                 (swap! fire-order conj :B))]
 
-    (reset! fire-order [])
+      (reset! fire-order [])
 
-    (-> (mk-session [rule-A rule-B] :cache false)
-        (insert (->Cold 10))
-        fire-rules)
-    (is (= @fire-order [:A :B])
-        "Rule order in a seq of rule structures should be respected")
-
-    (reset! fire-order [])
-
-    (-> (mk-session [rule-B rule-A] :cache false)
-        (insert (->Cold 10))
-        fire-rules)
-    (is (= @fire-order [:B :A])
-        "Validate that when we reverse the seq of rule structures the firing order is reversed.")
-
-    (reset! fire-order [])
-
-    (binding [order-rules/*rule-order-atom* fire-order]
-      (-> (mk-session [rule-A] 'clara.order-ruleset :cache false)
+      (-> (mk-session [rule-A rule-B] :cache false)
           (insert (->Cold 10))
           fire-rules)
-      (is (= @fire-order [:A :C :D])
-          "Rules should fire in the order they appear in a namespace.  A rule that is before that namespace
-            in the rule sources should fire first."))
+      (is (= @fire-order [:A :B])
+          "Rule order in a seq of rule structures should be respected")
 
-    (reset! fire-order [])
+      (reset! fire-order [])
 
-    (binding [order-rules/*rule-order-atom* fire-order]
-      (-> (mk-session 'clara.order-ruleset [rule-A] :cache false)
+      (-> (mk-session [rule-B rule-A] :cache false)
           (insert (->Cold 10))
           fire-rules)
-      (is (= @fire-order [:C :D :A])
-          "Rules should fire in the order they appear in a namespace.  A rule that is after that namespace
-            in the rule sources should fire later."))
+      (is (= @fire-order [:B :A])
+          "Validate that when we reverse the seq of rule structures the firing order is reversed.")
 
-    (reset! fire-order [])
-
-    (let [rule-C-line (-> #'order-rules/rule-C meta :line)
-          rule-D-line (-> #'order-rules/rule-D meta :line)]
-      (alter-meta! #'order-rules/rule-C (fn [m] (assoc m :line rule-D-line)))
-      (alter-meta! #'order-rules/rule-D (fn [m] (assoc m :line rule-C-line)))
+      (reset! fire-order [])
 
       (binding [order-rules/*rule-order-atom* fire-order]
-        (-> (mk-session 'clara.order-ruleset :cache false)
+        (-> (mk-session [rule-A] 'clara.order-ruleset :cache false)
             (insert (->Cold 10))
-            fire-rules))
+            fire-rules)
+        (is (= @fire-order [:A :C :D])
+            "Rules should fire in the order they appear in a namespace.  A rule that is before that namespace
+            in the rule sources should fire first."))
 
-      (is (= @fire-order [:D :C])
-          "When we alter the metadata of the rules to reverse their line order their
+      (reset! fire-order [])
+
+      (binding [order-rules/*rule-order-atom* fire-order]
+        (-> (mk-session 'clara.order-ruleset [rule-A] :cache false)
+            (insert (->Cold 10))
+            fire-rules)
+        (is (= @fire-order [:C :D :A])
+            "Rules should fire in the order they appear in a namespace.  A rule that is after that namespace
+            in the rule sources should fire later."))
+
+      (reset! fire-order [])
+
+      (let [rule-C-line (-> #'order-rules/rule-C meta :line)
+            rule-D-line (-> #'order-rules/rule-D meta :line)]
+        (alter-meta! #'order-rules/rule-C (fn [m] (assoc m :line rule-D-line)))
+        (alter-meta! #'order-rules/rule-D (fn [m] (assoc m :line rule-C-line)))
+
+        (binding [order-rules/*rule-order-atom* fire-order]
+          (-> (mk-session 'clara.order-ruleset :cache false)
+              (insert (->Cold 10))
+              fire-rules))
+
+        (is (= @fire-order [:D :C])
+            "When we alter the metadata of the rules to reverse their line order their
             firing order should also be reversed.")
 
-      ;; Reset the line metadata on the rules to what it was previously.
-      (alter-meta! #'order-rules/rule-C (fn [m] (assoc m :line rule-C-line)))
-      (alter-meta! #'order-rules/rule-D (fn [m] (assoc m :line rule-D-line))))
+        ;; Reset the line metadata on the rules to what it was previously.
+        (alter-meta! #'order-rules/rule-C (fn [m] (assoc m :line rule-C-line)))
+        (alter-meta! #'order-rules/rule-D (fn [m] (assoc m :line rule-D-line))))
 
-    (reset! fire-order [])
+      (reset! fire-order [])
 
-    (binding [order-rules/*rule-order-atom* fire-order
-              order-rules/*rule-seq-prior* [rule-A rule-B]]
-      (-> (mk-session 'clara.order-ruleset :cache false)
-          (insert (->Cold 10))
-          fire-rules)
-      (is (= @fire-order [:A :B :C :D])
-          "When a :production-seq occurs before defrules, the rules in the :production-seq
+      (binding [order-rules/*rule-order-atom* fire-order
+                order-rules/*rule-seq-prior* [rule-A rule-B]]
+        (-> (mk-session 'clara.order-ruleset :cache false)
+            (insert (->Cold 10))
+            fire-rules)
+        (is (= @fire-order [:A :B :C :D])
+            "When a :production-seq occurs before defrules, the rules in the :production-seq
             should fire before those rules and in the order they are in in the :production-seq."))
 
-    (reset! fire-order [])
+      (reset! fire-order [])
 
-    (binding [order-rules/*rule-order-atom* fire-order
-              order-rules/*rule-seq-after* [rule-A rule-B]]
-      (-> (mk-session 'clara.order-ruleset :cache false)
-          (insert (->Cold 10))
-          fire-rules)
-      (is (= @fire-order [:C :D :A :B])
-          "When a :production-seq occurs after defrules, the rules in the :production-seq
+      (binding [order-rules/*rule-order-atom* fire-order
+                order-rules/*rule-seq-after* [rule-A rule-B]]
+        (-> (mk-session 'clara.order-ruleset :cache false)
+            (insert (->Cold 10))
+            fire-rules)
+        (is (= @fire-order [:C :D :A :B])
+            "When a :production-seq occurs after defrules, the rules in the :production-seq
             should fire after those rules and in the order they are in in the :production-seq."))
 
-    (reset! fire-order [])
+      (reset! fire-order [])
 
-    (binding [order-rules/*rule-order-atom* fire-order
-              order-rules/*rule-seq-after* [rule-B rule-A]]
-      (-> (mk-session 'clara.order-ruleset :cache false)
-          (insert (->Cold 10))
-          fire-rules)
-      (is (= @fire-order [:C :D :B :A])
-          "Validate that when the order of rules in the :production-seq is reversed those rules
+      (binding [order-rules/*rule-order-atom* fire-order
+                order-rules/*rule-seq-after* [rule-B rule-A]]
+        (-> (mk-session 'clara.order-ruleset :cache false)
+            (insert (->Cold 10))
+            fire-rules)
+        (is (= @fire-order [:C :D :B :A])
+            "Validate that when the order of rules in the :production-seq is reversed those rules
             fire in the reversed order"))
 
-    (reset! fire-order [])
+      (reset! fire-order [])
 
-    (-> (mk-session [rule-A (assoc-in rule-B [:props :salience] 1)] :cache false)
-        (insert (->Cold 10))
-        fire-rules)
-    (is (= @fire-order [:B :A])
-        "Validate that when explicit salience is present it overrides rule order.")
+      (-> (mk-session [rule-A (assoc-in rule-B [:props :salience] 1)] :cache false)
+          (insert (->Cold 10))
+          fire-rules)
+      (is (= @fire-order [:B :A])
+          "Validate that when explicit salience is present it overrides rule order.")
 
-    (reset! fire-order [])
+      (reset! fire-order [])
 
-    (-> (mk-session [rule-A rule-B rule-A] :cache false)
-        (insert (->Cold 10))
-        fire-rules)
-    (is (= @fire-order [:A :B])
-        "Validate that the first occurence of a rule is used for rule ordering when it occurs multiple times.")
+      (-> (mk-session [rule-A rule-B rule-A] :cache false)
+          (insert (->Cold 10))
+          fire-rules)
+      (is (= @fire-order [:A :B])
+          "Validate that the first occurence of a rule is used for rule ordering when it occurs multiple times.")
 
-    (reset! fire-order [])))
+      (reset! fire-order []))))
 
 (deftest test-rule-order-respected-by-batched-inserts
-  (let [qholder (atom [])
+  (when-not tu/parallel-testing
+    (let [qholder (atom [])
 
-        r1 (dsl/parse-rule [[Temperature (= ?t temperature)]]
-                           (insert! (->Cold ?t)))
-        r2 (dsl/parse-rule [[Temperature (= ?t temperature)]]
-                           (insert! (->Hot ?t)))
+          r1 (dsl/parse-rule [[Temperature (= ?t temperature)]]
+                             (insert! (->Cold ?t)))
+          r2 (dsl/parse-rule [[Temperature (= ?t temperature)]]
+                             (insert! (->Hot ?t)))
 
-        ;; Make two "alpha roots" that the 2 rules above insertions will need to propagate to.
-        q1 (dsl/parse-query [] [[?c <- Cold  (swap! qholder conj :cold)]])
-        q2 (dsl/parse-query [] [[?h <- Hot (swap! qholder conj :hot)]])
+          ;; Make two "alpha roots" that the 2 rules above insertions will need to propagate to.
+          q1 (dsl/parse-query [] [[?c <- Cold  (swap! qholder conj :cold)]])
+          q2 (dsl/parse-query [] [[?h <- Hot (swap! qholder conj :hot)]])
 
-        order1 (mk-session [r1 r2 q1 q2] :cache false)
-        order2 (mk-session [r2 r1 q1 q2] :cache false)
+          order1 (mk-session [r1 r2 q1 q2] :cache false)
+          order2 (mk-session [r2 r1 q1 q2] :cache false)
 
-        run-session (fn [s]
-                      (let [s (-> s
-                                  (insert (->Temperature 10 "MCI"))
-                                  fire-rules)]
-                        [(-> s (query q1) frequencies)
-                         (-> s (query q2) frequencies)]))
+          run-session (fn [s]
+                        (let [s (-> s
+                                    (insert (->Temperature 10 "MCI"))
+                                    fire-rules)]
+                          [(-> s (query q1) frequencies)
+                           (-> s (query q2) frequencies)]))
 
-        [res11 res12] (run-session order1)
-        holder1 @qholder
-        _ (reset! qholder [])
+          [res11 res12] (run-session order1)
+          holder1 @qholder
+          _ (reset! qholder [])
 
-        [res21 res22] (run-session order2)
-        holder2 @qholder
-        _ (reset! qholder [])]
+          [res21 res22] (run-session order2)
+          holder2 @qholder
+          _ (reset! qholder [])]
 
-    ;; Sanity check that the query matches what is expected.
-    (is (= (frequencies [{:?c (->Cold 10)}])
-           res11
-           res21))
-    (is (= (frequencies [{:?h (->Hot 10)}])
-           res12
-           res22))
+      ;; Sanity check that the query matches what is expected.
+      (is (= (frequencies [{:?c (->Cold 10)}])
+             res11
+             res21))
+      (is (= (frequencies [{:?h (->Hot 10)}])
+             res12
+             res22))
 
-    (is (= [:cold :hot] holder1))
-    (is (= [:hot :cold] holder2))))
+      (is (= [:cold :hot] holder1))
+      (is (= [:hot :cold] holder2)))))
 
 ;; TODO: Move this to test-dsl once a strategy for replicating assert-ex-data is determined and implemented.
 #_{:clj-kondo/ignore [:unresolved-symbol]}

@@ -95,18 +95,22 @@
   ([session opts]
    (!<!! (r/fire-rules-async session (assoc opts :parallel-batch-size 100)))))
 
+(def parallel-testing false)
+
 (defn opts-fixture
   ;; For operations other than replace-facts uc/get-ordered-update-cache is currently
   ;; always used.  This fixture ensures that CancellingUpdateCache and Parallel Matching is tested for a wide
   ;; variety of different cases rather than a few cases cases specific to it.
   [f]
   (f)
-  (with-redefs [r/fire-rules test-fire-rules-async
+  (with-redefs [parallel-testing true
+                r/fire-rules test-fire-rules-async
                 com/compile-action test-compile-async-action]
     (f))
   (with-redefs [uc/get-ordered-update-cache ca/get-cancelling-update-cache]
     (f))
-  (with-redefs [r/fire-rules test-fire-rules-async
+  (with-redefs [parallel-testing true
+                r/fire-rules test-fire-rules-async
                 com/compile-action test-compile-async-action
                 uc/get-ordered-update-cache ca/get-cancelling-update-cache]
     (f)))
