@@ -9,6 +9,7 @@
             [clara.rules.update-cache.cancelling :as ca]
             [futurama.core :refer [async
                                    async?
+                                   async-cancelled?
                                    !<!
                                    !<!*
                                    !<!!]]))
@@ -1794,6 +1795,8 @@
   (let [{:keys [node
                 token]} activation]
     (try
+      (when (async-cancelled?)
+        (throw (InterruptedException. "Activation cancelled.")))
       ;; Actually fire the rule RHS
       (let [result ((:rhs node) token (:env (:production node)))]
         (->activation-output activation (!<!! result)))
@@ -1808,6 +1811,8 @@
   (let [{:keys [node
                 token]} activation]
     (try
+      (when (async-cancelled?)
+        (throw (InterruptedException. "Activation cancelled.")))
       ;; Actually fire the rule RHS
       (let [result ((:rhs node) token (:env (:production node)))]
         (if (async? result)

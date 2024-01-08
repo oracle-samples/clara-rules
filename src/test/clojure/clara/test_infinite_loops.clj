@@ -1,6 +1,7 @@
 (ns clara.test-infinite-loops
   (:require [clojure.test :refer :all]
             [clara.rules :refer :all]
+            [clara.rules.dsl :as dsl]
             [clara.rules.testfacts :refer [->Cold  ->Hot ->First ->Second]]
             [clara.tools.testing-utils :refer [def-rules-test
                                                ex-data-maps
@@ -9,12 +10,70 @@
                                                assert-ex-data]]
             [clara.tools.tracing :as tr]
             [clara.rules.accumulators :as acc]
-            [clara.tools.loop-detector :as ld])
-  (:import [clara.rules.testfacts Cold Hot First Second]
+            [clara.tools.loop-detector :as ld]
+            [clojure.core.async :refer [timeout]]
+            [futurama.core :refer [!<!! !<! async async-cancel!]])
+  (:import [java.util.concurrent CancellationException]
+           [clara.rules.testfacts Cold Hot First Second]
            [clara.tools.tracing
             PersistentTracingListener]))
 
 (use-fixtures :each side-effect-holder-fixture)
+
+(deftest cancel-infinite-recursive-insertion-test
+  (testing "Test of canceling a infinite loop due to runaway insertions without retractions"
+    (testing "fire async - sync rule"
+      (let [counter (atom 0)
+            cold-rule (dsl/parse-rule [[Cold]]
+                                      (do
+                                        (println (format "inserting %s" (swap! counter inc)))
+                                        (insert! (->Cold nil))))
+            result-f (-> (mk-session [cold-rule] :cache false)
+                         (insert (->Cold nil))
+                         (fire-rules-async))]
+        (when-not (deref result-f 10 nil)
+          (async-cancel! result-f))
+        (is (thrown? CancellationException (!<!! result-f)))))
+    (testing "fire async - async rule"
+      (let [counter (atom 0)
+            cold-rule (dsl/parse-rule [[Cold]]
+                                      (async
+                                       (println (format "inserting %s" (swap! counter inc)))
+                                       (!<! (timeout 1))
+                                       (insert! (->Cold nil))))
+            result-f (-> (mk-session [cold-rule] :cache false)
+                         (insert (->Cold nil))
+                         (fire-rules-async))]
+        (when-not (deref result-f 10 nil)
+          (async-cancel! result-f))
+        (is (thrown? CancellationException (!<!! result-f)))))
+    (testing "fire sync - sync rule"
+      (let [counter (atom 0)
+            cold-rule (dsl/parse-rule [[Cold]]
+                                      (do
+                                        (println (format "inserting %s" (swap! counter inc)))
+                                        (insert! (->Cold nil))))
+            result-f (future
+                       (-> (mk-session [cold-rule] :cache false)
+                           (insert (->Cold nil))
+                           (fire-rules)))]
+        (when-not (deref result-f 10 nil)
+          (async-cancel! result-f))
+        (is (thrown? CancellationException (!<!! result-f)))))
+    (testing "fire sync - async rule"
+      (let [counter (atom 0)
+            cold-rule (dsl/parse-rule [[Cold]]
+                                      (async
+                                       (println (format "inserting %s" (swap! counter inc)))
+                                       (!<! (timeout 1))
+                                       (insert! (->Cold nil))))
+            result-f (future
+                       (-> (mk-session [cold-rule] :cache false)
+                           (insert (->Cold nil))
+                           (fire-rules)))]
+        (when-not (deref result-f 10 nil)
+          (async-cancel! result-f))
+        (is (thrown? CancellationException (!<!! result-f)))))))
 
 (def-rules-test test-standard-out-warning
 
