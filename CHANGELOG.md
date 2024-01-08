@@ -1,5 +1,8 @@
 This is a history of changes to k13labs/clara-rules.
 
+# 0.9.4
+* Update `futurama` to latest version
+
 # 0.9.3
 * Implement interruptible sessions using futurama's async-cancel capabilities.
 * Add tests for infinite loop runaway sessions which can be interrupted.
