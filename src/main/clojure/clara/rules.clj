@@ -49,8 +49,11 @@
   a new session in which the rules are marked as fired.
 
   This take an additional map of options as a second argument.  Current options:
+  :parallel-batch-size <N> (NEW, subject to change/updates in the future):
+  Allow the rules engine to fire rule RHS activations in batches of N (default N = 1) rules at most, allowing RHS of rules which return
+  async results such as Futures, CompletableFutures, Deferreds, Channels to be fired simultaneously and await the results without blocking.
 
-  :cancelling true (EXPERIMENTAL, subject to change/removal.  Not supported in ClojureScript.):  
+  :cancelling true (EXPERIMENTAL, subject to change/removal.):
   Simultaneously propagate insertions and retractions through the rules network, at every step using the insertion and retractions of equals facts to cancel each
   other out and avoid operations deeper in the rules network.  The behavior of unconditional insertions and RHS (right-hand side) retractions
   is undefined when this option is enabled and this option should not be used when calling fire-rules can result in these operations.

@@ -9,10 +9,12 @@
             [clara.rules.update-cache.cancelling :as ca]
             [futurama.core :refer [async
                                    async?
+                                   async-future
                                    async-cancelled?
                                    !<!
                                    !<!*
-                                   !<!!]]))
+                                   !<!!]])
+  (:import [java.util.concurrent CompletableFuture]))
 
 ;; The accumulator is a Rete extension to run an accumulation (such as sum, average, or similar operation)
 ;; over a collection of values passing through the Rete network. This object defines the behavior
@@ -2052,7 +2054,7 @@
   (fire-rules-async [session]
     (fire-rules-async session {}))
   (fire-rules-async [session opts]
-    (async
+    (async-future
      (let [transient-memory (mem/to-transient memory)
            transient-listener (l/to-transient listener)]
        (!<! (fire-rules*

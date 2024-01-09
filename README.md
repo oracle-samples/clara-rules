@@ -12,7 +12,8 @@ Here's a simple example. Complete documentation is at [clara-rules.org](http://w
 
 ```clj
 (ns clara.support-example
-  (:require [clara.rules :refer :all]))
+  (:require [clara.rules :refer :all]
+            [futurama.core :refer [!<!!]))
 
 (defrecord SupportRequest [client level])
 
@@ -31,11 +32,19 @@ Here's a simple example. Complete documentation is at [clara-rules.org](http://w
   =>
   (println "Notify" ?name "that"  ?client "has a new support request!"))
 
-;; Run the rules! We can just use Clojure's threading macro to wire things up.
+;; We can just use Clojure's threading macro to wire things up below.
+
+;; Run the rules!
 (-> (mk-session)
     (insert (->ClientRepresentative "Alice" "Acme")
             (->SupportRequest "Acme" :high))
     (fire-rules))
+
+;; Run the rules asynchronously!
+(!<!! (-> (mk-session)
+          (insert (->ClientRepresentative "Alice" "Acme")
+                  (->SupportRequest "Acme" :high))
+          (fire-rules-async {:parallel-batch-size 50})))
 
 ;;;; Prints this:
 
@@ -47,7 +56,7 @@ Here's a simple example. Complete documentation is at [clara-rules.org](http://w
 
 Clara is built, tested, and deployed using [Clojure Tools Deps](https://clojure.org/guides/deps_and_cli).
 
-CMake is used to simplify invocation of some commands.
+GNU Make is used to simplify invocation of some commands.
 
 # _Availability_
 
