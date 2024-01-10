@@ -11,6 +11,8 @@
                                    async?
                                    async-future
                                    async-cancelled?
+                                   <!
+                                   <!*
                                    !<!
                                    !<!*
                                    !<!!]])
@@ -1801,7 +1803,9 @@
         (throw (InterruptedException. "Activation cancelled.")))
       ;; Actually fire the rule RHS
       (let [result ((:rhs node) token (:env (:production node)))]
-        (->activation-output activation (!<!! result)))
+        (if (async? result)
+          (->activation-output activation (!<!! result))
+          (->activation-output activation result)))
       (catch Exception e
         (throw-activation-exception activation e)))))
 
@@ -1823,7 +1827,7 @@
              (->activation-output activation (!<! result))
              (catch Exception e
                (throw-activation-exception activation e))))
-          (->activation-output activation result)))
+          (CompletableFuture/completedFuture (->activation-output activation result))))
       (catch Exception e
         (throw-activation-exception activation e)))))
 
@@ -1843,12 +1847,21 @@
 
 (defn- fire-activations!
   "fire all activations in order"
-  [activations fire-activations-handler]
+  [activations]
   (platform/eager-for
    [activation activations]
     ;;; this the production expression, which could return an async result if parallel computing
    (binding [*rule-context* (->activation-rule-context activation true)]
-     (fire-activations-handler activation))))
+     (fire-activation! activation))))
+
+(defn- fire-activations-async!
+  "fire all activations in order"
+  [activations]
+  (platform/eager-for
+   [activation activations]
+    ;;; this the production expression, which could return an async result if parallel computing
+   (binding [*rule-context* (->activation-rule-context activation true)]
+     (fire-activation-async! activation))))
 
 (defn- process-activations!
   "Flush the changes and updates made during activation of the rules"
@@ -1902,7 +1915,7 @@
   (do-fire-rules
    transient-memory listener
    (let [activations (mem/pop-activations! transient-memory 1)
-         rhs-activations (fire-activations! activations fire-activation!)]
+         rhs-activations (fire-activations! activations)]
      (process-activations! rhs-activations))))
 
 (defn- fire-rules-async!
@@ -1913,8 +1926,8 @@
     transient-memory listener
     (let [pop-activations-batch-size (or (:parallel-batch-size options) 1)
           activations (mem/pop-activations! transient-memory pop-activations-batch-size)
-          rhs-activations (fire-activations! activations fire-activation-async!)]
-      (process-activations! (!<!* rhs-activations))))))
+          rhs-activations (fire-activations-async! activations)]
+      (process-activations! (<!* rhs-activations))))))
 
 (defn- fire-rules*
   [rulebase memory transport listener get-alphas-fn pending-operations opts fire-rules-handler]
@@ -2057,11 +2070,11 @@
     (async-future
      (let [transient-memory (mem/to-transient memory)
            transient-listener (l/to-transient listener)]
-       (!<! (fire-rules*
-             rulebase transient-memory transport
-             transient-listener get-alphas-fn
-             pending-operations opts
-             fire-rules-async!))
+       (<! (fire-rules*
+            rulebase transient-memory transport
+            transient-listener get-alphas-fn
+            pending-operations opts
+            fire-rules-async!))
        (->LocalSession rulebase
                        (mem/to-persistent! transient-memory)
                        transport

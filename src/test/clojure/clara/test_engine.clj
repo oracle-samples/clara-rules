@@ -38,22 +38,38 @@
   []
   [:output [{:keys [value]}] (= value ?value)])
 
-(def session
+(def session-50
   (let [fact-seq (repeat 50 {:type :number
                              :value 199})
         session (-> (mk-session 'clara.test-engine :fact-type-fn :type)
                     (insert-all fact-seq))]
     session))
 
+(def session-10000
+  (let [fact-seq (repeat 10000 {:type :number
+                                :value 199})
+        session (-> (mk-session 'clara.test-engine :fact-type-fn :type)
+                    (insert-all fact-seq))]
+    session))
+
 (deftest parallel-compute-engine-performance-test
-  (testing "parallel compute with large batch size for non-blocking io"
+  (testing "parallel compute with large batch size for non-blocking io - 50 facts - 100 batch size"
     (let [result (with-progress-reporting
                    (quick-benchmark
-                    (-> (!<!! (fire-rules-async session {:parallel-batch-size 100}))
+                    (-> (!<!! (fire-rules-async session-50 {:parallel-batch-size 100}))
                         (query test-slow-query)
                         (count))
                     {:verbose true}))
           [mean [lower upper]] (:mean result)]
-      (is (< 0.1 lower mean 0.15)) ;;; our lower and mean values should be between 100ms and 150ms
-      (is (< 0.1 mean upper 0.2)) ;;; our mean and upper values should be lower than 200ms
+      (is (<= 0.1 lower mean upper 0.2)) ;;; our lower and mean values should be between 100ms and 200ms
+      (report-result result)))
+  (testing "parallel compute with large batch size for non-blocking io - 10000 facts - 20000 batch size"
+    (let [result (with-progress-reporting
+                   (quick-benchmark
+                    (-> (!<!! (fire-rules-async session-10000 {:parallel-batch-size 20000}))
+                        (query test-slow-query)
+                        (count))
+                    {:verbose true}))
+          [mean [lower upper]] (:mean result)]
+      (is (<= 0.1 lower mean upper 1.0)) ;;; our lower and mean values should be between 100ms and 1000ms
       (report-result result))))

@@ -1,5 +1,11 @@
 This is a history of changes to k13labs/clara-rules.
 
+# 0.9.6
+* Async enhancements and add engine test with thousands of async rules fired for stress test
+
+# 0.9.5
+* Update docs and explicit async-future in fire-rules-async
+
 # 0.9.4
 * Update `futurama` to latest version
 
