@@ -112,15 +112,15 @@
                   (if binding-nodes
                     [next-bindings-set
                      (cond->> [[(api/vector-node
-                                  (vec binding-nodes))
+                                 (vec binding-nodes))
                                 constraint-expr]]
                        binding-expr-nodes
                        (concat [[(api/vector-node
-                                   (vec binding-expr-nodes))
+                                  (vec binding-expr-nodes))
                                  input-token]]))]
                     [#{}
                      [[(api/vector-node
-                         [(api/token-node '_)])
+                        [(api/token-node '_)])
                        constraint-expr]]])]
               (recur more
                      (concat bindings next-bindings)
@@ -143,11 +143,11 @@
       (let [condition (:children condition-expr)
             [result-token fact-node & condition] (if (= '<- (-> condition second node-value))
                                                    (cons (api/vector-node
-                                                           [(vary-meta
-                                                              (first condition)
-                                                              assoc ::fact-result true)]) (nnext condition))
+                                                          [(vary-meta
+                                                            (first condition)
+                                                            assoc ::fact-result true)]) (nnext condition))
                                                    (cons (api/vector-node
-                                                           [(api/token-node '_)]) condition))
+                                                          [(api/token-node '_)]) condition))
             condition-bindings (cond
                                  (nil? condition)
                                  []
@@ -174,20 +174,20 @@
                                   (set)
                                   (sort-by node-value))
             output-node (api/vector-node
-                          (if (empty? condition-output)
-                            [(api/token-node '_)]
-                            (vec condition-output)))
+                         (if (empty? condition-output)
+                           [(api/token-node '_)]
+                           (vec condition-output)))
             output-result-node (api/vector-node
-                                 (if (empty? condition-output)
-                                   [(api/token-node nil)]
-                                   (vec condition-output)))
+                                (if (empty? condition-output)
+                                  [(api/token-node nil)]
+                                  (vec condition-output)))
             next-bindings [output-node
                            (api/list-node
-                             (list
-                               (api/token-node 'let)
-                               (api/vector-node
-                                 (vec (apply concat output-bindings)))
-                               output-result-node))]]
+                            (list
+                             (api/token-node 'let)
+                             (api/vector-node
+                              (vec (apply concat output-bindings)))
+                             output-result-node))]]
         (recur more (concat bindings [next-bindings]))))))
 
 (defn analyze-parse-query-macro
@@ -195,22 +195,22 @@
   [{:keys [:node]}]
   (let [input-token (api/token-node (gensym 'input))
         input-args (api/vector-node
-                     [input-token])
+                    [input-token])
         [args conditions-node] (rest (:children node))
         condition-seq (:children conditions-node)
         special-tokens (extract-special-tokens condition-seq)
         special-args (when (seq special-tokens)
                        (api/vector-node
-                         (vec special-tokens)))
+                        (vec special-tokens)))
         transformed-args (for [arg (:children args)]
                            (let [v (node-value arg)]
                              (if (keyword? v)
                                (api/token-node (symbol v))
                                arg)))
         production-args (api/vector-node
-                          (if (empty? transformed-args)
-                            [(api/token-node '_)]
-                            (vec transformed-args)))
+                         (if (empty? transformed-args)
+                           [(api/token-node '_)]
+                           (vec transformed-args)))
         condition-bindings (analyze-conditions condition-seq true [] input-token production-args)
         production-bindings (apply concat
                                    (when special-args
@@ -223,19 +223,19 @@
                                (set)
                                (sort-by node-value))
         production-result (api/list-node
-                            (list
-                              (api/token-node 'let)
-                              (api/vector-node
-                                (vec production-bindings))
-                              (api/vector-node
-                                (vec production-output))))
+                           (list
+                            (api/token-node 'let)
+                            (api/vector-node
+                             (vec production-bindings))
+                            (api/vector-node
+                             (vec production-output))))
         fn-node (api/list-node
-                  (list
-                    (api/token-node 'fn)
-                    input-args
-                    production-result))
+                 (list
+                  (api/token-node 'fn)
+                  input-args
+                  production-result))
         new-node (api/map-node
-                   [(api/keyword-node :production) fn-node])]
+                  [(api/keyword-node :production) fn-node])]
     {:node new-node}))
 
 (defn analyze-defquery-macro
@@ -249,12 +249,12 @@
                           (first children))
         input-token (api/token-node (gensym 'input))
         input-args (api/vector-node
-                     [input-token])
+                    [input-token])
         [args & condition-seq] (if production-opts (rest children) children)
         special-tokens (extract-special-tokens condition-seq)
         special-args (when (seq special-tokens)
                        (api/vector-node
-                         (vec special-tokens)))
+                        (vec special-tokens)))
         transformed-args (for [arg (:children args)]
                            (let [v (node-value arg)
                                  m (meta arg)]
@@ -264,9 +264,9 @@
                                  (vary-meta merge m))
                                arg)))
         production-args (api/vector-node
-                          (if (empty? transformed-args)
-                            [(api/token-node '_)]
-                            (vec transformed-args)))
+                         (if (empty? transformed-args)
+                           [(api/token-node '_)]
+                           (vec transformed-args)))
         condition-bindings (analyze-conditions condition-seq true [] input-token production-args)
         production-bindings (apply concat
                                    (when special-args
@@ -279,25 +279,25 @@
                                (set)
                                (sort-by node-value))
         production-result (api/list-node
-                            (list
-                              (api/token-node 'let)
-                              (api/vector-node
-                                (vec production-bindings))
-                              (api/vector-node
-                                (vec production-output))))
+                           (list
+                            (api/token-node 'let)
+                            (api/vector-node
+                             (vec production-bindings))
+                            (api/vector-node
+                             (vec production-output))))
         fn-node (api/list-node
-                  (cond-> (list (api/token-node 'fn))
-                    production-docs (concat [production-docs])
-                    :always (concat [input-args])
-                    production-opts (concat [production-opts])
-                    :always (concat [production-result])))
+                 (cond-> (list (api/token-node 'fn))
+                   production-docs (concat [production-docs])
+                   :always (concat [input-args])
+                   production-opts (concat [production-opts])
+                   :always (concat [production-result])))
         new-node (vary-meta
-                   (api/list-node
-                     (list
-                       (api/token-node 'def) production-name
-                       (api/map-node
-                         [(api/keyword-node :production) fn-node])))
-                   merge {:clj-kondo/ignore [:clojure-lsp/unused-public-var]})]
+                  (api/list-node
+                   (list
+                    (api/token-node 'def) production-name
+                    (api/map-node
+                     [(api/keyword-node :production) fn-node])))
+                  merge {:clj-kondo/ignore [:clojure-lsp/unused-public-var]})]
     {:node new-node}))
 
 (defn analyze-parse-rule-macro
@@ -305,13 +305,13 @@
   [{:keys [:node]}]
   (let [input-token (api/token-node (gensym 'input))
         input-args (api/vector-node
-                     [input-token])
+                    [input-token])
         empty-args (api/vector-node [])
         production-seq (rest (:children node))
         special-tokens (extract-special-tokens production-seq)
         special-args (when (seq special-tokens)
                        (api/vector-node
-                         (vec special-tokens)))
+                        (vec special-tokens)))
         [conditions-node body-node] production-seq
         condition-seq (:children conditions-node)
         condition-bindings (analyze-conditions condition-seq true [] input-token empty-args)
@@ -327,20 +327,20 @@
                                (set)
                                (sort-by node-value))
         production-result (api/list-node
-                            (list
-                              (api/token-node 'let)
-                              (api/vector-node
-                                (vec production-bindings))
-                              (api/vector-node
-                                (vec production-output))
-                              body-node))
+                           (list
+                            (api/token-node 'let)
+                            (api/vector-node
+                             (vec production-bindings))
+                            (api/vector-node
+                             (vec production-output))
+                            body-node))
         fn-node (api/list-node
-                   (list
-                     (api/token-node 'fn)
-                     input-args
-                     production-result))
+                 (list
+                  (api/token-node 'fn)
+                  input-args
+                  production-result))
         new-node (api/map-node
-                   [(api/keyword-node :production) fn-node])]
+                  [(api/keyword-node :production) fn-node])]
     {:node new-node}))
 
 (defn analyze-defrule-macro
@@ -354,13 +354,13 @@
                           (first children))
         input-token (api/token-node (gensym 'input))
         input-args (api/vector-node
-                     [input-token])
+                    [input-token])
         empty-args (api/vector-node [])
         production-seq (if production-opts (rest children) children)
         special-tokens (extract-special-tokens production-seq)
         special-args (when (seq special-tokens)
                        (api/vector-node
-                         (vec special-tokens)))
+                        (vec special-tokens)))
         [body-seq _ condition-seq] (->> (partition-by (comp #{'=>} node-value) production-seq)
                                         (reverse))
         condition-bindings (analyze-conditions condition-seq true [] input-token empty-args)
@@ -376,26 +376,26 @@
                                (set)
                                (sort-by node-value))
         production-result (api/list-node
-                            (list*
-                              (api/token-node 'let)
-                              (api/vector-node
-                                (vec production-bindings))
-                              (api/vector-node
-                                (vec production-output))
-                              body-seq))
+                           (list*
+                            (api/token-node 'let)
+                            (api/vector-node
+                             (vec production-bindings))
+                            (api/vector-node
+                             (vec production-output))
+                            body-seq))
         fn-node (api/list-node
-                  (cond-> (list (api/token-node 'fn))
-                    production-docs (concat [production-docs])
-                    :always (concat [input-args])
-                    production-opts (concat [production-opts])
-                    :always (concat [production-result])))
+                 (cond-> (list (api/token-node 'fn))
+                   production-docs (concat [production-docs])
+                   :always (concat [input-args])
+                   production-opts (concat [production-opts])
+                   :always (concat [production-result])))
         new-node (vary-meta
-                   (api/list-node
-                     (list
-                       (api/token-node 'def) production-name
-                       (api/map-node
-                         [(api/keyword-node :production) fn-node])))
-                   merge {:clj-kondo/ignore [:clojure-lsp/unused-public-var]})]
+                  (api/list-node
+                   (list
+                    (api/token-node 'def) production-name
+                    (api/map-node
+                     [(api/keyword-node :production) fn-node])))
+                  merge {:clj-kondo/ignore [:clojure-lsp/unused-public-var]})]
     {:node new-node}))
 
 (defn analyze-def-rules-test-macro
@@ -409,35 +409,35 @@
                                 (into {}))
         rules-seq (for [[name-node rule-node] (partition 2 (:children rules))]
                     [name-node (analyze-parse-rule-macro
-                                 {:node (api/list-node
-                                          (list*
-                                            (api/token-node 'clara.rules.dsl/parse-rule)
-                                            (:children rule-node)))})])
+                                {:node (api/list-node
+                                        (list*
+                                         (api/token-node 'clara.rules.dsl/parse-rule)
+                                         (:children rule-node)))})])
         query-seq (for [[name-node query-node] (partition 2 (:children queries))]
                     [name-node (analyze-parse-query-macro
-                                 {:node (api/list-node
-                                          (list*
-                                            (api/token-node 'clara.rules.dsl/parse-query)
-                                            (:children query-node)))})])
+                                {:node (api/list-node
+                                        (list*
+                                         (api/token-node 'clara.rules.dsl/parse-query)
+                                         (:children query-node)))})])
         session-seq (for [[name-node productions-node options-node] (partition 3 (:children sessions))
                           :let [args-seq (concat (:children productions-node)
                                                  (:children options-node))]]
                       [name-node (api/list-node
-                                   (list
-                                     (api/token-node 'clara.rules.compiler/mk-session)
-                                     (api/vector-node
-                                       (vec args-seq))))])
+                                  (list
+                                   (api/token-node 'clara.rules.compiler/mk-session)
+                                   (api/vector-node
+                                    (vec args-seq))))])
         args-seq (->> (concat rules-seq query-seq session-seq)
                       (apply concat))
         wrap-body (api/list-node
-                    (list*
-                      (api/token-node 'let)
-                      (api/vector-node
-                        (vec args-seq))
-                      test-body))
+                   (list*
+                    (api/token-node 'let)
+                    (api/vector-node
+                     (vec args-seq))
+                    test-body))
         new-node (api/list-node
-                   (list
-                     (api/token-node 'clojure.test/deftest)
-                     test-name
-                     wrap-body))]
+                  (list
+                   (api/token-node 'clojure.test/deftest)
+                   test-name
+                   wrap-body))]
     {:node new-node}))
