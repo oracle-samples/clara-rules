@@ -1,5 +1,8 @@
 This is a history of changes to k13labs/clara-rules.
 
+# 0.9.8
+* Update to latest async library (futurama) to get fixes for async-reduce
+
 # 0.9.7
 * Update to latest async library
 
