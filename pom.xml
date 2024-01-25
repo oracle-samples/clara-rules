@@ -27,7 +27,7 @@
     <dependency>
       <groupId>com.github.k13labs</groupId>
       <artifactId>futurama</artifactId>
-      <version>0.6.5</version>
+      <version>0.6.6</version>
     </dependency>
     <dependency>
       <groupId>com.cnuernber</groupId>
