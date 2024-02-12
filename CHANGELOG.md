@@ -1,5 +1,12 @@
 This is a history of changes to k13labs/clara-rules.
 
+# 1.0.0
+* Bump futurama version to first major version
+* Initial major release of k13labs/clara-rules
+
+# 0.9.9
+* Bump futurama version to latest
+
 # 0.9.8
 * Update to latest async library (futurama) to get fixes for async-reduce
 
