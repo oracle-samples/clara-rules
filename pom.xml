@@ -5,9 +5,9 @@
   <groupId>com.github.k13labs</groupId>
   <artifactId>clara-rules</artifactId>
   <name>clara-rules</name>
-  <version>1.0.0</version>
+  <version>1.0.1</version>
   <scm>
-    <tag>1.0.0</tag>
+    <tag>1.0.1</tag>
     <url>https://github.com/k13labs/clara-rules</url>
     <connection>scm:git:git://github.com/k13labs/clara-rules.git</connection>
     <developerConnection>scm:git:ssh://git@github.com/k13labs/clara-rules.git</developerConnection>
@@ -27,7 +27,7 @@
     <dependency>
       <groupId>com.github.k13labs</groupId>
       <artifactId>futurama</artifactId>
-      <version>1.0.0</version>
+      <version>1.0.1</version>
     </dependency>
     <dependency>
       <groupId>com.cnuernber</groupId>
