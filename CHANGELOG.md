@@ -1,5 +1,8 @@
 This is a history of changes to k13labs/clara-rules.
 
+# 1.0.2
+* Bump futurama version to 1.0.2 to get enhancements
+
 # 1.0.1
 * Bump futurama version to 1.0.1 to get enhancements
 
