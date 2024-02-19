@@ -5,7 +5,6 @@
   (:require [clara.rules.engine :as eng]
             [clara.rules.schema :as schema]
             [clara.rules.platform :refer [jeq-wrap] :as platform]
-            [clojure.core.memoize :as memo]
             [clojure.core.cache.wrapped :as cache]
             [ham-fisted.api :as hf]
             [ham-fisted.set :as hs]

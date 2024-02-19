@@ -3,7 +3,7 @@
                  :fn compile-main-java
                  :ensure "target/main/classes"}
  :deps {org.clojure/clojure {:mvn/version "1.10.3"}
-        org.clojure/core.memoize {:mvn/version "1.0.257"}
+        org.clojure/core.cache {:mvn/version "1.0.225"}
         com.github.k13labs/futurama {:mvn/version "1.0.2"}
         com.cnuernber/ham-fisted {:mvn/version "2.016"}
         prismatic/schema {:mvn/version "1.4.1"}

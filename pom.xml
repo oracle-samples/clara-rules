@@ -5,9 +5,9 @@
   <groupId>com.github.k13labs</groupId>
   <artifactId>clara-rules</artifactId>
   <name>clara-rules</name>
-  <version>1.0.2</version>
+  <version>1.1.0</version>
   <scm>
-    <tag>1.0.2</tag>
+    <tag>1.1.0</tag>
     <url>https://github.com/k13labs/clara-rules</url>
     <connection>scm:git:git://github.com/k13labs/clara-rules.git</connection>
     <developerConnection>scm:git:ssh://git@github.com/k13labs/clara-rules.git</developerConnection>
@@ -23,6 +23,11 @@
       <groupId>org.clojure</groupId>
       <artifactId>clojure</artifactId>
       <version>1.10.3</version>
+    </dependency>
+    <dependency>
+      <groupId>org.clojure</groupId>
+      <artifactId>core.cache</artifactId>
+      <version>1.0.225</version>
     </dependency>
     <dependency>
       <groupId>com.github.k13labs</groupId>
