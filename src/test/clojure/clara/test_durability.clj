@@ -423,7 +423,7 @@
     ;; Simulate deserializing in an environment without this var by unmapping it.
     (ns-unmap 'clara.test-durability 'test-compilation-ctx-var)
     (try
-      (rb-serde without-compile-ctx nil)
+      (rb-serde without-compile-ctx {:compiler-cache false})
       (is false "Error not thrown when deserializing the rulebase without ctx")
       (catch Exception e
         ;; In the event that the compilation context is not retained the original condition of the node will not be present.
@@ -433,10 +433,9 @@
                   (tu/get-all-ex-data e)))))
 
     (try
-      (rb-serde with-compile-ctx nil)
+      (rb-serde with-compile-ctx {:compiler-cache false})
       (is false "Error not thrown when deserializing the rulebase with ctx")
       (catch Exception e
-
         (is (some #(= (select-keys (:condition %) [:type :constraints])
                       {:type  Long
                        :constraints ['(== this clara.test-durability/test-compilation-ctx-var)]})

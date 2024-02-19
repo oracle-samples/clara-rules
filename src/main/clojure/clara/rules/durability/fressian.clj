@@ -590,7 +590,9 @@
   (deserialize [_ mem-facts opts]
 
     (with-open [^FressianReader rdr (fres/create-reader in-stream :handlers read-handler-lookup)]
-      (let [{:keys [rulebase-only? base-rulebase forms-per-eval]} opts
+      (let [{:keys [rulebase-only?
+                    base-rulebase
+                    forms-per-eval]} opts
 
             record-holder (ArrayList.)
             ;; The rulebase should either be given from the base-session or found in
@@ -599,6 +601,7 @@
                                   base-rulebase)
 
             forms-per-eval (or forms-per-eval com/forms-per-eval-default)
+            compiler-cache (get opts :compiler-cache com/default-compiler-cache)
 
             reconstruct-expressions (fn [expr-lookup]
                                       ;; Rebuilding the expr-lookup map from the serialized map:
@@ -615,7 +618,7 @@
                                                           d/clj-struct-holder record-holder]
                                                          (pform/thread-local-binding [d/node-fn-cache (-> (fres/read-object rdr)
                                                                                                           reconstruct-expressions
-                                                                                                          (com/compile-exprs forms-per-eval))]
+                                                                                                          (com/compile-exprs compiler-cache forms-per-eval))]
                                                                                      (assoc (fres/read-object rdr)
                                                                                             :node-expr-fn-lookup
                                                                                             (.get d/node-fn-cache))))]

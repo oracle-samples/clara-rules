@@ -41,7 +41,7 @@
 (def session-50
   (let [fact-seq (repeat 50 {:type :number
                              :value 199})
-        session (-> (mk-session 'clara.test-engine :fact-type-fn :type)
+        session (-> (mk-session 'clara.test-engine :fact-type-fn :type :cache false)
                     (insert-all fact-seq))]
     session))
 

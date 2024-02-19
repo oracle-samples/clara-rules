@@ -38,7 +38,11 @@
 
 ;; Cache of sessions for fast reloading.
 (defonce default-session-cache
-  (cache/lru-cache-factory {}))
+  (cache/lru-cache-factory {} :threshold 100))
+
+;; Cache of compiled expressions
+(defonce default-compiler-cache
+  (cache/lru-cache-factory {} :threshold 5000))
 
 (defn clear-session-cache!
   "Clears the cache of reusable Clara sessions, so any subsequent sessions
@@ -47,6 +51,14 @@
    option when creating sessions."
   []
   (swap! default-session-cache empty))
+
+(defn clear-compiler-cache!
+  "Clears the default compiler cache of re-usable compiled expressions, so any
+  subsequent expressions will be re-compiled. This is intended for use by tooling
+  or during testing; most users can simply specify the :compiler-cache false
+  option when creating sessions."
+  []
+  (swap! default-compiler-cache empty))
 
 ;; Protocol for loading rules from some arbitrary source.
 (defprotocol IRuleSource
@@ -1425,14 +1437,29 @@
    This allows the eval calls to be more effecient, rather than evaluating each expression on its own.
    See #381 for more details."
   [key->expr :- schema/NodeExprLookup
+   expr-cache :- (sc/maybe sc/Any)
    partition-size :- sc/Int]
-  (let [batching-try-eval (fn do-compile-exprs
-                            [compilation-ctxs exprs]
+  (let [prepare-expr (fn prepare-expr
+                       [[expr-key [expr compilation-ctx]]]
+                       (let [cache-key [(hash expr) (hash compilation-ctx)]]
+                         (if-let [compiled-expr (and expr-cache
+                                                     (cache/lookup expr-cache cache-key))]
+                           [:compiled [expr-key [compiled-expr compilation-ctx]]]
+                           [:prepared [expr-key [expr compilation-ctx]]])))
+        batching-try-eval (fn do-compile-exprs
+                            [exprs compilation-ctxs]
                             ;; Try to evaluate all of the expressions as a batch. If they fail the batch eval then we
                             ;; try them one by one with their compilation context, this is slow but we were going to fail
                             ;; anyway.
                             (try
-                              (mapv vector (eval exprs) compilation-ctxs)
+                              (mapv
+                               (fn cache-expr
+                                 [expr compiled-expr compilation-ctx]
+                                 (let [cache-key [(hash expr) (hash compilation-ctx)]]
+                                   (when expr-cache
+                                     (cache/miss expr-cache cache-key compiled-expr))
+                                   [compiled-expr compilation-ctx]))
+                               exprs (eval exprs) compilation-ctxs)
                               (catch Exception e
                                 ;; Using mapv here rather than map to avoid laziness, otherwise compilation failure might
                                 ;; fall into the throw below for the wrong reason.
@@ -1456,19 +1483,23 @@
           ;; Grouping by ns, most expressions will not have a defined ns, only expressions from production nodes.
           ;; These expressions must be evaluated in the ns where they were defined, as they will likely contain code
           ;; that is namespace dependent.
-          (for [[nspace group] (sort-by key (group-by (comp :ns second val) key->expr))
+          (for [[nspace ns-expr-group] (sort-by key (group-by (comp :ns second val) key->expr))
                 ;; Partitioning the number of forms to be evaluated, Java has a limit to the size of methods if we were
                 ;; evaluate all expressions at once it would likely exceed this limit and throw an exception.
-                expr-batch (partition-all partition-size group)
-                :let [node-expr-keys (mapv first expr-batch)
-                      compilation-ctxs (mapv (comp second val) expr-batch)
-                      exprs (mapv (comp first val) expr-batch)]]
-            (mapv vector
-                  node-expr-keys
-                  (with-bindings (if nspace
-                                   {#'*ns* (the-ns nspace)}
-                                   {})
-                    (batching-try-eval compilation-ctxs exprs)))))))
+                expr-batch (partition-all partition-size ns-expr-group) ;;;; [<node-expr-keys> [<expr> <ctx>]]
+                :let [grouped-exprs (->> (mapv prepare-expr expr-batch)
+                                         (group-by first))
+                      prepared-exprs (map second (:prepared grouped-exprs))
+                      node-expr-keys (mapv first prepared-exprs)
+                      exprs (mapv (comp first second) prepared-exprs)
+                      compilation-ctxs (mapv (comp second second) prepared-exprs)
+                      prev-compiled-exprs (map second (:compiled grouped-exprs))
+                      next-compiled-exprs (mapv vector node-expr-keys
+                                                (with-bindings (if nspace
+                                                                 {#'*ns* (the-ns nspace)}
+                                                                 {})
+                                                  (batching-try-eval exprs compilation-ctxs)))]]
+            (concat prev-compiled-exprs next-compiled-exprs)))))
 
 (defn safe-get
   "A helper function for retrieving a given key from the provided map. If the key doesn't exist within the map this
@@ -1947,6 +1978,7 @@
         id-counter (atom 0)
         create-id-fn (fn [] (swap! id-counter inc))
 
+        compiler-cache (:compiler-cache options default-compiler-cache)
         forms-per-eval (:forms-per-eval options forms-per-eval-default)
 
         beta-graph (to-beta-graph productions create-id-fn)
@@ -1954,7 +1986,7 @@
 
         ;; Extract the expressions from the graphs and evaluate them in a batch manner.
         ;; This is a performance optimization, see Issue 381 for more information.
-        exprs (compile-exprs (extract-exprs beta-graph alpha-graph) forms-per-eval)
+        exprs (compile-exprs (extract-exprs beta-graph alpha-graph) compiler-cache forms-per-eval)
 
         ;; If we have made it to this point, it means that we have succeeded in compiling all expressions
         ;; thus we can free the :compile-ctx used for troubleshooting compilation failures.

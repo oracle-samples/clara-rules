@@ -22,7 +22,7 @@
 
     ;; Validating that there were 5472 forms in the eval call.
     (is (= 5472 (count (-> e ex-data :compilation-ctxs))))
-    (is (re-find #"method size exceeded"  (.getMessage e)))
+    (is (re-find #"method size exceeded"  (ex-message e)))
 
     ;; Validate that the stated 5471 forms per eval will compile
     (is (sc/without-fn-validation (com/mk-session (conj (vector rules) :forms-per-eval 5471 :cache false))))))
