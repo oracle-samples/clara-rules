@@ -38,11 +38,11 @@
 
 ;; Cache of sessions for fast reloading.
 (defonce default-session-cache
-  (cache/lru-cache-factory {} :threshold 100))
+  (cache/lru-cache-factory {}))
 
 ;; Cache of compiled expressions
 (defonce default-compiler-cache
-  (cache/lru-cache-factory {} :threshold 5000))
+  (cache/soft-cache-factory {}))
 
 (defn clear-session-cache!
   "Clears the cache of reusable Clara sessions, so any subsequent sessions
