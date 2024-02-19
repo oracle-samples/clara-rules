@@ -15,6 +15,8 @@
             [clojure.walk :as walk]
             [clara.sample-ruleset-seq :as srs]
             [clara.order-ruleset :as order-rules]
+            [clojure.core.cache :refer [CacheProtocol]]
+            [clojure.core.cache.wrapped :as cache]
             [schema.test]
             [schema.core :as sc]
             [clara.tools.testing-utils :as tu :refer [assert-ex-data]]
@@ -1575,40 +1577,67 @@
              "s3 res: " (vec (q-res s2)) \newline))))
 
 (deftest test-equivalent-rule-sources-caching
-  (is (instance? clojure.lang.IAtom @#'com/session-cache)
+  (is (and (instance? clojure.lang.IAtom (-> #'com/default-session-cache deref))
+           (satisfies? CacheProtocol (-> #'com/default-session-cache deref deref)))
       "Enforce that this test is revisited if the cache structure (an implementation detail) is changed.
        This test should have a clean cache but should also not impact the global cache, which
        requires resetting the cache for the duration of this test.")
+  (testing "using default caching"
+    (com/clear-session-cache!)
+    (let [s1 (mk-session [test-rule] :cache false)
+          s2 (mk-session [test-rule])
+          s3 (mk-session [test-rule test-rule])
+          s4 (mk-session [test-rule] [test-rule])
 
-  (let [original-cache (-> #'com/session-cache deref deref)
-        _ (reset! @#'com/session-cache {})
-        s1 (mk-session [test-rule] :cache false)
-        s2 (mk-session [test-rule])
-        s3 (mk-session [test-rule test-rule])
-        s4 (mk-session [test-rule] [test-rule])
+          ;; Since functions use reference equality create a single function instance
+          ;; to test reuse when options are the same.
+          alternate-alpha-fn (constantly Object)
+          s5 (mk-session [test-rule] :fact-type-fn alternate-alpha-fn :cache false)
+          s6 (mk-session [test-rule] :fact-type-fn alternate-alpha-fn)
+          s7 (mk-session [test-rule test-rule] :fact-type-fn alternate-alpha-fn)
+          s8 (mk-session [test-rule cold-query] :fact-type-fn alternate-alpha-fn)
 
-        ;; Since functions use reference equality create a single function instance
-        ;; to test reuse when options are the same.
-        alternate-alpha-fn (constantly Object)
-        s5 (mk-session [test-rule] :fact-type-fn alternate-alpha-fn :cache false)
-        s6 (mk-session [test-rule] :fact-type-fn alternate-alpha-fn)
-        s7 (mk-session [test-rule test-rule] :fact-type-fn alternate-alpha-fn)
-        s8 (mk-session [test-rule cold-query] :fact-type-fn alternate-alpha-fn)
+          ;; Find all distinct references, with distinctness determined by reference equality.
+          ;; If the reference to a session is identical to a previous session we infer that
+          ;; the session was the result of a cache hit; if the reference is not identical to
+          ;; a previous session it is the result of a cache miss.
+          distinct-sessions (reduce (fn [existing new]
+                                      (if-not (some (partial identical? new)
+                                                    existing)
+                                        (conj existing new)
+                                        existing))
+                                    []
+                                    [s1 s2 s3 s4 s5 s6 s7 s8])]
+      (is (= distinct-sessions
+             [s1 s2 s5 s6 s8]))))
+  (testing "using custom cache"
+    (let [cache (cache/ttl-cache-factory {} :ttl 30000)
+          s1 (mk-session [test-rule] :cache false)
+          s2 (mk-session [test-rule] :cache cache)
+          s3 (mk-session [test-rule test-rule] :cache cache)
+          s4 (mk-session [test-rule] [test-rule] :cache cache)
 
-        ;; Find all distinct references, with distinctness determined by reference equality.
-        ;; If the reference to a session is identical to a previous session we infer that
-        ;; the session was the result of a cache hit; if the reference is not identical to
-        ;; a previous session it is the result of a cache miss.
-        distinct-sessions (reduce (fn [existing new]
-                                    (if-not (some (partial identical? new)
-                                                  existing)
-                                      (conj existing new)
-                                      existing))
-                                  []
-                                  [s1 s2 s3 s4 s5 s6 s7 s8])]
-    (is (= distinct-sessions
-           [s1 s2 s5 s6 s8]))
-    (reset! @#'com/session-cache original-cache)))
+          ;; Since functions use reference equality create a single function instance
+          ;; to test reuse when options are the same.
+          alternate-alpha-fn (constantly Object)
+          s5 (mk-session [test-rule] :fact-type-fn alternate-alpha-fn :cache false)
+          s6 (mk-session [test-rule] :fact-type-fn alternate-alpha-fn :cache cache)
+          s7 (mk-session [test-rule test-rule] :fact-type-fn alternate-alpha-fn :cache cache)
+          s8 (mk-session [test-rule cold-query] :fact-type-fn alternate-alpha-fn :cache cache)
+
+          ;; Find all distinct references, with distinctness determined by reference equality.
+          ;; If the reference to a session is identical to a previous session we infer that
+          ;; the session was the result of a cache hit; if the reference is not identical to
+          ;; a previous session it is the result of a cache miss.
+          distinct-sessions (reduce (fn [existing new]
+                                      (if-not (some (partial identical? new)
+                                                    existing)
+                                        (conj existing new)
+                                        existing))
+                                    []
+                                    [s1 s2 s3 s4 s5 s6 s7 s8])]
+      (is (= distinct-sessions
+             [s1 s2 s5 s6 s8])))))
 
 #_{:clj-kondo/ignore [:unresolved-symbol]}
 (deftest test-try-eval-failures-includes-compile-ctx

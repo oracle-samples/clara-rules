@@ -5,6 +5,8 @@
   (:require [clara.rules.engine :as eng]
             [clara.rules.schema :as schema]
             [clara.rules.platform :refer [jeq-wrap] :as platform]
+            [clojure.core.memoize :as memo]
+            [clojure.core.cache.wrapped :as cache]
             [ham-fisted.api :as hf]
             [ham-fisted.set :as hs]
             [ham-fisted.mut-map :as hm]
@@ -34,6 +36,18 @@
             PropertyDescriptor]
            [clojure.lang
             IFn]))
+
+;; Cache of sessions for fast reloading.
+(defonce default-session-cache
+  (cache/lru-cache-factory {}))
+
+(defn clear-session-cache!
+  "Clears the cache of reusable Clara sessions, so any subsequent sessions
+   will be re-compiled from the rule definitions. This is intended for use
+   by tooling or specialized needs; most users can simply specify the :cache false
+   option when creating sessions."
+  []
+  (swap! default-session-cache empty))
 
 ;; Protocol for loading rules from some arbitrary source.
 (defprotocol IRuleSource
@@ -1003,7 +1017,7 @@
                                                (list '= (-> b name symbol)
                                                      (list b 'ancestor-bindings)))
 
-          modified-expression `[:not {:type clara.rules.engine.NegationResult
+          modified-expression `[:not {:type NegationResult
                                       :constraints [(~'= ~gen-rule-name ~'gen-rule-name)
                                                     ~@(map ancestor-binding->restriction-form
                                                            ancestor-bindings-in-negation-expr)]}]
@@ -1413,7 +1427,8 @@
    See #381 for more details."
   [key->expr :- schema/NodeExprLookup
    partition-size :- sc/Int]
-  (let [batching-try-eval (fn [compilation-ctxs exprs]
+  (let [batching-try-eval (fn do-compile-exprs
+                            [compilation-ctxs exprs]
                             ;; Try to evaluate all of the expressions as a batch. If they fail the batch eval then we
                             ;; try them one by one with their compilation context, this is slow but we were going to fail
                             ;; anyway.
@@ -1853,17 +1868,6 @@
       :get-alphas-fn get-alphas-fn
       :node-expr-fn-lookup expr-fn-lookup})))
 
-;; Cache of sessions for fast reloading.
-(def ^:private session-cache (atom (hf/hash-map)))
-
-(defn clear-session-cache!
-  "Clears the cache of reusable Clara sessions, so any subsequent sessions
-   will be re-compiled from the rule definitions. This is intended for use
-   by tooling or specialized needs; most users can simply specify the :cache false
-   option when creating sessions."
-  []
-  (reset! session-cache (hf/hash-map)))
-
 (defn production-load-order-comp [a b]
   (< (-> a meta ::rule-load-order)
      (-> b meta ::rule-load-order)))
@@ -2031,15 +2035,19 @@
                                       previous
                                       (conj! previous new-production)))
                                   (transient #{}))
-                          persistent!)]
-
-     (if-let [session (get @session-cache [productions options])]
-       session
-       (let [session (mk-session* productions options)]
-
-         ;; Cache the session unless instructed not to.
-         (when (get options :cache true)
-           (swap! session-cache assoc [productions options] session))
-
-         ;; Return the session.
-         session)))))
+                          persistent!)
+         options-cache (get options :cache)
+         session-cache (cond
+                         (true? options-cache)
+                         default-session-cache
+                         (nil? options-cache)
+                         default-session-cache
+                         :else options-cache)
+         options (dissoc options :cache)
+         ;;; this is simpler than storing all the productions and options in the cache
+         session-key [(count productions) (hash productions) (hash options)]]
+     (if session-cache
+       (cache/lookup-or-miss session-cache session-key
+                             (fn do-mk-session [_]
+                               (mk-session* productions options)))
+       (mk-session* productions options)))))
