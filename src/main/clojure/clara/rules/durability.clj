@@ -549,6 +549,9 @@
      Larger batch sizes should see better performance compared to smaller batch sizes.
      Defaults to 5000, see clara.rules.compiler/forms-per-eval-default for more information.
 
+   * :compiler-cache, indicating wether the expression compilation can be cached, effectively memoizing eval expr,
+     valid values are true, false, or a wrapped CacheProtocol.
+
    Options for the rulebase semantics that are documented at clara.rules/mk-session include:
 
    * :fact-type-fn

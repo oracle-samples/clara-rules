@@ -185,7 +185,10 @@
 
   * :fact-type-fn, which must have a value of a function used to determine the logical type of a given
   fact. Defaults to Clojure's type function.
-  * :cache, indicating whether the session creation can be cached, effectively memoizing mk-session.
+  * :cache, indicating whether the session creation can be cached, effectively memoizing mk-session,
+  valid values are true, false, or a wrapped CacheProtocol.
+  * :compiler-cache, indicating wether the expression compilation can be cached, effectively memoizing eval expr,
+  valid values are true, false, or a wrapped CacheProtocol.
   Defaults to true. Callers may wish to set this to false when needing to dynamically reload rules.
   * :ancestors-fn, which returns a collection of ancestors for a given type. Defaults to Clojure's ancestors function. A
   fact of a given type will match any rule that uses one of that type's ancestors.  Note that if the collection is ordered
