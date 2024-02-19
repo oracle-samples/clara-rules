@@ -327,7 +327,7 @@
    filter functions."
   [node-type node-id fn-type]
   (if-let [abbreviated-node-type (get eng/node-type->abbreviated-type node-type)]
-    (symbol (str abbreviated-node-type "-" node-id "-" fn-type))
+    (with-meta (symbol (str abbreviated-node-type "-" fn-type)) {:node-id node-id})
     (throw (ex-info "Unrecognized node type"
                     {:node-type node-type
                      :node-id node-id
@@ -358,7 +358,6 @@
 
         ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-condition' to be used for this scenario
         fn-name (mk-node-fn-name "AlphaNode" node-id "AE")]
-
     `(fn ~fn-name [~(add-meta '?__fact__ type)
                    ~destructured-env]
        (let [~@assignments
@@ -481,7 +480,6 @@
 
         ;; JFE will stand for JoinFilterExpr
         fn-name (mk-node-fn-name node-type node-id "JFE")]
-
     `(fn ~fn-name
        [~'?__token__
         ~(add-meta '?__fact__ type)

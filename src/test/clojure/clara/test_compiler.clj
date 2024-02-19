@@ -52,9 +52,7 @@
                          RootJoinNode []))]
     (doseq [node (-> base-session eng/components :rulebase :id-to-node vals)
             node-fn (get-node-fns node)]
-      (is (seq (re-find (re-pattern (str (get eng/node-type->abbreviated-type (.getSimpleName (class node)))
-                                         "-"
-                                         (:id node)))
+      (is (seq (re-find (re-pattern (str (get eng/node-type->abbreviated-type (.getSimpleName (class node)))))
                         (-> node-fn str m/demunge (str/split #"/") last)))
           (str "For node: " node " and node-fn: " node-fn)))))
 
