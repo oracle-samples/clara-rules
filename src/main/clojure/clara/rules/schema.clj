@@ -1,7 +1,11 @@
 (ns clara.rules.schema
   "Schema definition of Clara data structures using Prismatic's Schema library. This includes structures for rules and queries, as well as the schema
    for the underlying Rete network itself. This can be used by tools or other libraries working with rules."
-  (:require [schema.core :as s]))
+  (:require [schema.core :as s])
+  (:import [ham_fisted UnsharedLongHashMap]))
+
+(def MutableLongHashMap
+  UnsharedLongHashMap)
 
 (s/defn condition-type :- (s/enum :or :not :and :exists :fact :accumulator :test)
   "Returns the type of node in a LHS condition expression."
@@ -138,20 +142,19 @@
 ;; A graph representing the beta side of the rete network.
 (def BetaGraph
   {;; Edges from parent to child nodes.
-   :forward-edges {s/Int #{s/Int}}
+   :forward-edges MutableLongHashMap
 
    ;; Edges from child to parent nodes.
-   :backward-edges {s/Int #{s/Int}}
+   :backward-edges MutableLongHashMap
 
    ;; Map of identifier to condition nodes.
-   :id-to-condition-node {s/Int (s/cond-pre (s/eq :clara.rules.compiler/root-condition)
-                                            ConditionNode)}
+   :id-to-condition-node MutableLongHashMap
 
    ;; Map of identifier to query or rule nodes.
-   :id-to-production-node {s/Int ProductionNode}
+   :id-to-production-node MutableLongHashMap
 
    ;; Map of identifier to new bindings created by the corresponding node.
-   :id-to-new-bindings {s/Int #{s/Keyword}}})
+   :id-to-new-bindings MutableLongHashMap})
 
 (defn tuple
   "Given `items`, a list of schemas, will generate a schema to validate that a vector contains and is in the order provided
