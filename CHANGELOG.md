@@ -1,5 +1,8 @@
 This is a history of changes to k13labs/clara-rules.
 
+# 1.3.0
+* Enhance compilation performance by using mutable maps from ham-fisted lib
+
 # 1.2.0
 * Enhance caching support by adding compile caching using core CacheProtocol
 
