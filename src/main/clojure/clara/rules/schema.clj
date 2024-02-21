@@ -193,6 +193,9 @@
   {(tuple s/Int s/Keyword) (tuple SExpr (s/conditional :compile-ctx NodeCompilationContext
                                                        :else NodeCompilationValue))})
 
+(def Function
+  (s/pred ifn? "ifn?"))
+
 ;; An evaluated version of the schema mentioned above.
 (def NodeFnLookup
   ;; This schema uses a relaxed version of NodeCompilationContext as once the expressions
@@ -200,4 +203,4 @@
   ;; deserialization. In such events the compile-ctx would only be valuable when the environment
   ;; where the Session is being deserialized doesn't match that of the serialization, ie functions
   ;; and symbols cannot be resolved on the deserialization side.
-  {(tuple s/Int s/Keyword) (tuple (s/pred ifn? "ifn?") NodeCompilationValue)})
+  {(tuple s/Int s/Keyword) (tuple Function NodeCompilationValue)})

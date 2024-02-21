@@ -16,21 +16,41 @@
   (remove-tap #'println)
   (tap> "foobar"))
 
-(defonce session-cache
+(def session-cache
   (cache/lru-cache-factory {}))
 
 ;; Cache of compiled expressions
-(defonce compiler-cache
+(def compiler-cache
   (cache/soft-cache-factory {}))
 
-(defonce rules
-  (vec
-   (for [n (range 5000)
-         :let [fact-type (keyword (str "fact" n))]]
-     {:ns-name (ns-name *ns*)
-      :lhs [{:type fact-type
-             :constraints []}]
-      :rhs `(println ~(str fact-type))})))
+(defmacro mk-rules
+  [n]
+  (let [facts (for [n (range n)]
+                {:fact-type {:t (symbol (format "FactType%s" n))
+                             :c (symbol (format "%s.FactType%s" (ns-name *ns*) n))}
+                 :fact-record {:t (symbol (format "FactRecord%s" n))
+                               :c (symbol (format "%s.FactRecord%s" (ns-name *ns*) n))}})
+        type-declarations (for [{{:keys [t]} :fact-type} facts]
+                           `(deftype ~t []))
+        record-declarations (for [{{:keys [t]} :fact-record} facts]
+                             `(defrecord ~t []))
+        fact-rules (for [{:keys [fact-type
+                                 fact-record]} facts]
+                     `(hash-map
+                       :ns-name (ns-name *ns*)
+                       :lhs [{:type ~(:c fact-type)
+                              :constraints []}
+                             {:type ~(:c fact-record)
+                              :constraints []}]
+                       :rhs '(println (str "class:" ~n ~fact-type ~fact-record))))]
+    `(do
+      ~@type-declarations
+      ~@record-declarations
+      (vector
+       ~@fact-rules))))
+
+(def rules
+  (mk-rules 5000))
 
 (comment
   (count (.cache ^clojure.core.cache.SoftCache @compiler-cache))

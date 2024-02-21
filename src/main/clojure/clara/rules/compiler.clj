@@ -110,12 +110,6 @@
   (and (symbol? expr)
        (.startsWith (name expr) "?")))
 
-(def ^:private reflector
-  "For some reason (bug?) the default reflector doesn't use the
-   Clojure dynamic class loader, which prevents reflecting on
-  `defrecords`.  Work around by supplying our own which does."
-  (clojure.reflect.JavaReflector. (clojure.lang.RT/makeClassLoader)))
-
 (defn- get-field-accessors
   "Given a clojure.lang.IRecord subclass, returns a map of field name to a
    symbol representing the function used to access it."
@@ -148,7 +142,7 @@
 (defn- effective-type*
   [type]
   (if (symbol? type)
-    (.loadClass (clojure.lang.RT/makeClassLoader) (name type))
+    (clojure.lang.RT/classForName ^String (name type))
     type))
 
 (def effective-type
@@ -1288,7 +1282,6 @@
                                  [s-expr (assoc compilation-ctx expr-key s-expr)])
                       id->expr)
 
-        ;; If extract-exprs ever became a hot spot, this could be changed out to use more java interop.
         id->expr (reduce (fn add-alpha-nodes
                            [prev alpha-node]
                            (let [{:keys [id condition env]} alpha-node
@@ -1334,7 +1327,7 @@
                   (fn add-conditions [prev id beta-node]
                     (let [condition (:condition beta-node)
                           condition (if (symbol? condition)
-                                      (.loadClass (clojure.lang.RT/makeClassLoader) (name condition))
+                                      (clojure.lang.RT/classForName ^String (name condition))
                                       condition)]
                       (case (or (:node-type beta-node)
                                  ;; If there is no :node-type then the node is the ::root-condition
@@ -1513,7 +1506,7 @@
   (let [{:keys [condition production query join-bindings env]} beta-node
 
         condition (if (symbol? condition)
-                    (.loadClass (clojure.lang.RT/makeClassLoader) (name condition))
+                    (clojure.lang.RT/classForName ^String (name condition))
                     condition)
 
         compiled-expr-fn (fn [id field] (first (safe-get expr-fn-lookup [id field])))]
@@ -1724,7 +1717,7 @@
 
 (sc/defn compile-alpha-nodes :- [{:id sc/Int
                                   :type sc/Any
-                                  :alpha-fn sc/Any ;; TODO: is a function...
+                                  :alpha-fn schema/Function
                                   (sc/optional-key :env) {sc/Keyword sc/Any}
                                   :children [sc/Num]}]
   [alpha-nodes :- [schema/AlphaNode]
