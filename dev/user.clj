@@ -31,9 +31,9 @@
                  :fact-record {:t (symbol (format "FactRecord%s" n))
                                :c (symbol (format "%s.FactRecord%s" (ns-name *ns*) n))}})
         type-declarations (for [{{:keys [t]} :fact-type} facts]
-                           `(deftype ~t []))
+                            `(deftype ~t []))
         record-declarations (for [{{:keys [t]} :fact-record} facts]
-                             `(defrecord ~t []))
+                              `(defrecord ~t []))
         fact-rules (for [{:keys [fact-type
                                  fact-record]} facts]
                      `(hash-map
@@ -44,15 +44,14 @@
                               :constraints []}]
                        :rhs '(println (str "class:" ~n ~fact-type ~fact-record))))]
     `(do
-      ~@type-declarations
-      ~@record-declarations
-      (vector
-       ~@fact-rules))))
-
-(def rules
-  (mk-rules 5000))
+       ~@type-declarations
+       ~@record-declarations
+       (vector
+        ~@fact-rules))))
 
 (comment
+  (def rules
+    (mk-rules 5000))
   (count (.cache ^clojure.core.cache.SoftCache @compiler-cache))
 
   (time
