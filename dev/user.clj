@@ -23,7 +23,7 @@
 (def compiler-cache
   (cache/soft-cache-factory {}))
 
-(defmacro mk-rules
+(defmacro mk-types
   [n]
   (let [facts (for [n (range n)]
                 {:fact-type {:t (symbol (format "FactType%s" n))
@@ -33,7 +33,18 @@
         type-declarations (for [{{:keys [t]} :fact-type} facts]
                             `(deftype ~t []))
         record-declarations (for [{{:keys [t]} :fact-record} facts]
-                              `(defrecord ~t []))
+                              `(defrecord ~t []))]
+    `(do
+       ~@type-declarations
+       ~@record-declarations)))
+
+(defmacro mk-rules
+  [n]
+  (let [facts (for [n (range n)]
+                {:fact-type {:t (symbol (format "FactType%s" n))
+                             :c (symbol (format "%s.FactType%s" (ns-name *ns*) n))}
+                 :fact-record {:t (symbol (format "FactRecord%s" n))
+                               :c (symbol (format "%s.FactRecord%s" (ns-name *ns*) n))}})
         fact-rules (for [{:keys [fact-type
                                  fact-record]} facts]
                      `(hash-map
@@ -43,21 +54,23 @@
                              {:type ~(:c fact-record)
                               :constraints []}]
                        :rhs '(println (str "class:" ~n ~fact-type ~fact-record))))]
-    `(do
-       ~@type-declarations
-       ~@record-declarations
-       (vector
-        ~@fact-rules))))
+    `(vector
+      ~@fact-rules)))
 
 (comment
+  (mk-types 5000)
   (def rules
     (mk-rules 5000))
+  (keys @session-cache)
+  (when-let [v (first (.cache ^clojure.core.cache.SoftCache @compiler-cache))]
+    (.getValue v))
+  (count @session-cache)
   (count (.cache ^clojure.core.cache.SoftCache @compiler-cache))
 
   (time
    (mk-session (conj rules {:ns-name (ns-name *ns*)
-                            :lhs [{:type :foobar12
+                            :lhs [{:type :foobar14
                                    :constraints []}]
                             :rhs `(println ~(str :foobar))})
-               :cache false
+               :cache session-cache
                :compiler-cache compiler-cache)))

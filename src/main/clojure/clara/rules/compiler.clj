@@ -6,9 +6,11 @@
             [clara.rules.schema :as schema]
             [clara.rules.platform :refer [jeq-wrap] :as platform]
             [clojure.core.cache.wrapped :as cache]
+            [clj-commons.digest :as digest]
             [ham-fisted.api :as hf]
             [ham-fisted.set :as hs]
             [ham-fisted.mut-map :as hm]
+            [futurama.util :as u]
             [clojure.set :as set]
             [clojure.string :as string]
             [clojure.walk :as walk]
@@ -103,6 +105,11 @@
                         get-alphas-fn
                         ;; A map of [node-id field-name] to function.
                         node-expr-fn-lookup :- schema/NodeFnLookup])
+
+(defn- md5-hash
+  "Returns the md5 digest of the given data after converting it to a string"
+  [x]
+  (digest/md5 ^String (str x)))
 
 (defn- is-variable?
   "Returns true if the given expression is a variable (a symbol prefixed by ?)"
@@ -1422,13 +1429,16 @@
   [key->expr :- schema/NodeExprLookup
    expr-cache :- (sc/maybe sc/Any)
    partition-size :- sc/Int]
-  (let [prepare-expr (fn prepare-expr
+  (let [prepare-expr (fn do-prepare-expr
                        [[expr-key [expr compilation-ctx]]]
-                       (let [cache-key [(hash expr) (hash compilation-ctx)]]
-                         (if-let [compiled-expr (and expr-cache
-                                                     (cache/lookup expr-cache cache-key))]
-                           [:compiled [expr-key [compiled-expr compilation-ctx]]]
-                           [:prepared [expr-key [expr compilation-ctx]]])))
+                       (if expr-cache
+                         (let [cache-key (str (md5-hash expr) (md5-hash compilation-ctx))
+                               compilation-ctx (assoc compilation-ctx :cache-key cache-key)
+                               compiled-expr (cache/lookup expr-cache cache-key)]
+                           (if compiled-expr
+                             [:compiled [expr-key [compiled-expr compilation-ctx]]]
+                             [:prepared [expr-key [expr compilation-ctx]]]))
+                         [:prepared [expr-key [expr compilation-ctx]]]))
         batching-try-eval (fn do-compile-exprs
                             [exprs compilation-ctxs]
                             ;; Try to evaluate all of the expressions as a batch. If they fail the batch eval then we
@@ -1436,13 +1446,12 @@
                             ;; anyway.
                             (try
                               (mapv
-                               (fn cache-expr
-                                 [expr compiled-expr compilation-ctx]
-                                 (let [cache-key [(hash expr) (hash compilation-ctx)]]
-                                   (when expr-cache
-                                     (cache/miss expr-cache cache-key compiled-expr))
-                                   [compiled-expr compilation-ctx]))
-                               exprs (eval exprs) compilation-ctxs)
+                               (fn do-cache-expr
+                                 [compiled-expr compilation-ctx]
+                                 (when-let [cache-key (:cache-key compilation-ctx)]
+                                   (cache/miss expr-cache cache-key compiled-expr))
+                                 [compiled-expr compilation-ctx])
+                               (eval exprs) compilation-ctxs)
                               (catch Exception e
                                 ;; Using mapv here rather than map to avoid laziness, otherwise compilation failure might
                                 ;; fall into the throw below for the wrong reason.
@@ -1939,22 +1948,8 @@
   "Compile the rules into a rete network and return the given session."
   [productions :- #{schema/Production}
    options :- {sc/Keyword sc/Any}]
-  (let [;; We need to put the productions in a sorted set here, instead of in mk-session, since we don't want
-        ;; a sorted set in the session-cache.  If we did only rule order would be used to compare set equality
-        ;; for finding a cache hit, and we want to use the entire production, which a non-sorted set does.
-        ;; When using a sorted set, for constant options,
-        ;; any session creation with n productions would be a cache hit if any previous session had n productions.
-        ;; Furthermore, we can avoid the work of sorting the set until we know that there was a cache miss.
-        ;;
-        ;; Note that this ordering is not for correctness; we are just trying to increase consistency of rulebase compilation,
-        ;; and hopefully thereby execution times, from run to run.
-        _ (validate-names-unique productions)
-        productions (with-meta (into (sorted-set-by production-load-order-comp)
-                                     productions)
-                      ;; Store the name of the custom comparator for durability.
-                      {:clara.rules.durability/comparator-name `production-load-order-comp})
-
-        ;; A stateful counter used for unique ids of the nodes of the graph.
+  (validate-names-unique productions)
+  (let [;; A stateful counter used for unique ids of the nodes of the graph.
         id-counter (atom 0)
         create-id-fn (fn [] (swap! id-counter inc))
 
@@ -2024,29 +2019,25 @@
          (vary-meta production assoc ::rule-load-order (or n 0)))
        (range) productions))
 
+(defn- do-load-productions
+  [x]
+  (if (u/instance-satisfies? IRuleSource x)
+    (load-rules x)
+    x))
+
 (defn mk-session
   "Creates a new session using the given rule source. The resulting session
   is immutable, and can be used with insert, retract, fire-rules, and query functions."
   ([sources-and-options]
    (let [sources (take-while (complement keyword?) sources-and-options)
          options (apply hash-map (drop-while (complement keyword?) sources-and-options))
-         productions (->> sources
-                          ;; Load rules from the source, or just use the input as a seq.
-                          (mapcat #(if (satisfies? IRuleSource %)
-                                     (load-rules %)
-                                     %))
-                          add-production-load-order
-                          ;; Ensure that we choose the earliest occurrence of a rule for the purpose of rule order.
-                          ;; There are Clojure core functions for distinctness, of course, but none of them seem to guarantee
-                          ;; which instance will be chosen in case of duplicates.
-                          (reduce (fn [previous new-production]
-                                    ;; Contains? is broken for transient sets; see http://dev.clojure.org/jira/browse/CLJ-700
-                                    ;; Since all values in this set should be truthy, we can just use the set as a function instead.
-                                    (if (previous new-production)
-                                      previous
-                                      (conj! previous new-production)))
-                                  (hs/mut-set))
-                          persistent!)
+         productions-loaded (->> (mapcat do-load-productions sources)
+                                 (add-production-load-order))
+         productions-unique (hs/set productions-loaded)
+         productions-sorted (with-meta
+                              (into (sorted-set-by production-load-order-comp) productions-unique)
+                              ;; Store the name of the custom comparator for durability.
+                              {:clara.rules.durability/comparator-name `production-load-order-comp})
          options-cache (get options :cache)
          session-cache (cond
                          (true? options-cache)
@@ -2054,11 +2045,10 @@
                          (nil? options-cache)
                          default-session-cache
                          :else options-cache)
-         options (dissoc options :cache)
          ;;; this is simpler than storing all the productions and options in the cache
-         session-key [(count productions) (hash productions) (hash options)]]
+         session-key (str (md5-hash productions-sorted) (md5-hash (dissoc options :cache :compiler-cache)))]
      (if session-cache
        (cache/lookup-or-miss session-cache session-key
                              (fn do-mk-session [_]
-                               (mk-session* productions options)))
-       (mk-session* productions options)))))
+                               (mk-session* productions-sorted options)))
+       (mk-session* productions-sorted options)))))

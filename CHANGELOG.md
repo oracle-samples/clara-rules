@@ -1,5 +1,8 @@
 This is a history of changes to k13labs/clara-rules.
 
+# 1.3.1
+* Enhance caching performance by more predictable md5 caching and sorting productions
+
 # 1.3.0
 * Enhance compilation performance by using mutable maps from ham-fisted lib
 
