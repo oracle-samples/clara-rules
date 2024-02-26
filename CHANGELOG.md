@@ -1,5 +1,8 @@
 This is a history of changes to k13labs/clara-rules.
 
+# 1.3.2
+* Enhance memory add-activations implementation by replacing get/set with compute!
+
 # 1.3.1
 * Enhance caching performance by more predictable md5 caching and sorting productions
 

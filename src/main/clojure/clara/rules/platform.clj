@@ -1,14 +1,7 @@
 (ns clara.rules.platform
   "This namespace is for internal use and may move in the future.
   Platform unified code Clojure/ClojureScript."
-  (:require [futurama.core :refer [!<!
-                                   !<!!
-                                   async
-                                   async?
-                                   completable-future]]
-            [clojure.core.async :as async])
   (:import [java.lang IllegalArgumentException]
-           [java.util.concurrent CompletableFuture]
            [java.util LinkedHashMap]))
 
 (defn throw-error

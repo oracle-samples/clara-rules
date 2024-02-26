@@ -674,17 +674,18 @@
 
   (add-activations!
     [memory production new-activations]
-    (let [activation-group (activation-group-fn production)
-          previous (.get activation-map activation-group)]
-      ;; The reasoning here is the same as in add-elements! impl above.
-      (cond
-        previous
-        (queue-activations! previous new-activations)
+    (let [activation-group (activation-group-fn production)]
+      (hm/compute! activation-map activation-group
+                   (fn do-add-activations
+                     [_ old-activations]
+                     (cond
+                       old-activations
+                       (queue-activations! old-activations new-activations)
 
-        (not (coll-empty? new-activations))
-        (.put activation-map
-              activation-group
-              (->activation-priority-queue new-activations)))))
+                       (not (coll-empty? new-activations))
+                       (->activation-priority-queue new-activations)
+
+                       :else nil)))))
 
   (pop-activations!
     [memory count]
