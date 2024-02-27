@@ -155,8 +155,9 @@
           (or (:query (meta resolved))
               (:rule (meta resolved))) [@resolved]
 
-          ;; The symbol refernces a sequence, so return it.
-          (sequential? @resolved) @resolved
+          ;; The symbol references a sequence, so ensure we load all sources.
+          (sequential? @resolved)
+          (mapcat com/load-rules-from-source @resolved)
 
           :else
           (throw (ex-info (str "The source referenced by " sym " is not valid.") {:sym sym}))))
@@ -259,12 +260,10 @@
                                                  (:rhs production)
                                                  (:env production))
         name-with-meta (vary-meta name assoc :rule true :doc doc)] ;;; The compiled RHS
-    `(do
-       (declare ~name-with-meta)
-       (defn ~name-with-meta
-         ([]
-          (assoc ~rule :handler #'~name-with-meta))
-         (~@(drop 2 rule-handler))))))
+    `(defn ~name-with-meta
+       ([]
+        (assoc ~rule :handler #'~name-with-meta))
+       (~@(drop 2 rule-handler)))))
 
 (defmacro defquery
   "Defines a query and stored it in the given var. For instance, a simple query that accepts no
