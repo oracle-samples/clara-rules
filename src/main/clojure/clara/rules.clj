@@ -134,6 +134,11 @@
   [& facts]
   (eng/rhs-retract-facts! facts))
 
+(extend-type clojure.lang.Fn
+  com/IRuleSource
+  (load-rules [afn]
+    [(afn)]))
+
 (extend-type clojure.lang.Symbol
   com/IRuleSource
   (load-rules [sym]
@@ -166,19 +171,7 @@
            (sort (fn [v1 v2]
                    (compare (or (:line (meta v1)) 0)
                             (or (:line (meta v2)) 0))))
-           (mapcat (fn do-load-from-var
-                     [x]
-                     (let [mx (meta x)
-                           dx (deref x)]
-                       (cond
-                         (:production-seq mx)
-                         dx
-
-                         (fn? dx)
-                         [(assoc (dx) :handler dx)]
-
-                         :else
-                         [dx]))))))))
+           (mapcat com/load-rules-from-source)))))
 
 (defmacro mk-session
   "Creates a new session using the given rule sources. The resulting session
@@ -258,17 +251,20 @@
   See the [rule authoring documentation](http://www.clara-rules.org/docs/rules/) for details."
   [name & body]
   (let [doc (if (string? (first body)) (first body) nil)
-        rule (dsl/build-rule name body (meta &form))
-        rule-action (dsl/build-rule-action name body (meta &form))
-        rule-node (com/build-rule-node rule-action)
+        rule (dsl/build-rule name body (meta &form)) ;;; Full rule LHS + RHS
+        rule-action (dsl/build-rule-action name body (meta &form)) ;;; Only the RHS
+        rule-node (com/build-rule-node rule-action) ;;; The Node of the RHS
         {:keys [bindings production]} rule-node
         rule-handler (com/compile-action-handler name bindings
                                                  (:rhs production)
-                                                 (:env production))]
-    `(defn ~(vary-meta name assoc :rule true :doc doc)
-       ([]
-        ~rule)
-       (~@(drop 2 rule-handler)))))
+                                                 (:env production))
+        name-with-meta (vary-meta name assoc :rule true :doc doc)] ;;; The compiled RHS
+    `(do
+       (declare ~name-with-meta)
+       (defn ~name-with-meta
+         ([]
+          (assoc ~rule :handler #'~name-with-meta))
+         (~@(drop 2 rule-handler))))))
 
 (defmacro defquery
   "Defines a query and stored it in the given var. For instance, a simple query that accepts no

@@ -247,6 +247,17 @@
                 (read [_ rdr tag component-count]
                   (resolve (.readObject rdr))))}}
 
+   "clojure.lang/var"
+   {:class clojure.lang.Var
+    :writer (reify WriteHandler
+              (write [_ w c]
+                (.writeTag w "clojure.lang/var" 1)
+                (.writeObject w (.toSymbol ^clojure.lang.Var c))))
+    :readers {"clojure.lang/var"
+              (reify ReadHandler
+                (read [_ rdr tag component-count]
+                  (resolve (.readObject rdr))))}}
+
    "hamf/set"
    (create-identity-based-handler
     IAPersistentSet

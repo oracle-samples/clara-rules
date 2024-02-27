@@ -392,7 +392,7 @@
                 :constraints '~constraints)))
 
 (defn compile-action-handler
-  [name bindings-keys rhs env]
+  [action-name bindings-keys rhs env]
   (let [;; Avoid creating let bindings in the compile code that aren't actually used in the body.
         ;; The bindings only exist in the scope of the RHS body, not in any code called by it,
         ;; so this scanning strategy will detect all possible uses of binding variables in the RHS.
@@ -409,9 +409,9 @@
 
         ;; The destructured environment, if any.
         destructured-env (if (> (count env) 0)
-                           {:keys (mapv #(symbol (name %)) (keys env))}
+                           {:keys (mapv (comp symbol name) (keys env))}
                            '?__env__)]
-    `(fn ~name
+    `(fn ~action-name
        [~'?__token__  ~destructured-env]
        (let [~@assignments]
          ~rhs))))
@@ -1531,7 +1531,7 @@
                        (if expr-cache
                          (let [cache-key (str (md5-hash expr) (md5-hash compilation-ctx))
                                compilation-ctx (assoc compilation-ctx :cache-key cache-key)
-                               compiled-handler (some-> compilation-ctx :compile-ctx :production :handler)
+                               compiled-handler (some-> compilation-ctx :compile-ctx :production :handler deref)
                                compiled-expr (or compiled-handler
                                                  (cache/lookup expr-cache cache-key))]
                            (if compiled-expr
@@ -2120,11 +2120,24 @@
          (vary-meta production assoc ::rule-load-order (or n 0)))
        (range) productions))
 
-(defn- do-load-productions
-  [x]
-  (if (u/instance-satisfies? IRuleSource x)
-    (load-rules x)
-    x))
+(defn load-rules-from-source
+  "loads the rules from a source if it implements `IRuleSource`, or navigates inside
+  collections to load rules from vectors, lists, sets, seqs."
+  [source]
+  (cond
+    (u/instance-satisfies? IRuleSource source)
+    (load-rules source)
+
+    (or (vector? source)
+        (list? source)
+        (set? source)
+        (seq? source))
+    (mapcat load-rules-from-source source)
+
+    (var? source)
+    (load-rules-from-source @source)
+
+    :else [source]))
 
 (defn mk-session
   "Creates a new session using the given rule source. The resulting session
@@ -2132,7 +2145,7 @@
   ([sources-and-options]
    (let [sources (take-while (complement keyword?) sources-and-options)
          options (apply hash-map (drop-while (complement keyword?) sources-and-options))
-         productions-loaded (->> (mapcat do-load-productions sources)
+         productions-loaded (->> (mapcat load-rules-from-source sources)
                                  (add-production-load-order))
          productions-unique (hs/set productions-loaded)
          productions-sorted (with-meta
