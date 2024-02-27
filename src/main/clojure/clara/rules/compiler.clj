@@ -973,22 +973,16 @@
 
 (declare add-production)
 
-(sc/defn ^:private extract-negation :-  {:new-expression schema/Condition
-                                         :beta-with-negations schema/BetaGraph}
-
-  "Extracts complex, nested negations and adds a rule to the beta graph to trigger the returned
-   negation expression."
+(sc/defn ^:private get-complex-negation :- (sc/maybe
+                                            {:new-expression schema/Condition
+                                             :generated-rule schema/Production})
   [previous-expressions :- [schema/Condition]
    expression :- schema/Condition
-   parent-ids :- [sc/Int]
    ancestor-bindings :- #{sc/Keyword}
-   beta-graph :- schema/BetaGraph
-   production :- schema/Production
-   create-id-fn]
-
-  (if (and (= :not (first expression))
-           (sequential? (second expression))
-           (#{:and :or :not} (first (second expression))))
+   production :- schema/Production]
+  (when (and (= :not (first expression))
+             (sequential? (second expression))
+             (#{:and :or :not} (first (second expression))))
 
     ;; Dealing with a compound negation, so extract it out.
     (let [negation-expr (second expression)
@@ -1034,18 +1028,28 @@
                            true (assoc-in [:props :clara-rules/internal-salience] :extracted-negation)
 
                                ;; Propagate the the environment (such as local bindings) if applicable.
-                           (:env production) (assoc :env (:env production)))
-
-          ;; Add the generated rule to the beta network.
-
-          beta-with-negations (add-production generated-rule beta-graph create-id-fn)]
-
+                           (:env production) (assoc :env (:env production)))]
       {:new-expression modified-expression
-       :beta-with-negations beta-with-negations})
+       :generated-rule generated-rule})))
 
-    ;; The expression wasn't a negation, so return the previous content.
-    {:new-expression expression
-     :beta-with-negations beta-graph}))
+(sc/defn ^:private add-complex-negation :- (sc/maybe
+                                            {:new-expression schema/Condition
+                                             :beta-with-negations schema/BetaGraph})
+
+  "Extracts complex, nested negations and adds a rule to the beta graph to trigger the returned
+  negation expression."
+  [previous-expressions :- [schema/Condition]
+   expression :- schema/Condition
+   ancestor-bindings :- #{sc/Keyword}
+   beta-graph :- schema/BetaGraph
+   production :- schema/Production
+   create-id-fn]
+  (when-let [{:keys [new-expression
+                     generated-rule]} (get-complex-negation previous-expressions expression
+                                                            ancestor-bindings production)]
+    ;; The expression was a negation, so add it to the Beta graph
+    {:new-expression new-expression
+     :beta-with-negations (add-production generated-rule beta-graph create-id-fn)}))
 
 ;; A beta graph with no nodes.
 (defn ^:private empty-beta-graph
@@ -1055,6 +1059,25 @@
    :id-to-condition-node (hf/mut-long-map {0 ::root-condition})
    :id-to-production-node (hf/mut-long-map)
    :id-to-new-bindings (hf/mut-long-map)})
+
+(sc/defn ^:private get-condition-bindings :- {:bindings #{sc/Keyword}}
+  "Get the bindings from a sequence of condition/conjunctions."
+  [conditions :- [schema/Condition]
+   env :- (sc/maybe {sc/Keyword sc/Any})
+   ancestor-bindings :- #{sc/Keyword}]
+  (loop [bindings ancestor-bindings
+         [expression & remaining-expressions] conditions]
+    (if expression
+      (let [node (condition-to-node expression env bindings)
+
+            {:keys [result-binding fact-binding]} expression
+
+            all-bindings (cond-> (set/union bindings (:used-bindings node))
+                           result-binding (conj result-binding)
+                           fact-binding (conj fact-binding))]
+        (recur all-bindings remaining-expressions))
+      ;; No expressions remaining, so return the structure.
+      {:bindings bindings})))
 
 (sc/defn ^:private add-conjunctions :- {:beta-graph schema/BetaGraph
                                         :new-ids [sc/Int]
@@ -1149,6 +1172,73 @@
        :new-ids parent-ids
        :bindings bindings})))
 
+(sc/defn build-production :- schema/ProductionNode
+  [production :- schema/Production]
+  (when (:rhs production)
+    (let [flattened-conditions (for [condition (:lhs production)
+                                     child-condition (if (#{'and :and} (first condition))
+                                                       (rest condition)
+                                                       [condition])]
+
+                                 child-condition)
+
+          sorted-conditions (sort-conditions flattened-conditions)
+
+          {ancestor-bindings :bindings}
+          (loop [previous-conditions []
+                 [current-condition & remaining-conditions] sorted-conditions
+                 ancestor-bindings #{}]
+            (if-not current-condition
+              {:bindings ancestor-bindings}
+              (let [{:keys [new-expression]}
+                    (get-complex-negation previous-conditions
+                                          current-condition
+                                          ancestor-bindings
+                                          production)
+
+                    condition (or new-expression
+                                  current-condition)
+
+                    ;; Extract disjunctions from the condition.
+                    dnf-expression (to-dnf condition)
+
+                    ;; Get a sequence of disjunctions.
+                    disjunctions (for [expression
+                                       (if (= :or (first dnf-expression)) ; Ignore top-level or in DNF.
+                                         (rest dnf-expression)
+                                         [dnf-expression])]
+
+                                   (if (= :and (first expression)) ; Ignore nested ands in DNF.
+                                     (rest expression)
+                                     [expression]))
+
+                    {all-bindings :bindings}
+                    (reduce (fn [previous-result conjunctions]
+                              ;; Get the  complete bindings
+                              (let [;; Convert exists operations to accumulator and test nodes.
+                                    exists-extracted (extract-exists conjunctions)
+                                    ;; Compute the new bindings with the expressions.
+                                    new-result (get-condition-bindings exists-extracted
+                                                                       (:env production)
+                                                                       ancestor-bindings)]
+
+                                ;; Combine the  bindings
+                                ;; for use in descendent nodes.
+                                {:bindings (set/union (:bindings previous-result)
+                                                      (:bindings new-result))}))
+
+                            ;; Initial reduce value, combining previous graph, parent ids, and ancestor variable bindings.
+                            {:bindings ancestor-bindings}
+
+                            ;; Each disjunction contains a sequence of conjunctions.
+                            disjunctions)]
+                (recur (conj previous-conditions current-condition)
+                       remaining-conditions
+                       all-bindings))))]
+      {:node-type :production
+       :production production
+       :bindings ancestor-bindings})))
+
 (sc/defn ^:private add-production  :- schema/BetaGraph
   "Adds a production to the graph of beta nodes."
   [production :- schema/Production
@@ -1174,16 +1264,16 @@
       (if current-condition
 
         (let [{:keys [new-expression beta-with-negations]}
-              (extract-negation previous-conditions
-                                current-condition
-                                parent-ids
-                                ancestor-bindings
-                                beta-graph
-                                production
-                                create-id-fn)
+              (add-complex-negation previous-conditions
+                                    current-condition
+                                    ancestor-bindings
+                                    beta-graph
+                                    production
+                                    create-id-fn)
 
-              condition (or new-expression
-                            current-condition)
+              beta-graph (or beta-with-negations beta-graph)
+
+              condition (or new-expression current-condition)
 
               ;; Extract disjunctions from the condition.
               dnf-expression (to-dnf condition)
@@ -1221,7 +1311,7 @@
                                                 (:bindings new-result))}))
 
                       ;; Initial reduce value, combining previous graph, parent ids, and ancestor variable bindings.
-                      {:beta-graph beta-with-negations
+                      {:beta-graph beta-graph
                        :new-ids []
                        :bindings ancestor-bindings}
 

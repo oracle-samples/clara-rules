@@ -247,9 +247,10 @@
 
   See the [rule authoring documentation](http://www.clara-rules.org/docs/rules/) for details."
   [name & body]
-  (let [doc (if (string? (first body)) (first body) nil)]
-    `(def ~(vary-meta name assoc :rule true :doc doc)
-       ~(dsl/build-rule name body (meta &form)))))
+  (let [doc (if (string? (first body)) (first body) nil)
+        rule (dsl/build-rule name body (meta &form))]
+    `(def ~(vary-meta name assoc :rule rule :doc doc)
+       ~rule)))
 
 (defmacro defquery
   "Defines a query and stored it in the given var. For instance, a simple query that accepts no
