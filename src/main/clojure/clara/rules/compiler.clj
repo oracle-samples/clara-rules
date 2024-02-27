@@ -1531,7 +1531,7 @@
                        (if expr-cache
                          (let [cache-key (str (md5-hash expr) (md5-hash compilation-ctx))
                                compilation-ctx (assoc compilation-ctx :cache-key cache-key)
-                               compiled-handler (some-> compilation-ctx :compile-ctx :production :handler deref)
+                               compiled-handler (some-> compilation-ctx :compile-ctx :production :handler resolve)
                                compiled-expr (or compiled-handler
                                                  (cache/lookup expr-cache cache-key))]
                            (if compiled-expr

@@ -12,6 +12,7 @@
             [criterium.core :refer [report-result
                                     with-progress-reporting
                                     quick-benchmark]]))
+
 (defrule test-slow-rule-1
   "this rule does some async work using go block"
   [:number [{:keys [value]}]
