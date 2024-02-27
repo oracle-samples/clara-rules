@@ -1,6 +1,6 @@
 This is a history of changes to k13labs/clara-rules.
 
-# 1.4.0
+# 1.4.0-SNAPSHOT
 * `defrule` now defines rules as functions with two arities, no args returns the rule map, and 2 args is the compiled RHS.
 * `clojure.lang.Fn` now implements `clara.rules.compiler/IRuleSource`, and returns a single rule by invoking the like `(a-rule)`.
 * add built-in support to serialize `clojure.lang.Var` so that a rule handler var can be serialized correctly.
