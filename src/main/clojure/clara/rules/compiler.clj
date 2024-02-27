@@ -941,7 +941,9 @@
   [beta-graph :- schema/BetaGraph
    source-ids :- [sc/Int]
    target-id :- sc/Int
-   target-node :- (sc/either schema/ConditionNode schema/ProductionNode)]
+   target-node :- (sc/conditional
+                   (comp #{:production :query} :node-type) schema/ProductionNode
+                   :else schema/ConditionNode)]
   (hf/assoc! (:id-to-new-bindings beta-graph) target-id
              ;; A ProductionNode will not have the set of new bindings previously created,
              ;; so we assign them an empty set here.  A ConditionNode will always have a set of new bindings,
@@ -1506,7 +1508,9 @@
 (sc/defn ^:private compile-node
   "Compiles a given node description into a node usable in the network with the
    given children."
-  [beta-node :- (sc/either schema/ConditionNode schema/ProductionNode)
+  [beta-node :- (sc/conditional
+                 (comp #{:production :query} :node-type) schema/ProductionNode
+                 :else schema/ConditionNode)
    id :- sc/Int
    is-root :- sc/Bool
    children :- [sc/Any]
