@@ -391,9 +391,8 @@
     `(array-map :handler ~test-handler
                 :constraints '~constraints)))
 
-(defn compile-action
-  "Compile the right-hand-side action of a rule, returning a function to execute it."
-  [node-id binding-keys rhs env]
+(defn compile-action-handler
+  [name bindings-keys rhs env]
   (let [;; Avoid creating let bindings in the compile code that aren't actually used in the body.
         ;; The bindings only exist in the scope of the RHS body, not in any code called by it,
         ;; so this scanning strategy will detect all possible uses of binding variables in the RHS.
@@ -406,18 +405,24 @@
                      (comp
                       (filter rhs-bindings-used)
                       (mapcat build-token-assignment))
-                     binding-keys)
+                     bindings-keys)
 
         ;; The destructured environment, if any.
         destructured-env (if (> (count env) 0)
                            {:keys (mapv #(symbol (name %)) (keys env))}
-                           '?__env__)
-
-        ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-action' to be used for this scenario
-        fn-name (mk-node-fn-name "ProductionNode" node-id "AE")]
-    `(fn ~fn-name [~'?__token__  ~destructured-env]
+                           '?__env__)]
+    `(fn ~name
+       [~'?__token__  ~destructured-env]
        (let [~@assignments]
          ~rhs))))
+
+(defn compile-action
+  "Compile the right-hand-side action of a rule, returning a function to execute it."
+  [node-id binding-keys rhs env]
+  (let [;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-action' to be used for this scenario
+        fn-name (mk-node-fn-name "ProductionNode" node-id "AE")
+        handler (compile-action-handler fn-name binding-keys rhs env)]
+    `~handler))
 
 (defn compile-accum
   "Used to create accumulators that take the environment into account."
@@ -1172,7 +1177,7 @@
        :new-ids parent-ids
        :bindings bindings})))
 
-(sc/defn build-production :- schema/ProductionNode
+(sc/defn build-rule-node :- schema/ProductionNode
   [production :- schema/Production]
   (when (:rhs production)
     (let [flattened-conditions (for [condition (:lhs production)
@@ -1526,7 +1531,9 @@
                        (if expr-cache
                          (let [cache-key (str (md5-hash expr) (md5-hash compilation-ctx))
                                compilation-ctx (assoc compilation-ctx :cache-key cache-key)
-                               compiled-expr (cache/lookup expr-cache cache-key)]
+                               compiled-handler (some-> compilation-ctx :compile-ctx :production :handler)
+                               compiled-expr (or compiled-handler
+                                                 (cache/lookup expr-cache cache-key))]
                            (if compiled-expr
                              [:compiled [expr-key [compiled-expr compilation-ctx]]]
                              [:prepared [expr-key [expr compilation-ctx]]]))

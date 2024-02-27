@@ -245,6 +245,33 @@
        ;; Add the environment, if given.
        (seq env) (assoc :env matching-env)))))
 
+(defn parse-rule-action*
+  "Creates a rule action from the DSL syntax using the given environment map.  *ns*
+   should be bound to the namespace the rule is meant to be defined in."
+  ([lhs rhs properties env]
+   (parse-rule-action* lhs rhs properties env {}))
+  ([lhs rhs properties env rule-meta]
+   (let [conditions (into [] (for [expr lhs]
+                               (parse-expression expr rule-meta)))
+
+         rule {:ns-name (ns-name *ns*)
+               :lhs     (mapv #(resolve-vars % (destructure-syms %))
+                              conditions)
+               :rhs     (vary-meta rhs assoc :file *file*)}
+
+         symbols (set (filter symbol? (com/flatten-expression (concat lhs rhs))))
+         matching-env (into {} (for [sym (keys env)
+                                     :when (symbols sym)]
+                                 [(keyword (name sym)) sym]))]
+
+     (cond-> rule
+
+       ;; Add properties, if given.
+       (seq properties) (assoc :props properties)
+
+       ;; Add the environment, if given.
+       (seq env) (assoc :env matching-env)))))
+
 (defn parse-query*
   "Creates a query from the DSL syntax using the given environment map."
   ([params lhs env]
@@ -294,6 +321,20 @@
          definition (if properties (rest body) body)
          {:keys [lhs rhs]} (split-lhs-rhs definition)]
      (cond-> (parse-rule* lhs rhs properties {} form-meta)
+
+       name (assoc :name (production-name name))
+       doc (assoc :doc doc)))))
+
+(defn build-rule-action
+  "Function used to parse and build a rule action using the DSL syntax."
+  ([name body] (build-rule-action name body {}))
+  ([name body form-meta]
+   (let [doc (if (string? (first body)) (first body) nil)
+         body (if doc (rest body) body)
+         properties (if (map? (first body)) (first body) nil)
+         definition (if properties (rest body) body)
+         {:keys [lhs rhs]} (split-lhs-rhs definition)]
+     (cond-> (parse-rule-action* lhs rhs properties {} form-meta)
 
        name (assoc :name (production-name name))
        doc (assoc :doc doc)))))

@@ -7,6 +7,9 @@
 (def MutableLongHashMap
   UnsharedLongHashMap)
 
+(def Function
+  (s/pred ifn? "ifn?"))
+
 (s/defn condition-type :- (s/enum :or :not :and :exists :fact :accumulator :test)
   "Returns the type of node in a LHS condition expression."
   [condition]
@@ -68,6 +71,7 @@
    (s/optional-key :doc) s/Str
    (s/optional-key :props) {s/Keyword s/Any}
    (s/optional-key :env) {s/Keyword s/Any}
+   (s/optional-key :handler) (s/maybe Function)
    :lhs [Condition]
    :rhs s/Any})
 
@@ -192,9 +196,6 @@
   ;; and can be disabled post compilation.
   {(tuple s/Int s/Keyword) (tuple SExpr (s/conditional :compile-ctx NodeCompilationContext
                                                        :else NodeCompilationValue))})
-
-(def Function
-  (s/pred ifn? "ifn?"))
 
 ;; An evaluated version of the schema mentioned above.
 (def NodeFnLookup
