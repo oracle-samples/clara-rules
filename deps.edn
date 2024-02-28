@@ -24,7 +24,9 @@
               :main-opts ["-m" "clj-kondo.main"]}
 
   :test {:extra-paths ["src/test/clojure" "target/test/classes"]
-         :extra-deps {lambdaisland/kaocha         {:mvn/version "1.80.1274"}
+         :extra-deps {lambdaisland/kaocha {:mvn/version "1.80.1274"}
+                      lambdaisland/kaocha-junit-xml {:mvn/version "1.17.101"}
+                      lambdaisland/kaocha-cloverage {:mvn/version "1.1.89"}
                       org.clojure/test.check {:mvn/version "1.1.1"}
                       pjstadig/humane-test-output {:mvn/version "0.10.0"}}}
 

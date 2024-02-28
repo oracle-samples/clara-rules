@@ -3,17 +3,37 @@
             :plugins                         [:kaocha.plugin/profiling
                                               :kaocha.plugin/gc-profiling
                                               :kaocha.plugin/print-invocations
+                                              :kaocha.plugin/junit-xml
+                                              :kaocha.plugin/cloverage
                                               :kaocha.plugin/hooks
                                               :preloads]
+            :kaocha.plugin.junit-xml/target-file "target/junit-report.xml"
+            :kaocha.plugin.junit-xml/add-location-metadata? true
+            :cloverage/opts {:ns-exclude-regex []
+                             :text? false
+                             :lcov? true
+                             :high-watermark 80
+                             :fail-threshold 0
+                             :output "target/coverage"
+                             :low-watermark 50
+                             :ns-regex []
+                             :summary? true
+                             :coveralls? false
+                             :emma-xml? false
+                             :html? true
+                             :nop? false
+                             :codecov? false}
             :kaocha.hooks/pre-report         [clara.test-setup/defuse-zero-assertions]
             :kaocha.plugin.preloads/ns-names [clara.test-setup]
             :tests                           [{:id        :unit
                                                :kaocha/source-paths             ["src/main/clojure"]
                                                :kaocha/test-paths               ["src/test/clojure"]
                                                :ns-patterns                     [".*"]
+                                               :kaocha.plugin.junit-xml/target-file "target/junit-report.xml"
                                                :skip-meta                       [:generative]}
                                               {:id         :generative
                                                :kaocha/source-paths             ["src/main/clojure"]
                                                :kaocha/test-paths               ["src/test/clojure"]
                                                :ns-patterns                     [".*"]
+                                               :kaocha.plugin.junit-xml/target-file "target/junit-generative.xml"
                                                :focus-meta                      [:generative]}]}
