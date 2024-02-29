@@ -25,6 +25,8 @@ jobs:
         cli: 1.11.1.1429
     - name: Run tests
       run: make test
+    - name: Run coverage tests
+      run: make test-coverage
     - name: Run generative tests
       run: make test-generative
     - name: Run clj-kondo linter

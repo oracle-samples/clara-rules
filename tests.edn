@@ -3,15 +3,40 @@
             :plugins                         [:kaocha.plugin/profiling
                                               :kaocha.plugin/gc-profiling
                                               :kaocha.plugin/print-invocations
+                                              :kaocha.plugin/junit-xml
+                                              :kaocha.plugin/cloverage
                                               :kaocha.plugin/hooks
                                               :preloads]
+            :kaocha.plugin.junit-xml/target-file "target/junit.xml"
+            :kaocha.plugin.junit-xml/add-location-metadata? true
+            :cloverage/opts {:ns-exclude-regex []
+                             :text? false
+                             :lcov? false
+                             :high-watermark 80
+                             :fail-threshold 0
+                             :output "target/coverage"
+                             :low-watermark 50
+                             :src-ns-path ["src/main/clojure"
+                                           "src/test/clojure"]
+                             :ns-regex ["clara.coverage-ruleset"]
+                             :summary? true
+                             :coveralls? false
+                             :emma-xml? false
+                             :html? true
+                             :nop? false
+                             :codecov? true}
             :kaocha.hooks/pre-report         [clara.test-setup/defuse-zero-assertions]
             :kaocha.plugin.preloads/ns-names [clara.test-setup]
             :tests                           [{:id        :unit
                                                :kaocha/source-paths             ["src/main/clojure"]
                                                :kaocha/test-paths               ["src/test/clojure"]
                                                :ns-patterns                     [".*"]
-                                               :skip-meta                       [:generative]}
+                                               :skip-meta                       [:generative :coverage]}
+                                              {:id         :coverage
+                                               :kaocha/source-paths             ["src/main/clojure"]
+                                               :kaocha/test-paths               ["src/test/clojure"]
+                                               :ns-patterns                     [".*"]
+                                               :focus-meta                      [:coverage]}
                                               {:id         :generative
                                                :kaocha/source-paths             ["src/main/clojure"]
                                                :kaocha/test-paths               ["src/test/clojure"]
