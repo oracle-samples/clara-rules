@@ -232,6 +232,7 @@
         fn-node (api/list-node
                  (list
                   (api/token-node 'fn)
+                  (api/token-node 'query-fn)
                   input-args
                   production-result))
         new-node (api/map-node
@@ -286,7 +287,7 @@
                             (api/vector-node
                              (vec production-output))))
         fn-node (api/list-node
-                 (cond-> (list (api/token-node 'fn))
+                 (cond-> (list (api/token-node 'fn) production-name)
                    production-docs (concat [production-docs])
                    :always (concat [input-args])
                    production-opts (concat [production-opts])
@@ -337,6 +338,7 @@
         fn-node (api/list-node
                  (list
                   (api/token-node 'fn)
+                  (api/token-node 'rule-fn)
                   input-args
                   production-result))
         new-node (api/map-node
@@ -384,7 +386,7 @@
                              (vec production-output))
                             body-seq))
         fn-node (api/list-node
-                 (cond-> (list (api/token-node 'fn))
+                 (cond-> (list (api/token-node 'fn) production-name)
                    production-docs (concat [production-docs])
                    :always (concat [input-args])
                    production-opts (concat [production-opts])
