@@ -2442,7 +2442,7 @@
                                                              {:doc  "An extra rule to test for duplicate names."
                                                               :name :clara.rules.test-rules-data/is-cold-and-windy-data
                                                               :lhs  []
-                                                              :rhs  '(println "I have no meaning outside of this test")}))) {})))
+                                                              :rhs  '(println "I have no meaning outside of this test")}))) [] {})))
 
 #_{:clj-kondo/ignore [:unresolved-symbol]}
 (deftest test-negation-multiple-children-exception

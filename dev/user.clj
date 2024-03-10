@@ -1,9 +1,13 @@
 (ns user
+  (:refer-clojure :exclude [derive underive])
   (:require [criterium.core :refer [report-result
                                     quick-benchmark] :as crit]
             [clara.rules.platform :refer [compute-for]]
             [clojure.core.async :refer [go timeout <!]]
-            [clara.rules :refer [defrule mk-session clear-ns-productions!]]
+            [clara.rules :refer [defrule defquery defdata defhierarchy
+                                 insert! insert insert-all fire-rules query
+                                 mk-session clear-ns-vars!
+                                 derive! underive!]]
             [clara.rules.compiler :as com]
             [clojure.core.cache.wrapped :as cache]
             [schema.core :as sc]
@@ -12,9 +16,41 @@
   (:import [java.util.concurrent CompletableFuture]))
 
 (comment
+  (clear-ns-vars!)
   (add-tap #'println)
   (remove-tap #'println)
   (tap> "foobar"))
+
+(defhierarchy foobar
+  (derive! :thing/foo :thing/that)
+  (doseq [x (range 20)]
+    (derive! [:thing/foo (- 20 x)] [:thing/that (- 20 x)]))
+  (derive! :thing/bar :thing/that))
+
+(defrule return-a-thing
+  [:thing/that [{:keys [value]}] (= value ?value)]
+  =>
+  (insert! {:type :thing/result
+            :value ?value}))
+
+(defquery query-a-thing
+  []
+  [?output <- :thing/result])
+
+(defdata foo
+  {:type :thing/foo
+   :value 1})
+
+(defdata bar
+  [{:type :thing/bar
+    :value 2}
+   {:type :thing/bar
+    :value 3}])
+
+(time
+ (-> (mk-session 'user :fact-type-fn :type)
+     (fire-rules)
+     (query query-a-thing)))
 
 (def session-cache
   (cache/lru-cache-factory {}))
@@ -69,7 +105,7 @@
         ~@fact-rules))))
 
 (comment
-  (clear-ns-productions!)
+  (clear-ns-vars!)
   (mk-types 2500)
   (def rules
     (mk-rules 2500))
@@ -81,7 +117,7 @@
 
   (time
    (mk-session 'user [(conj rules {:ns-name (ns-name *ns*)
-                                   :lhs [{:type :foobar16
+                                   :lhs [{:type :foobar1
                                           :constraints []}]
                                    :rhs `(println ~(str :foobar))})]
                :cache session-cache

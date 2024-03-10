@@ -1,6 +1,7 @@
 (ns clara.rules
   "Forward-chaining rules for Clojure. The primary API is in this namespace."
   (:require [clara.rules.engine :as eng]
+            [clara.rules.hierarchy :as hierarchy]
             [clara.rules.platform :as platform]
             [clara.rules.compiler :as com]
             [clara.rules.dsl :as dsl]))
@@ -140,6 +141,72 @@
     [(afn)]))
 
 (extend-type clojure.lang.Symbol
+  com/IFactSource
+  (load-facts [sym]
+    ;; Find the facts in the namespace, shred them,
+    ;; and compile them into a rule base.
+    (if (namespace sym)
+      ;; The symbol is qualified, so load hierarchies in the qualified symbol.
+      (let [resolved (resolve sym)]
+        (when (nil? resolved)
+          (throw (ex-info (str "Unable to resolve fact source: " sym) {:sym sym})))
+
+        (cond
+          ;; The symbol references a fact, so just return it
+          (:hierarchy (meta resolved))
+          (com/load-facts-from-source @resolved)
+
+          ;; The symbol references a sequence, so ensure we load all sources.
+          (sequential? @resolved)
+          (mapcat com/load-facts-from-source @resolved)
+
+          :else
+          []))
+
+      ;; The symbol is not qualified, so treat it as a namespace.
+      (->> (ns-interns sym)
+           (vals) ; Get the references in the namespace.
+           (filter var?)
+           (filter (comp (some-fn :fact :fact-seq) meta)) ; Filter down to fact and fact-seq, and seqs of both.
+           ;; If definitions are created dynamically (i.e. are not reflected in an actual code file)
+           ;; it is possible that they won't have :line metadata, so we have a default of 0.
+           (sort (fn [v1 v2]
+                   (compare (or (:line (meta v1)) 0)
+                            (or (:line (meta v2)) 0))))
+           (mapcat com/load-facts-from-source))))
+  com/IHierarchySource
+  (load-hierarchies [sym]
+    ;; Find the hierarchies in the namespace, shred them,
+    ;; and compile them into a rule base.
+    (if (namespace sym)
+      ;; The symbol is qualified, so load hierarchies in the qualified symbol.
+      (let [resolved (resolve sym)]
+        (when (nil? resolved)
+          (throw (ex-info (str "Unable to resolve hierarchy source: " sym) {:sym sym})))
+
+        (cond
+          ;; The symbol references a hierarchy, so just return it
+          (:hierarchy (meta resolved))
+          (com/load-hierarchies-from-source @resolved)
+
+          ;; The symbol references a sequence, so ensure we load all sources.
+          (sequential? @resolved)
+          (mapcat com/load-hierarchies-from-source @resolved)
+
+          :else
+          []))
+
+      ;; The symbol is not qualified, so treat it as a namespace.
+      (->> (ns-interns sym)
+           (vals) ; Get the references in the namespace.
+           (filter var?)
+           (filter (comp (some-fn :hierarchy :hierarchy-seq) meta)) ; Filter down to hierarchy and hierarchy-seq, and seqs of both.
+           ;; If definitions are created dynamically (i.e. are not reflected in an actual code file)
+           ;; it is possible that they won't have :line metadata, so we have a default of 0.
+           (sort (fn [v1 v2]
+                   (compare (or (:line (meta v1)) 0)
+                            (or (:line (meta v2)) 0))))
+           (mapcat com/load-hierarchies-from-source))))
   com/IRuleSource
   (load-rules [sym]
     ;; Find the rules and queries in the namespace, shred them,
@@ -151,16 +218,17 @@
           (throw (ex-info (str "Unable to resolve rule source: " sym) {:sym sym})))
 
         (cond
-          ;; The symbol references a rule or query, so just return it
+          ;; The symbol references a rule or query, so just load it
           (or (:query (meta resolved))
-              (:rule (meta resolved))) [@resolved]
+              (:rule (meta resolved)))
+          (com/load-rules-from-source @resolved)
 
           ;; The symbol references a sequence, so ensure we load all sources.
           (sequential? @resolved)
           (mapcat com/load-rules-from-source @resolved)
 
           :else
-          (throw (ex-info (str "The source referenced by " sym " is not valid.") {:sym sym}))))
+          []))
 
       ;; The symbol is not qualified, so treat it as a namespace.
       (->> (ns-interns sym)
@@ -267,7 +335,7 @@
        (~@(drop 2 rule-handler)))))
 
 (defmacro defquery
-  "Defines a query and stored it in the given var. For instance, a simple query that accepts no
+  "Defines a query and stores it in the given var. For instance, a simple query that accepts no
   parameters would look like this:
 
   (defquery check-job
@@ -281,16 +349,55 @@
     `(def ~(vary-meta name assoc :query true :doc doc)
        ~(dsl/build-query name body (meta &form)))))
 
-(defmacro clear-ns-productions!
+(defn derive!
+  [child parent]
+  (hierarchy/derive child parent))
+
+(defn underive!
+  [child parent]
+  (hierarchy/underive child parent))
+
+(defmacro defhierarchy
+  "Defines a hierarchy and stores it in the given var. For instance, a simple hierarchy that adds
+  several child->parent relationships would look like this:
+  (defhierarchy order-types
+    \"Defines several order types\"
+    (derive! :order/hvac :order/service)
+    (derive! :order/plumber :order/service)
+    (underive! :order/cinema :order/service))
+  See the [hierarchy authoring documentation](http://www.clara-rules.org)"
+  [name & body]
+  (let [doc (if (string? (first body)) (first body) nil)]
+    `(def ~(vary-meta name assoc :hierarchy true :doc doc)
+       (binding [hierarchy/*hierarchy* (atom (hierarchy/make-hierarchy))]
+         ~@body))))
+
+(defmacro defdata
+  "Defines a data fact which is stored in the given var. For instance, the following fact is simply a
+  map which is then inserted into the session when the namespace is loaded.
+
+  (defdata default-temperature
+    (Cold. 32))"
+  [name & body]
+  (let [doc (if (string? (first body)) (first body) nil)]
+    `(def ~(vary-meta name assoc :fact true :doc doc)
+       ~@body)))
+
+(defmacro clear-ns-vars!
   "Ensures that any rule/query definitions which have been cached will be cleared from the associated namespace.
   Rule and query definitions can be cached such that if their definitions are not explicitly overwritten with the same
   name (i.e. deleted or renamed), the stale definitions can be loaded into a session using that namespace on
-  reload via the REPL or mechanism such as figwheel. Place (clear-ns-productions!) at the top of any namespace
+  reload via the REPL or mechanism such as figwheel. Place (clear-ns-vars!) at the top of any namespace
   defining rules/queries to ensure the cache is cleared properly."
   []
-  (let [production-syms (->> (ns-interns *ns*)
-                             (filter (comp var? second))
-                             (filter (comp (some-fn :rule :query :production-seq) meta second)) ; Filter down to rules, queries, and seqs of both.
-                             (map first))]               ; Take the symbols for the rule/query vars
-    (doseq [psym production-syms]
+  (let [clara-syms (->> (ns-interns *ns*)
+                        (filter (comp var? second))
+                        (filter (comp (some-fn :rule
+                                               :query
+                                               :hierarchy
+                                               :fact
+                                               :fact-seq
+                                               :production-seq) meta second)) ; Filter down to rules, queries, facts, and hierarchy.
+                        (map first))] ; Take the symbols for each var
+    (doseq [psym clara-syms]
       (ns-unmap *ns* psym))))

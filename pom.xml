@@ -22,27 +22,17 @@
     <dependency>
       <groupId>org.clojure</groupId>
       <artifactId>clojure</artifactId>
-      <version>1.10.3</version>
-    </dependency>
-    <dependency>
-      <groupId>org.clojure</groupId>
-      <artifactId>core.cache</artifactId>
-      <version>1.0.225</version>
-    </dependency>
-    <dependency>
-      <groupId>org.clj-commons</groupId>
-      <artifactId>digest</artifactId>
-      <version>1.4.100</version>
-    </dependency>
-    <dependency>
-      <groupId>com.github.k13labs</groupId>
-      <artifactId>futurama</artifactId>
-      <version>1.0.2</version>
+      <version>1.11.2</version>
     </dependency>
     <dependency>
       <groupId>com.cnuernber</groupId>
       <artifactId>ham-fisted</artifactId>
-      <version>2.016</version>
+      <version>2.017</version>
+    </dependency>
+    <dependency>
+      <groupId>org.clojure</groupId>
+      <artifactId>data.fressian</artifactId>
+      <version>1.1.0</version>
     </dependency>
     <dependency>
       <groupId>prismatic</groupId>
@@ -50,9 +40,19 @@
       <version>1.4.1</version>
     </dependency>
     <dependency>
+      <groupId>com.github.k13labs</groupId>
+      <artifactId>futurama</artifactId>
+      <version>1.0.3</version>
+    </dependency>
+    <dependency>
+      <groupId>org.clj-commons</groupId>
+      <artifactId>digest</artifactId>
+      <version>1.4.100</version>
+    </dependency>
+    <dependency>
       <groupId>org.clojure</groupId>
-      <artifactId>data.fressian</artifactId>
-      <version>1.0.0</version>
+      <artifactId>core.cache</artifactId>
+      <version>1.1.234</version>
     </dependency>
   </dependencies>
   <build>

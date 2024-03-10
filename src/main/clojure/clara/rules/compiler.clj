@@ -5,6 +5,7 @@
   (:require [clara.rules.engine :as eng]
             [clara.rules.schema :as schema]
             [clara.rules.platform :refer [jeq-wrap] :as platform]
+            [clara.rules.hierarchy :as hierarchy]
             [clojure.core.cache.wrapped :as cache]
             [clj-commons.digest :as digest]
             [ham-fisted.api :as hf]
@@ -66,6 +67,12 @@
 (defprotocol IRuleSource
   (load-rules [source]))
 
+(defprotocol IFactSource
+  (load-facts [source]))
+
+(defprotocol IHierarchySource
+  (load-hierarchies [source]))
+
 (sc/defschema BetaNode
   "These nodes exist in the beta network."
   (sc/pred (comp #{ProductionNode
@@ -109,7 +116,7 @@
 (defn- md5-hash
   "Returns the md5 digest of the given data after converting it to a string"
   [x]
-  (digest/md5 ^String (str x)))
+  (digest/md5 ^String (pr-str x)))
 
 (defn- is-variable?
   "Returns true if the given expression is a variable (a symbol prefixed by ?)"
@@ -180,6 +187,8 @@
                  (#{'clojure.core/= 'clojure.core/==} (qualify-when-sym op))))))
 
 (def ^:dynamic *compile-ctx* nil)
+
+(def ^:dynamic *hierarchy* nil)
 
 (defn try-eval
   "Evals the given `expr`.  If an exception is thrown, it is caught and an
@@ -1933,6 +1942,15 @@
                 (recur))))
           (hf/persistent! return-list))))))
 
+(defn create-ancestors-fn
+  [{:keys [ancestors-fn
+           hierarchy]}]
+  (let [hierarchy-fn (when hierarchy
+                       (partial ancestors hierarchy))]
+    (if (and ancestors-fn hierarchy-fn)
+      (comp (partial apply set/union) (juxt ancestors-fn hierarchy-fn))
+      (or ancestors-fn hierarchy-fn ancestors))))
+
 (sc/defn build-network
   "Constructs the network from compiled beta tree and condition functions."
   [id-to-node :- schema/MutableLongHashMap
@@ -2048,6 +2066,7 @@
 (sc/defn mk-session*
   "Compile the rules into a rete network and return the given session."
   [productions :- #{schema/Production}
+   facts :- [sc/Any]
    options :- {sc/Keyword sc/Any}]
   (validate-names-unique productions)
   (let [;; A stateful counter used for unique ids of the nodes of the graph.
@@ -2088,8 +2107,7 @@
                          type)
 
         ;; The ancestors for a logical type uses Clojure's ancestors function unless overridden.
-        ancestors-fn (or (get options :ancestors-fn)
-                         ancestors)
+        ancestors-fn (create-ancestors-fn options)
 
         ;; The default is to sort activations in descending order by their salience.
         activation-group-sort-fn (eng/options->activation-group-sort-fn options)
@@ -2104,13 +2122,14 @@
 
         get-alphas-fn (:get-alphas-fn rulebase)
 
-        transport (LocalTransport.)]
+        transport (LocalTransport.)
 
-    (eng/assemble {:rulebase rulebase
-                   :memory (eng/local-memory rulebase transport activation-group-sort-fn activation-group-fn get-alphas-fn)
-                   :transport transport
-                   :listeners (get options :listeners  [])
-                   :get-alphas-fn get-alphas-fn})))
+        session (eng/assemble {:rulebase rulebase
+                               :memory (eng/local-memory rulebase transport activation-group-sort-fn activation-group-fn get-alphas-fn)
+                               :transport transport
+                               :listeners (get options :listeners  [])
+                               :get-alphas-fn get-alphas-fn})]
+    (eng/insert session facts)))
 
 (defn add-production-load-order
   "Adds ::rule-load-order to metadata of productions. Custom DSL's may need to use this if
@@ -2137,7 +2156,69 @@
     (var? source)
     (load-rules-from-source @source)
 
+    (:lhs source)
+    [source]
+
+    :else []))
+
+(defn load-facts-from-source
+  "loads the hierarchies from a source if it implements `IRuleSource`, or navigates inside
+  collections to load from vectors, lists, sets, seqs."
+  [source]
+  (cond
+    (u/instance-satisfies? IFactSource source)
+    (load-facts source)
+
+    (or (vector? source)
+        (list? source)
+        (set? source)
+        (seq? source))
+    (mapcat load-facts-from-source source)
+
+    (var? source)
+    (load-facts-from-source @source)
+
+    (fn? source) ;;; source is a rule fn so it can't also be a fact unless explicitly inserted
+    []
+
+    (:hierarchy-data source) ;;; source is a hierarchy so it can't also be a fact unless explicitly inserted
+    []
+
+    (:lhs source) ;;; source is a production so it can't also be a fact unless explicitly inserted
+    []
+
     :else [source]))
+
+(defn load-hierarchies-from-source
+  "loads the hierarchies from a source if it implements `IRuleSource`, or navigates inside
+  collections to load from vectors, lists, sets, seqs."
+  [source]
+  (cond
+    (u/instance-satisfies? IHierarchySource source)
+    (load-hierarchies source)
+
+    (or (vector? source)
+        (list? source)
+        (set? source)
+        (seq? source))
+    (mapcat load-hierarchies-from-source source)
+
+    (var? source)
+    (load-hierarchies-from-source @source)
+
+    (:hierarchy-data source)
+    [source]
+
+    :else []))
+
+(defn- reduce-hierarchy
+  [h {:keys [hierarchy-data]}]
+  (reduce (fn apply-op
+            [h [op tag parent]]
+            (case op
+              :d (hierarchy/derive h tag parent)
+              :u (hierarchy/underive h tag parent)
+              (throw (ex-info "Unsupported operation building hierarchy" {:op op})))) h hierarchy-data))
 
 (defn mk-session
   "Creates a new session using the given rule source. The resulting session
@@ -2152,6 +2233,15 @@
                               (into (sorted-set-by production-load-order-comp) productions-unique)
                               ;; Store the name of the custom comparator for durability.
                               {:clara.rules.durability/comparator-name `production-load-order-comp})
+         hierarchies-loaded (cond->> (mapcat load-hierarchies-from-source sources)
+                              (:hierarchy options) (cons (:hierarchy options)))
+         hierarchy (when (seq hierarchies-loaded)
+                     (reduce reduce-hierarchy (hierarchy/make-hierarchy) hierarchies-loaded))
+         facts (->> (mapcat load-facts-from-source sources)
+                    (vec))
+         options (cond-> options
+                   (some? hierarchy)
+                   (assoc :hierarchy hierarchy))
          options-cache (get options :cache)
          session-cache (cond
                          (true? options-cache)
@@ -2160,9 +2250,11 @@
                          default-session-cache
                          :else options-cache)
          ;;; this is simpler than storing all the productions and options in the cache
-         session-key (str (md5-hash productions-sorted) (md5-hash (dissoc options :cache :compiler-cache)))]
+         session-key (str (md5-hash productions-sorted)
+                          (md5-hash (dissoc options :cache :compiler-cache))
+                          (hash facts))]
      (if session-cache
        (cache/lookup-or-miss session-cache session-key
                              (fn do-mk-session [_]
-                               (mk-session* productions-sorted options)))
-       (mk-session* productions-sorted options)))))
+                               (mk-session* productions-sorted facts options)))
+       (mk-session* productions-sorted facts options)))))
