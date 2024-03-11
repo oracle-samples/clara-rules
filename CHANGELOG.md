@@ -1,7 +1,7 @@
 This is a history of changes to k13labs/clara-rules.
 
 # 1.4.0-SNAPSHOT
-* include linter fixes for `defrule` and `defquery` which were not processing docstrings correctly.
+* update linter config for new macros.
 * `defrule` now defines rules as functions with two arities, no args returns the rule map, and 2 args is the compiled RHS.
 * `clojure.lang.Fn` now implements `clara.rules.compiler/IRuleSource`, and returns a single rule by invoking the like `(a-rule)`.
 * add built-in support to serialize `clojure.lang.Var` so that a rule handler var can be serialized correctly.
@@ -9,6 +9,10 @@ This is a history of changes to k13labs/clara-rules.
 * add `defhierarchy` macro to define hierarchies of facts allowing to easily establish parent/child relationships.
 * add `defdata` macro to define facts and collections of facts in namespaces allowing to easily embed and insert them during mk-session.
 * rename `clear-ns-productions!` to `clear-ns-vars!` since now there are ns-installed vars that are not productions.
+
+# 1.3.3
+* Upgrade to clojure 1.11.2 to fix `CVE-2024-22871`, despite not really affecting clara-rules.
+* Add clj-kondo linter updates to fix bad docstring expression.
 
 # 1.3.2
 * Enhance memory add-activations implementation by replacing get/set with compute!
