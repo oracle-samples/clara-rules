@@ -3,12 +3,12 @@
                  :fn compile-main-java
                  :ensure "target/main/classes"}
  :deps {org.clojure/clojure {:mvn/version "1.11.2"}
-        org.clojure/core.cache {:mvn/version "1.0.225"}
+        org.clojure/core.cache {:mvn/version "1.1.234"}
         org.clj-commons/digest {:mvn/version "1.4.100"}
-        com.github.k13labs/futurama {:mvn/version "1.0.2"}
-        com.cnuernber/ham-fisted {:mvn/version "2.016"}
+        com.github.k13labs/futurama {:mvn/version "1.0.3"}
+        com.cnuernber/ham-fisted {:mvn/version "2.017"}
         prismatic/schema {:mvn/version "1.4.1"}
-        org.clojure/data.fressian {:mvn/version "1.0.0"}}
+        org.clojure/data.fressian {:mvn/version "1.1.0"}}
 
  ;for more examples of aliases see: https://github.com/seancorfield/dot-clojure
  :aliases
@@ -49,16 +49,16 @@
                           rewrite-clj/rewrite-clj {:mvn/version "0.6.1"}}
              :main-opts ["-m" "depot.outdated.main"]}
 
-  :jar {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.0.216"}}
+  :jar {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.303"}}
         :exec-fn hf.depstar/jar
         :exec-args {:jar "build/clara-rules.jar"}}
 
-  :install-maven {:extra-deps {slipset/deps-deploy {:mvn/version "0.1.5"}}
+  :install-maven {:extra-deps {slipset/deps-deploy {:mvn/version "0.2.2"}}
                   :exec-fn deps-deploy.deps-deploy/deploy
                   :exec-args {:installer :local
                               :artifact "build/clara-rules.jar"}}
 
-  :deploy-maven {:replace-deps {slipset/deps-deploy {:mvn/version "0.1.5"}}
+  :deploy-maven {:replace-deps {slipset/deps-deploy {:mvn/version "0.2.2"}}
                  :exec-fn deps-deploy.deps-deploy/deploy
                  :exec-args {:installer :remote
                              :artifact "build/clara-rules.jar"}}}
