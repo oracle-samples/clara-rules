@@ -3,22 +3,22 @@
   :url "https://github.com/cerner/clara-rules"
   :license {:name "Apache License Version 2.0"
             :url "https://www.apache.org/licenses/LICENSE-2.0"}
-  :dependencies [[org.clojure/clojure "1.7.0"]
+  :dependencies [[org.clojure/clojure "1.11.2"]
                  [prismatic/schema "1.1.6"]]
   :profiles {:dev {:dependencies [[org.clojure/math.combinatorics "0.1.3"]
                                   [org.clojure/data.fressian "0.2.1"]
                                   [clj-kondo/clj-kondo "2023.04.14"]]
                    :java-source-paths ["src/test/java"]
                    :global-vars {*warn-on-reflection* true}}
-             :provided {:dependencies [[org.clojure/clojurescript "1.7.170"]]}
-             :recent-clj {:dependencies [^:replace [org.clojure/clojure "1.9.0"]
-                                         ^:replace [org.clojure/clojurescript "1.9.946"]]}
+             :provided {:dependencies [[org.clojure/clojurescript "1.11.132"]]}
+             :recent-clj {:dependencies [^:replace [org.clojure/clojure "1.11.2"]
+                                         ^:replace [org.clojure/clojurescript "1.11.132"]]}
              :java9 {:jvm-opts ["--add-modules=java.xml.bind"]}}
   :plugins [[lein-codox "0.10.3" :exclusions [org.clojure/clojure
                                               org.clojure/clojurescript]]
             [lein-javadoc "0.3.0" :exclusions [org.clojure/clojure
                                                org.clojure/clojurescript]]
-            [lein-cljsbuild "1.1.7" :exclusions [org.clojure/clojure
+            [lein-cljsbuild "1.1.8" :exclusions [org.clojure/clojure
                                                  org.clojure/clojurescript]]
             [lein-figwheel "0.5.14" :exclusions [org.clojure/clojure
                                                  org.clojure/clojurescript]]
@@ -36,7 +36,7 @@
   :resource-paths ["clj-kondo"]
   :test-paths ["src/test/clojure" "src/test/common"]
   :java-source-paths ["src/main/java"]
-  :javac-options ["-target" "1.6" "-source" "1.6"]
+  :javac-options ["-target" "1.8" "-source" "1.8"]
   :clean-targets ^{:protect false} ["resources/public/js" "target"]
   :hooks [leiningen.cljsbuild]
   :cljsbuild {:builds [;; Simple mode compilation for tests.
@@ -61,18 +61,18 @@
                                    :anon-fn-naming-policy :mapped
                                    :optimizations :advanced}}]
 
-              :test-commands {"phantom-simple" ["phantomjs"
-                                                "src/test/js/runner.js"
-                                                "src/test/html/simple.html"]
-
-                              "phantom-advanced" ["phantomjs"
+              :test-commands {"puppeteer-simple" ["node"
                                                   "src/test/js/runner.js"
-                                                  "src/test/html/advanced.html"]}}
+                                                  "src/test/html/simple.html"]
+
+                              "puppeteer-advanced" ["node"
+                                                    "src/test/js/runner.js"
+                                                    "src/test/html/advanced.html"]}}
 
   :repl-options {;; The large number of ClojureScript tests is causing long compilation times
                  ;; to start the REPL.
                  :timeout 180000}
-  
+
   ;; Factoring out the duplication of this test selector function causes an error,
   ;; perhaps because Leiningen is using this as uneval'ed code.
   ;; For now just duplicate the line.
@@ -86,7 +86,7 @@
                                             (some->> x :ns ns-name str (re-matches (re-pattern (apply str patterns)))))))
                    :generative (fn [x] (some->> x :ns ns-name str (re-matches #"^clara\.generative.*")))
                    :performance (fn [x] (some->> x :ns ns-name str (re-matches #"^clara\.performance.*")))}
-  
+
   :scm {:name "git"
         :url "https://github.com/cerner/clara-rules"}
   :pom-addition [:developers [:developer

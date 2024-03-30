@@ -249,7 +249,7 @@
   ([exp-seq equality-only-variables]
 
    (if (empty? exp-seq)
-     `(deref ~'?__bindings__)
+     '?__bindings__
      (let [ [exp & rest-exp] exp-seq
             variables (into #{}
                             (filter (fn [item]
@@ -286,11 +286,10 @@
          ;; First assign each value in a let, so it is visible to subsequent expressions.
          `(let [~@(for [variable variables
                         let-expression [variable (first expression-values)]]
-                    let-expression)]
-
-            ;; Update the bindings produced by this expression.
-            ~@(for [variable variables]
-                `(swap! ~'?__bindings__ assoc ~(keyword variable) ~variable))
+                    let-expression)
+                ;; Update the bindings produced by this expression.
+                ;; intentional shadowing here.
+                ~'?__bindings__ (assoc ~'?__bindings__ ~@(mapcat (juxt keyword identity) variables))]
 
             ;; If there is more than one expression value, we need to ensure they are
             ;; equal as well as doing the bind. This ensures that value-1 and value-2 are
@@ -405,18 +404,11 @@
     `(fn ~fn-name [~(add-meta '?__fact__ type)
                    ~destructured-env]
        (let [~@assignments
-             ~'?__bindings__ (atom ~initial-bindings)]
+             ~'?__bindings__ ~initial-bindings]
          ~(compile-constraints constraints)))))
-
-(defn build-token-assignment
-  "A helper function to build variable assignment forms for tokens."
-  [binding-key]
-  (list (symbol (name binding-key))
-        (list `-> '?__token__ :bindings binding-key)))
 
 (defn compile-test-handler [node-id constraints env]
   (let [binding-keys (variables-as-keywords constraints)
-        assignments (mapcat build-token-assignment binding-keys)
 
         ;; The destructured environment, if any
         destructured-env (if (> (count env) 0)
@@ -426,7 +418,7 @@
         ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-test' to be used for this scenario
         fn-name (mk-node-fn-name "TestNode" node-id "TE")]
     `(fn ~fn-name [~'?__token__ ~destructured-env]
-       (let [~@assignments]
+       (let [{:keys [~@(map (comp symbol name) binding-keys)]} (:bindings ~'?__token__)]
          (and ~@constraints)))))
 
 (defn compile-test [node-id constraints env]
@@ -445,11 +437,9 @@
         ;; providing it to Clara.
         rhs-bindings-used (variables-as-keywords rhs)
 
-        assignments (sequence
-                     (comp
-                       (filter rhs-bindings-used)
-                       (mapcat build-token-assignment))
-                     binding-keys)
+        token-binding-keys (sequence
+                             (filter rhs-bindings-used)
+                             binding-keys)
 
         ;; The destructured environment, if any.
         destructured-env (if (> (count env) 0)
@@ -459,7 +449,7 @@
         ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-action' to be used for this scenario
         fn-name (mk-node-fn-name "ProductionNode" node-id "AE")]
     `(fn ~fn-name [~'?__token__  ~destructured-env]
-       (let [~@assignments]
+       (let [{:keys [~@(map (comp symbol name) token-binding-keys)]} (:bindings ~'?__token__)]
          ~rhs))))
 
 (defn compile-accum
@@ -508,17 +498,6 @@
         ;; created element bindings for this condition removed.
         token-binding-keys (remove element-bindings (variables-as-keywords constraints))
 
-        token-assignments (mapcat build-token-assignment token-binding-keys)
-
-        new-binding-assignments (mapcat #(list (symbol (name %))
-                                               (list 'get '?__element-bindings__ %))
-                                        element-bindings)
-
-        assignments (concat
-                     fact-assignments
-                     token-assignments
-                     new-binding-assignments)
-
         equality-only-variables (into #{} (for [binding ancestor-bindings]
                                             (symbol (name (keyword binding)))))
 
@@ -530,8 +509,10 @@
          ~(add-meta '?__fact__ type)
          ~'?__element-bindings__
          ~destructured-env]
-       (let [~@assignments
-             ~'?__bindings__ (atom {})]
+       (let [~@fact-assignments
+             {:keys [~@(map (comp symbol name) element-bindings)]} ~'?__element-bindings__
+             {:keys [~@(map (comp symbol name) token-binding-keys)]} (:bindings ~'?__token__)
+             ~'?__bindings__ {}]
          ~(compile-constraints constraints equality-only-variables)))))
 
 (defn- expr-type [expression]

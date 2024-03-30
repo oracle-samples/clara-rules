@@ -598,10 +598,14 @@
           prod-name-using-sym (first (node-fn-name->production-name base-session
                                                                     'clara.tools.test-inspect/AN_1_AE))
 
-          prod-name-using-fn (first (node-fn-name->production-name base-session
+          prod-name-using-fn #?(:clj (first (node-fn-name->production-name base-session
                                                                    ;; it doesn't really matter what the fn does, just that it is named
                                                                    ;; correctly
-                                                                   (fn AN-1-AE [] 42)))]
+                                                                   (fn AN-1-AE [] 42)))
+                                ;; in later versions of clojurescript anonymous functions no longer have mapped names
+                                ;; when compiled in an optimized manner
+                                :cljs "cold-rule")
+          ]
       (is (= prod-name-using-str "cold-rule"))
       (is (= prod-name-using-sym "cold-rule"))
       (is (= prod-name-using-fn "cold-rule"))))

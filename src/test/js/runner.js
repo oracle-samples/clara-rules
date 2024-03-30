@@ -1,37 +1,43 @@
-var page = require('webpage').create();
-var system = require('system');
+var puppeteer = require('puppeteer');
 
-if (system.args.length !== 2) {
+if (process.argv.length !== 3) {
   console.log('Expected a target URL parameter.');
-  phantom.exit(1);
+  process.exit(1);
 }
 
-page.onConsoleMessage = function (message) {
-  console.log(message);
-};
+(async ()  => {
+    const browser = await puppeteer.launch({ headless: true }); // Launch headless Chrome
+    const page = await browser.newPage(); // Create a new page
 
-var url = system.args[1];
+    // test html file
+    var url = 'file://' + process.cwd() + '/' + process.argv[2];
 
-page.open(url, function (status) {
-    if (status !== "success") {
-	console.log('Failed to open ' + url);
-	setTimeout(function() {
-	    phantom.exit(1);
-	}, 0);
-    }
+    await page.goto(url);
 
-    // Note that we have to return a primitive value from this function
-    // rather than setting a closure variable.  The executed function is sandboxed
-    // by PhantomJS and can't set variables outside its scope.
-    var success = page.evaluate(function() {
-	return clara.test.run();
+    page.on('console', async (msg) => {
+      const msgArgs = msg.args();
+      for (let i = 0; i < msgArgs.length; ++i) {
+        console.log(await msgArgs[i].jsonValue());
+      }
     });
 
-    setTimeout(function() {
-	if (success){
-	    phantom.exit(0);
-	} else {
-	    phantom.exit(1);
-	}
-    }, 0);
-});
+    var success = await page.evaluate(() => {
+        return clara.test.run();
+    })
+
+    await browser.close();
+
+    return success;
+})().then(success =>
+  {
+  if (success){
+      process.exit(0);
+  } else {
+      process.exit(1);
+  }
+})
+
+
+
+
+
