@@ -22,7 +22,7 @@ jobs:
         # Version Spec of the version to use.  Examples: 12.x, 10.15.1, >=10.15.0
         node-version: 18.16.0
     - name: Install Puppeteer
-      run: npm install -g puppeteer
+      run: npm install puppeteer
     - name: Install Chrome
       run: npx puppeteer browsers install chrome
     - name: Install dependencies
