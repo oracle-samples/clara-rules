@@ -132,6 +132,7 @@
           `(eng/->TestNode
             ~id
             ~(:env beta-node)
+            ~(:constraints condition)
             ~(com/compile-test id (:constraints condition) (:env beta-node))
             ~(gen-beta-network child-ids beta-graph all-bindings))
 

@@ -418,13 +418,13 @@
         ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-test' to be used for this scenario
         fn-name (mk-node-fn-name "TestNode" node-id "TE")]
     `(fn ~fn-name [~'?__token__ ~destructured-env]
-       (let [{:keys [~@(map (comp symbol name) binding-keys)]} (:bindings ~'?__token__)]
-         (and ~@constraints)))))
+       ~(if (seq binding-keys)
+          `(let [{:keys [~@(map (comp symbol name) binding-keys)]} (:bindings ~'?__token__)]
+             (and ~@constraints))
+          `(and ~@constraints)))))
 
 (defn compile-test [node-id constraints env]
-  (let [test-handler (compile-test-handler node-id constraints env)]
-    `(array-map :handler ~test-handler
-                :constraints '~constraints)))
+  (compile-test-handler node-id constraints env))
 
 (defn compile-action
   "Compile the right-hand-side action of a rule, returning a function to execute it."
@@ -448,9 +448,11 @@
 
         ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-action' to be used for this scenario
         fn-name (mk-node-fn-name "ProductionNode" node-id "AE")]
-    `(fn ~fn-name [~'?__token__  ~destructured-env]
-       (let [{:keys [~@(map (comp symbol name) token-binding-keys)]} (:bindings ~'?__token__)]
-         ~rhs))))
+    `(fn ~fn-name [~'?__token__ ~destructured-env]
+       ~(if (seq token-binding-keys)
+          `(let [{:keys [~@(map (comp symbol name) token-binding-keys)]} (:bindings ~'?__token__)]
+             ~rhs)
+          rhs))))
 
 (defn compile-accum
   "Used to create accumulators that take the environment into account."
@@ -510,8 +512,10 @@
          ~'?__element-bindings__
          ~destructured-env]
        (let [~@fact-assignments
-             {:keys [~@(map (comp symbol name) element-bindings)]} ~'?__element-bindings__
-             {:keys [~@(map (comp symbol name) token-binding-keys)]} (:bindings ~'?__token__)
+             ~@(if (seq element-bindings)
+                [{:keys (mapv (comp symbol name) element-bindings)} '?__element-bindings__])
+             ~@(if (seq token-binding-keys)
+                 [{:keys (mapv (comp symbol name) token-binding-keys)} (list :bindings '?__token__)])
              ~'?__bindings__ {}]
          ~(compile-constraints constraints equality-only-variables)))))
 
@@ -1591,6 +1595,7 @@
       (eng/->TestNode
         id
         env
+        (:constraints condition)
         (compiled-expr-fn id :test-expr)
         children)
 
