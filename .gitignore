@@ -18,5 +18,3 @@ figwheel_server.log
 .clj-kondo
 .lsp
 node_modules/*
-package.json
-package-lock.json
