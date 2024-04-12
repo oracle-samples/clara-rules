@@ -288,7 +288,8 @@
                         let-expression [variable (first expression-values)]]
                     let-expression)
                 ;; Update the bindings produced by this expression.
-                ;; intentional shadowing here.
+                ;; intentional shadowing here of the ?__bindings__ variable with each newly
+                ;; bound variables associated.
                 ~'?__bindings__ (assoc ~'?__bindings__ ~@(mapcat (juxt keyword identity) variables))]
 
             ;; If there is more than one expression value, we need to ensure they are
@@ -418,6 +419,10 @@
         ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-test' to be used for this scenario
         fn-name (mk-node-fn-name "TestNode" node-id "TE")]
     `(fn ~fn-name [~'?__token__ ~destructured-env]
+       ;; exceedingly unlikely that we'd have a test node without bound variables to be tested,
+       ;; however since the contract is that of arbitrary clojure there is nothing preventing users
+       ;; from defining tests that look outside the Session here. In such event, those without bound variables,
+       ;; we can avoid the bindings entirely.
        ~(if (seq binding-keys)
           `(let [{:keys [~@(map (comp symbol name) binding-keys)]} (:bindings ~'?__token__)]
              (and ~@constraints))
@@ -449,6 +454,8 @@
         ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-action' to be used for this scenario
         fn-name (mk-node-fn-name "ProductionNode" node-id "AE")]
     `(fn ~fn-name [~'?__token__ ~destructured-env]
+       ;; similar to test nodes, nothing in the contract of an RHS enforces that bound variables must be used.
+       ;; similarly we will not bind anything in this event, and thus the let block would be superfluous.
        ~(if (seq token-binding-keys)
           `(let [{:keys [~@(map (comp symbol name) token-binding-keys)]} (:bindings ~'?__token__)]
              ~rhs)
@@ -512,6 +519,8 @@
          ~'?__element-bindings__
          ~destructured-env]
        (let [~@fact-assignments
+             ;; We should always have some form of bound variables here, however in the event that we ever didn't
+             ;; there would be no need to generate non-existent bindings.
              ~@(if (seq element-bindings)
                 [{:keys (mapv (comp symbol name) element-bindings)} '?__element-bindings__])
              ~@(if (seq token-binding-keys)
