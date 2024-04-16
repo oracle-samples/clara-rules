@@ -43,7 +43,12 @@ Here's a simple example. Complete documentation is at [clara-rules.org](http://w
 
 # _Building_
 
-Clara is built, tested, and deployed using [Leiningen](http://leiningen.org).  
+Clara is built, tested, and deployed using [Leiningen](http://leiningen.org). 
+ClojureScript tests are executed via [puppeteer](https://pptr.dev/). 
+``` 
+npm install -g puppeteer
+npx puppeteer browsers install chrome
+```
 
 # _Availability_
 
