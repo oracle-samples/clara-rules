@@ -95,7 +95,6 @@
                               [:url "http://www.clara-rules.org"]]]
   :deploy-repositories [["snapshots" {:url "https://oss.sonatype.org/content/repositories/snapshots/"
                                       :creds :gpg}]
-                        ["clojars" {:url "https://repo.clojars.org"
-                                    :username :env/clojars_username
-                                    :password :env/clojars_password
-                                    :sign-releases false}]])
+                        ["releases" {:url "https://repo.clojars.org"
+                                     :creds :gpg
+                                     :sign-releases false}]])
