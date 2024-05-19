@@ -71,11 +71,9 @@
   [node-id binding-keys rhs env]
   (let [rhs-bindings-used (com/variables-as-keywords rhs)
 
-        assignments (sequence
-                     (comp
-                      (filter rhs-bindings-used)
-                      (mapcat com/build-token-assignment))
-                     binding-keys)
+        token-binding-keys (sequence
+                            (filter rhs-bindings-used)
+                            binding-keys)
 
         ;; The destructured environment, if any.
         destructured-env (if (> (count env) 0)
@@ -84,10 +82,14 @@
 
         ;; Hardcoding the node-type and fn-type as we would only ever expect 'compile-action' to be used for this scenario
         fn-name (com/mk-node-fn-name "ProductionNode" node-id "AE")]
-    `(fn ~fn-name [~'?__token__  ~destructured-env]
+    `(fn ~fn-name [~'?__token__ ~destructured-env]
+       ;; similar to test nodes, nothing in the contract of an RHS enforces that bound variables must be used.
+       ;; similarly we will not bind anything in this event, and thus the let block would be superfluous.
        (async
-        (let [~@assignments]
-          ~rhs)))))
+        ~(if (seq token-binding-keys)
+           `(let [{:keys [~@(map (comp symbol name) token-binding-keys)]} (:bindings ~'?__token__)]
+              ~rhs)
+           rhs)))))
 
 (defn test-fire-rules-async
   ([session]

@@ -43,7 +43,7 @@
   (let [get-node-fns (fn [node]
                        (condp instance? node
                          AlphaNode [(:activation node)]
-                         TestNode [(-> node :test :handler)]
+                         TestNode [(:test node)]
                          AccumulateNode []
                          AccumulateWithJoinFilterNode [(:join-filter-fn node)]
                          ProductionNode [(:rhs node)]
