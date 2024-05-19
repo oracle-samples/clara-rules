@@ -949,7 +949,7 @@
 ;; The test node represents a Rete extension in which an arbitrary test condition is run
 ;; against bindings from ancestor nodes. Since this node
 ;; performs no joins it does not accept right activations or retractions.
-(defrecord TestNode [id env test children]
+(defrecord TestNode [id env constraints test children]
   ILeftActivate
   (left-activate [node join-bindings tokens memory transport listener]
     (l/left-activate! listener node tokens)
@@ -960,7 +960,7 @@
      children
      (platform/compute-for
       [token tokens]
-      (test-node-match->Token node (:handler test) env token))))
+      (test-node-match->Token node test env token))))
 
   (left-retract [node join-bindings tokens memory transport listener]
     (l/left-retract! listener node tokens)
@@ -972,7 +972,7 @@
 
   IConditionNode
   (get-condition-description [this]
-    (into [:test] (:constraints test))))
+    (into [:test] constraints)))
 
 (defn- do-accumulate
   "Runs the actual accumulation.  Returns the accumulated value."

@@ -18,3 +18,4 @@ figwheel_server.log
 .clj-kondo
 .lsp
 .cpcache
+node_modules/*
