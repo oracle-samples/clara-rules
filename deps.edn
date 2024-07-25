@@ -2,7 +2,7 @@
  :deps/prep-lib {:alias :build
                  :fn compile-main-java
                  :ensure "target/main/classes"}
- :deps {org.clojure/clojure {:mvn/version "1.11.2"}
+ :deps {org.clojure/clojure {:mvn/version "1.11.3"}
         org.clojure/core.cache {:mvn/version "1.1.234"}
         org.clj-commons/digest {:mvn/version "1.4.100"}
         com.github.k13labs/futurama {:mvn/version "1.0.3"}
