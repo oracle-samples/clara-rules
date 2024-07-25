@@ -1,7 +1,8 @@
 (ns clara.tools.loop-detector
   (:require [clara.rules.listener :as l]
             [clara.rules.engine :as eng]
-            [clara.tools.tracing :as trace]))
+            [clara.tools.tracing :as trace])
+  (:import [clojure.lang IDeref]))
 
 ;; Although we use a single type here note that the cycles-count and the on-limit-delay fields
 ;; will be nil during the persistent state of the listener.
@@ -44,7 +45,9 @@
       @on-limit-delay)
     (swap! cycles-count inc))
   (to-persistent! [listener]
-    (CyclicalRuleListener. nil max-cycles on-limit-fn nil))
+    (CyclicalRuleListener. (if (instance? IDeref cycles-count)
+                             (deref cycles-count)
+                             cycles-count) max-cycles on-limit-fn nil))
 
   l/IPersistentEventListener
   (to-transient [listener]

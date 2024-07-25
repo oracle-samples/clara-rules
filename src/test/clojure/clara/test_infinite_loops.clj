@@ -12,9 +12,12 @@
             [clara.rules.accumulators :as acc]
             [clara.tools.loop-detector :as ld]
             [clojure.core.async :refer [timeout]]
-            [futurama.core :refer [!<!! !<! async async-cancel!]])
+            [futurama.core :refer [!<!! !<! async async-cancel!]]
+            [clara.rules.engine :as eng])
   (:import [java.util.concurrent CancellationException]
            [clara.rules.testfacts Cold Hot First Second]
+           [clara.tools.loop_detector
+            CyclicalRuleListener]
            [clara.tools.tracing
             PersistentTracingListener]))
 
@@ -263,6 +266,36 @@
                     fire-rules
                     (query first-query)))
          21)))
+
+(def-rules-test test-cycle-count-returned
+  ;; As the name suggests, this is a test to validate that cycle-count is returned on the persistend listener.
+  {:rules [recursive-rule-with-end [[[First]]
+                                    (when (< @side-effect-holder 20)
+                                      (do
+                                        (insert-unconditional! (->First))
+                                        (swap! side-effect-holder inc)))]]
+
+   :queries [first-query [[] [[?f <- First]]]]
+
+   :sessions [empty-session [recursive-rule-with-end first-query] {}]}
+
+  (reset! side-effect-holder 0)
+
+  (is (= (count (-> (ld/with-loop-detection empty-session 30 :throw-exception)
+                    (insert (->First))
+                    fire-rules
+                    (query first-query)))
+         21))
+
+  (reset! side-effect-holder 0)
+
+  (is (= (let [^CyclicalRuleListener listener (-> (ld/with-loop-detection empty-session 30 :throw-exception)
+                                                  (insert (->First))
+                                                  fire-rules
+                                                  (eng/find-listeners (partial instance? CyclicalRuleListener))
+                                                  first)]
+           (.cycles-count listener))
+         20)))
 
 (def-rules-test test-max-cycles-per-fire-rules-call
 
