@@ -5,9 +5,9 @@
   <groupId>com.github.k13labs</groupId>
   <artifactId>clara-rules</artifactId>
   <name>clara-rules</name>
-  <version>1.3.3</version>
+  <version>1.3.4</version>
   <scm>
-    <tag>1.3.3</tag>
+    <tag>1.3.4</tag>
     <url>https://github.com/k13labs/clara-rules</url>
     <connection>scm:git:git://github.com/k13labs/clara-rules.git</connection>
     <developerConnection>scm:git:ssh://git@github.com/k13labs/clara-rules.git</developerConnection>
