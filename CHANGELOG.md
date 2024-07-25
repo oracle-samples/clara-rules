@@ -1,5 +1,8 @@
 This is a history of changes to k13labs/clara-rules.
 
+# 1.3.4
+* Update CyclicalRulesListener to return the cycles-count value when converted to persistent.
+
 # 1.3.3
 * Upgrade to clojure 1.11.2 to fix `CVE-2024-22871`, despite not really affecting clara-rules.
 * Add clj-kondo linter updates to fix bad docstring expression.
