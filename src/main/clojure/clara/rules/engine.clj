@@ -279,15 +279,17 @@
   "Place facts in a stateful cache to be inserted into the session
   immediately after the RHS of a rule fires."
   [facts unconditional]
-  (if unconditional
-    (swap! (:batched-unconditional-insertions *rule-context*) into facts)
-    (swap! (:batched-logical-insertions *rule-context*) into facts)))
+  (when *rule-context*
+    (if unconditional
+      (swap! (:batched-unconditional-insertions *rule-context*) into facts)
+      (swap! (:batched-logical-insertions *rule-context*) into facts))))
 
 (defn rhs-retract-facts!
   "Place all facts retracted in the RHS in a buffer to be retracted after
    the eval'ed RHS function completes."
   [facts]
-  (swap! (:batched-rhs-retractions *rule-context*) into facts))
+  (when *rule-context*
+    (swap! (:batched-rhs-retractions *rule-context*) into facts)))
 
 (defn ^:private flush-rhs-retractions!
   "Retract all facts retracted in the RHS after the eval'ed RHS function completes.

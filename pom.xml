@@ -22,7 +22,7 @@
     <dependency>
       <groupId>org.clojure</groupId>
       <artifactId>clojure</artifactId>
-      <version>1.11.3</version>
+      <version>1.11.4</version>
     </dependency>
     <dependency>
       <groupId>com.cnuernber</groupId>
@@ -43,11 +43,6 @@
       <groupId>com.github.k13labs</groupId>
       <artifactId>futurama</artifactId>
       <version>1.0.3</version>
-    </dependency>
-    <dependency>
-      <groupId>org.clj-commons</groupId>
-      <artifactId>digest</artifactId>
-      <version>1.4.100</version>
     </dependency>
     <dependency>
       <groupId>org.clojure</groupId>

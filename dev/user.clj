@@ -1,19 +1,15 @@
 (ns user
-  (:refer-clojure :exclude [derive underive])
   (:require [criterium.core :refer [report-result
-                                    quick-benchmark] :as crit]
-            [clara.rules.platform :refer [compute-for]]
-            [clojure.core.async :refer [go timeout <!]]
-            [clara.rules :refer [defrule defquery defdata defhierarchy
-                                 insert! insert insert-all fire-rules query
-                                 mk-session clear-ns-vars!
-                                 derive! underive!]]
-            [clara.rules.compiler :as com]
-            [clojure.core.cache.wrapped :as cache]
-            [schema.core :as sc]
-            [ham-fisted.api :as hf]
-            [ham-fisted.mut-map :as hm])
-  (:import [java.util.concurrent CompletableFuture]))
+                                    quick-benchmark
+                                    with-progress-reporting] :as crit]
+            [clara.rules :refer [defrule defquery defhierarchy
+                                 insert! insert-all!
+                                 insert insert-all
+                                 fire-rules
+                                 query
+                                 mk-session
+                                 clear-ns-vars!]]
+            [clojure.core.cache.wrapped :as cache]))
 
 (comment
   (clear-ns-vars!)
@@ -22,10 +18,8 @@
   (tap> "foobar"))
 
 (defhierarchy foobar
-  (derive! :thing/foo :thing/that)
-  (doseq [x (range 20)]
-    (derive! [:thing/foo (- 20 x)] [:thing/that (- 20 x)]))
-  (derive! :thing/bar :thing/that))
+  :thing/foo :thing/that
+  :thing/bar :thing/that)
 
 (defrule return-a-thing
   [:thing/that [{:keys [value]}] (= value ?value)]
@@ -37,20 +31,20 @@
   []
   [?output <- :thing/result])
 
-(defdata foo
-  {:type :thing/foo
-   :value 1})
+(defrule default-data
+  (insert-all!
+   [{:type :thing/foo
+     :value 1}
+    {:type :thing/bar
+     :value 2}
+    {:type :thing/bar
+     :value 3}]))
 
-(defdata bar
-  [{:type :thing/bar
-    :value 2}
-   {:type :thing/bar
-    :value 3}])
-
-(time
- (-> (mk-session 'user :fact-type-fn :type)
-     (fire-rules)
-     (query query-a-thing)))
+(comment
+  (time
+   (-> (mk-session 'user :fact-type-fn :type)
+       (fire-rules)
+       (query query-a-thing))))
 
 (def session-cache
   (cache/lru-cache-factory {}))

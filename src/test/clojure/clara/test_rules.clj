@@ -933,6 +933,54 @@
     ;; There shouldn't be anything that matches our typical ancestor here.
     (is (empty? (query session type-ancestor-query)))))
 
+(defhierarchy test-hierarchy
+  Temperature :my/parent
+  :my/parent :my/ancestor)
+
+(deftest test-defhierarchy
+  (is (= test-hierarchy
+         (-> (make-hierarchy)
+             (derive Temperature :my/parent)
+             (derive :my/parent :my/ancestor)))))
+
+(deftest test-load-hierarchies
+  (is (= [test-hierarchy]
+         (com/load-hierarchies 'clara.test-rules))))
+
+(deftest test-override-hierarchy
+  (testing "via hierarchy options"
+    (let [special-ancestor-query (dsl/parse-query [] [[?result <- :my/ancestor]])
+          type-ancestor-query (dsl/parse-query [] [[?result <- Temperature]])
+          session (-> (mk-session [special-ancestor-query type-ancestor-query] :hierarchy test-hierarchy)
+                      (insert (->Temperature 15 "MCI"))
+                      (insert (->Temperature 10 "MCI"))
+                      (insert (->Temperature 80 "MCI"))
+                      fire-rules)]
+
+      ;; The special ancestor query should match everything since our hierarchy
+      ;; derives the Temperature class as :my/ancestor.
+      (is (= #{{:?result (->Temperature 15 "MCI")}
+               {:?result (->Temperature 10 "MCI")}
+               {:?result (->Temperature 80 "MCI")}}
+             (set (query session special-ancestor-query))
+             (set (query session type-ancestor-query))))))
+  (testing "via hierarchy params"
+    (let [special-ancestor-query (dsl/parse-query [] [[?result <- :my/ancestor]])
+          type-ancestor-query (dsl/parse-query [] [[?result <- Temperature]])
+          session (-> (mk-session [special-ancestor-query type-ancestor-query test-hierarchy])
+                      (insert (->Temperature 15 "MCI"))
+                      (insert (->Temperature 10 "MCI"))
+                      (insert (->Temperature 80 "MCI"))
+                      fire-rules)]
+
+      ;; The special ancestor query should match everything since our hierarchy
+      ;; derives the Temperature class as :my/ancestor.
+      (is (= #{{:?result (->Temperature 15 "MCI")}
+               {:?result (->Temperature 10 "MCI")}
+               {:?result (->Temperature 80 "MCI")}}
+             (set (query session special-ancestor-query))
+             (set (query session type-ancestor-query)))))))
+
 (deftest test-shared-condition
   (let [cold-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]])
         cold-windy-query (dsl/parse-query [] [[Temperature (< temperature 20) (= ?t temperature)]
@@ -2442,7 +2490,7 @@
                                                              {:doc  "An extra rule to test for duplicate names."
                                                               :name :clara.rules.test-rules-data/is-cold-and-windy-data
                                                               :lhs  []
-                                                              :rhs  '(println "I have no meaning outside of this test")}))) [] {})))
+                                                              :rhs  '(println "I have no meaning outside of this test")}))) {})))
 
 #_{:clj-kondo/ignore [:unresolved-symbol]}
 (deftest test-negation-multiple-children-exception

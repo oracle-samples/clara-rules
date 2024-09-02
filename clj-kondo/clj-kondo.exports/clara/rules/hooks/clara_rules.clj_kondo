@@ -400,6 +400,27 @@
                   merge {:clj-kondo/ignore [:clojure-lsp/unused-public-var]})]
     {:node new-node}))
 
+(defn analyze-defhierarchy-macro
+  "analyze clara-rules defhierarchy macro"
+  [{:keys [:node]}]
+  (let [[var-name & children] (rest (:children node))
+        doc-str (when (= :token (node-type (first children)))
+                  (first children))
+        children (if doc-str (rest children) children)
+        new-node (vary-meta
+                  (api/list-node
+                   (list
+                    (api/token-node 'def)
+                    (if doc-str
+                      (vary-meta var-name merge {:doc doc-str})
+                      var-name)
+                    (api/list-node
+                     (list*
+                      (api/token-node 'do)
+                      children))))
+                  merge {:clj-kondo/ignore [:clojure-lsp/unused-public-var]})]
+    {:node new-node}))
+
 (defn analyze-def-rules-test-macro
   [{:keys [:node]}]
   (let [[test-name test-params & test-body] (rest (:children node))

@@ -15,8 +15,10 @@
 (defn split-lhs-rhs
   "Given a rule with the =>, splits the left- and right-hand sides."
   [rule-body]
-  (let [[lhs [sep & rhs]] (split-with #(not (separator? %)) rule-body)]
-
+  (let [[pre [sep & post]] (split-with (complement separator?) rule-body)
+        [lhs rhs] (if sep
+                    [pre post]
+                    ['() pre])]
     {:lhs lhs
      :rhs (when-not (empty? rhs)
             (conj rhs 'do))}))

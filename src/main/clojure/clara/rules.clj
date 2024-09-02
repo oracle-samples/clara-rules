@@ -1,7 +1,6 @@
 (ns clara.rules
   "Forward-chaining rules for Clojure. The primary API is in this namespace."
   (:require [clara.rules.engine :as eng]
-            [clara.rules.hierarchy :as hierarchy]
             [clara.rules.platform :as platform]
             [clara.rules.compiler :as com]
             [clara.rules.dsl :as dsl]))
@@ -141,39 +140,6 @@
     [(afn)]))
 
 (extend-type clojure.lang.Symbol
-  com/IFactSource
-  (load-facts [sym]
-    ;; Find the facts in the namespace, shred them,
-    ;; and compile them into a rule base.
-    (if (namespace sym)
-      ;; The symbol is qualified, so load hierarchies in the qualified symbol.
-      (let [resolved (resolve sym)]
-        (when (nil? resolved)
-          (throw (ex-info (str "Unable to resolve fact source: " sym) {:sym sym})))
-
-        (cond
-          ;; The symbol references a fact, so just return it
-          (:hierarchy (meta resolved))
-          (com/load-facts-from-source @resolved)
-
-          ;; The symbol references a sequence, so ensure we load all sources.
-          (sequential? @resolved)
-          (mapcat com/load-facts-from-source @resolved)
-
-          :else
-          []))
-
-      ;; The symbol is not qualified, so treat it as a namespace.
-      (->> (ns-interns sym)
-           (vals) ; Get the references in the namespace.
-           (filter var?)
-           (filter (comp (some-fn :fact :fact-seq) meta)) ; Filter down to fact and fact-seq, and seqs of both.
-           ;; If definitions are created dynamically (i.e. are not reflected in an actual code file)
-           ;; it is possible that they won't have :line metadata, so we have a default of 0.
-           (sort (fn [v1 v2]
-                   (compare (or (:line (meta v1)) 0)
-                            (or (:line (meta v2)) 0))))
-           (mapcat com/load-facts-from-source))))
   com/IHierarchySource
   (load-hierarchies [sym]
     ;; Find the hierarchies in the namespace, shred them,
@@ -265,6 +231,8 @@
   * :ancestors-fn, which returns a collection of ancestors for a given type. Defaults to Clojure's ancestors function. A
   fact of a given type will match any rule that uses one of that type's ancestors.  Note that if the collection is ordered
   this ordering will be maintained by Clara; ordering the ancestors consistently will increase the consistency of overall performance.
+  * :hierarchy, can be used to get ancestors using Clojure's ancestors function. This an alternative or compliment to
+  providing a custom :ancestors-fn function.
   * :activation-group-fn, a function applied to production structures and returns the group they should be activated with.
   It defaults to checking the :salience property, or 0 if none exists.
   * :activation-group-sort-fn, a comparator function used to sort the values returned by the above :activation-group-fn.
@@ -349,39 +317,25 @@
     `(def ~(vary-meta name assoc :query true :doc doc)
        ~(dsl/build-query name body (meta &form)))))
 
-(defn derive!
-  [child parent]
-  (hierarchy/derive child parent))
-
-(defn underive!
-  [child parent]
-  (hierarchy/underive child parent))
-
 (defmacro defhierarchy
   "Defines a hierarchy and stores it in the given var. For instance, a simple hierarchy that adds
   several child->parent relationships would look like this:
   (defhierarchy order-types
     \"Defines several order types\"
-    (derive! :order/hvac :order/service)
-    (derive! :order/plumber :order/service)
-    (underive! :order/cinema :order/service))
-  See the [hierarchy authoring documentation](http://www.clara-rules.org)"
+    :order/hvac     :order/service
+    :order/plumber  :order/service
+    :order/cinema   :order/service)"
   [name & body]
-  (let [doc (if (string? (first body)) (first body) nil)]
+  (let [doc (if (and (string? (first body))
+                     (odd? (count body)))
+              (first body)
+              nil)
+        derive-seq (if doc (rest body) body)
+        derive-all (for [[tag parent] (partition 2 derive-seq)]
+                     (list 'clojure.core/derive tag parent))]
     `(def ~(vary-meta name assoc :hierarchy true :doc doc)
-       (binding [hierarchy/*hierarchy* (atom (hierarchy/make-hierarchy))]
-         ~@body))))
-
-(defmacro defdata
-  "Defines a data fact which is stored in the given var. For instance, the following fact is simply a
-  map which is then inserted into the session when the namespace is loaded.
-
-  (defdata default-temperature
-    (Cold. 32))"
-  [name & body]
-  (let [doc (if (string? (first body)) (first body) nil)]
-    `(def ~(vary-meta name assoc :fact true :doc doc)
-       ~@body)))
+       (-> (make-hierarchy)
+           ~@derive-all))))
 
 (defmacro clear-ns-vars!
   "Ensures that any rule/query definitions which have been cached will be cleared from the associated namespace.
@@ -395,8 +349,6 @@
                         (filter (comp (some-fn :rule
                                                :query
                                                :hierarchy
-                                               :fact
-                                               :fact-seq
                                                :production-seq) meta second)) ; Filter down to rules, queries, facts, and hierarchy.
                         (map first))] ; Take the symbols for each var
     (doseq [psym clara-syms]

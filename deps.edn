@@ -2,9 +2,8 @@
  :deps/prep-lib {:alias :build
                  :fn compile-main-java
                  :ensure "target/main/classes"}
- :deps {org.clojure/clojure {:mvn/version "1.11.3"}
+ :deps {org.clojure/clojure {:mvn/version "1.11.4"}
         org.clojure/core.cache {:mvn/version "1.1.234"}
-        org.clj-commons/digest {:mvn/version "1.4.100"}
         com.github.k13labs/futurama {:mvn/version "1.0.3"}
         com.cnuernber/ham-fisted {:mvn/version "2.017"}
         prismatic/schema {:mvn/version "1.4.1"}
@@ -13,7 +12,7 @@
  ;for more examples of aliases see: https://github.com/seancorfield/dot-clojure
  :aliases
  {:build {:paths ["tool"]
-          :deps {io.github.clojure/tools.build {:mvn/version "0.10.0"}}
+          :deps {io.github.clojure/tools.build {:mvn/version "0.10.5"}}
           :ns-default build}
   :dev {:extra-paths ["dev"]
         :extra-deps {reloaded.repl/reloaded.repl {:mvn/version "0.2.4"}
@@ -24,7 +23,7 @@
               :main-opts ["-m" "clj-kondo.main"]}
 
   :test {:extra-paths ["src/test/clojure" "target/test/classes"]
-         :extra-deps {lambdaisland/kaocha {:mvn/version "1.87.1366"}
+         :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}
                       lambdaisland/kaocha-junit-xml {:mvn/version "1.17.101"}
                       lambdaisland/kaocha-cloverage {:mvn/version "1.1.89"}
                       org.clojure/test.check {:mvn/version "1.1.1"}
@@ -35,8 +34,8 @@
            :exec-fn   kaocha.runner/exec-fn}
 
 
-  :repl {:extra-deps {nrepl/nrepl {:mvn/version "1.1.1"}
-                      cider/cider-nrepl {:mvn/version "0.46.0"}}
+  :repl {:extra-deps {nrepl/nrepl {:mvn/version "1.3.0"}
+                      cider/cider-nrepl {:mvn/version "0.50.1"}}
          :main-opts ["-e" "(println \"warn-on-reflection =\" (set! *warn-on-reflection* true))"
                      "-m" "nrepl.cmdline" "--interactive"
                      "--middleware" "[\"cider.nrepl/cider-middleware\"]"]}

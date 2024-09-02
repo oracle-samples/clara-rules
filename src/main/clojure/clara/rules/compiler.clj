@@ -5,9 +5,7 @@
   (:require [clara.rules.engine :as eng]
             [clara.rules.schema :as schema]
             [clara.rules.platform :refer [jeq-wrap] :as platform]
-            [clara.rules.hierarchy :as hierarchy]
             [clojure.core.cache.wrapped :as cache]
-            [clj-commons.digest :as digest]
             [ham-fisted.api :as hf]
             [ham-fisted.set :as hs]
             [ham-fisted.mut-map :as hm]
@@ -67,9 +65,6 @@
 (defprotocol IRuleSource
   (load-rules [source]))
 
-(defprotocol IFactSource
-  (load-facts [source]))
-
 (defprotocol IHierarchySource
   (load-hierarchies [source]))
 
@@ -112,11 +107,6 @@
                         get-alphas-fn
                         ;; A map of [node-id field-name] to function.
                         node-expr-fn-lookup :- schema/NodeFnLookup])
-
-(defn- md5-hash
-  "Returns the md5 digest of the given data after converting it to a string"
-  [x]
-  (digest/md5 ^String (pr-str x)))
 
 (defn- is-variable?
   "Returns true if the given expression is a variable (a symbol prefixed by ?)"
@@ -187,8 +177,6 @@
                  (#{'clojure.core/= 'clojure.core/==} (qualify-when-sym op))))))
 
 (def ^:dynamic *compile-ctx* nil)
-
-(def ^:dynamic *hierarchy* nil)
 
 (defn try-eval
   "Evals the given `expr`.  If an exception is thrown, it is caught and an
@@ -1520,17 +1508,54 @@
                   (:id-to-condition-node beta-graph))]
     (persistent! id->expr)))
 
+(def forms-per-eval-default
+  "The default max number of forms that will be evaluated together as a single batch.
+   5000 is chosen here due to the way that clojure will evaluate the vector of forms extracted from the nodes.
+   The limiting factor here is the max java method size (64KiB), clojure will compile each form in the vector down into
+   its own class file and generate another class file that will reference each of the other functions and wrap them in
+   a vector inside a static method. For example,
+
+   (eval [(fn one [_] ...) (fn two [_] ...)])
+   would generate 3 classes.
+
+   some_namespace$eval1234
+   some_namespace$eval1234$one_1234
+   some_namespace$eval1234$two_1235
+
+   some_namespace$eval1234$one_1234 and some_namespace$eval1234$two_1235 contian the implementation of the functions,
+   where some_namespace$eval1234 will contain two methods, invoke and invokeStatic.
+   The invokeStatic method breaks down into something similar to a single create array call followed by 2 array set calls
+   with new invocations on the 2 classes the method then returns a new vector created from the array.
+
+   5000 is lower than the absolute max to allow for modifications to how clojure compiles without needing to modify this.
+   The current limit should be 5471, this is derived from the following opcode investigation:
+
+   Array creation:                                                    5B
+   Creating and populating the first 6 elements of the array:        60B
+   Creating and populating the next 122 elements of the array:    1,342B
+   Creating and populating the next 5343 elements of the array:  64,116B
+   Creating the vector and the return statement:                      4B
+
+   This sums to 65,527B just shy of the 65,536B method size limit."
+  5000)
+
 (sc/defn compile-exprs :- schema/NodeFnLookup
   "Takes a map in the form produced by extract-exprs and evaluates the values(expressions) of the map in a batched manner.
    This allows the eval calls to be more effecient, rather than evaluating each expression on its own.
    See #381 for more details."
   [key->expr :- schema/NodeExprLookup
-   expr-cache :- (sc/maybe sc/Any)
-   partition-size :- sc/Int]
-  (let [prepare-expr (fn do-prepare-expr
+   options :- {sc/Keyword sc/Any}]
+  (let [expr-cache (or (:compiler-cache options)
+                       default-compiler-cache)
+        forms-per-eval (or (:forms-per-eval options)
+                           forms-per-eval-default)
+        hash-expr-fn (or (:hash-expr-fn options)
+                         hash)
+        prepare-expr (fn do-prepare-expr
                        [[expr-key [expr compilation-ctx]]]
                        (if expr-cache
-                         (let [cache-key (str (md5-hash expr) (md5-hash compilation-ctx))
+                         (let [cache-key [(hash-expr-fn expr)
+                                          (hash-expr-fn compilation-ctx)]
                                compilation-ctx (assoc compilation-ctx :cache-key cache-key)
                                compiled-handler (some-> compilation-ctx :compile-ctx :production :handler resolve)
                                compiled-expr (or compiled-handler
@@ -1578,7 +1603,7 @@
           (for [[nspace ns-expr-group] (sort-by key (group-by (comp :ns second val) key->expr))
                 ;; Partitioning the number of forms to be evaluated, Java has a limit to the size of methods if we were
                 ;; evaluate all expressions at once it would likely exceed this limit and throw an exception.
-                expr-batch (partition-all partition-size ns-expr-group) ;;;; [<node-expr-keys> [<expr> <ctx>]]
+                expr-batch (partition-all forms-per-eval ns-expr-group) ;;;; [<node-expr-keys> [<expr> <ctx>]]
                 :let [grouped-exprs (->> (mapv prepare-expr expr-batch)
                                          (group-by first))
                       prepared-exprs (map second (:prepared grouped-exprs))
@@ -2016,37 +2041,6 @@
       productions
       (throw (ex-info (str "Non-unique production names: " non-unique) {:names non-unique})))))
 
-(def forms-per-eval-default
-  "The default max number of forms that will be evaluated together as a single batch.
-   5000 is chosen here due to the way that clojure will evaluate the vector of forms extracted from the nodes.
-   The limiting factor here is the max java method size (64KiB), clojure will compile each form in the vector down into
-   its own class file and generate another class file that will reference each of the other functions and wrap them in
-   a vector inside a static method. For example,
-
-   (eval [(fn one [_] ...) (fn two [_] ...)])
-   would generate 3 classes.
-
-   some_namespace$eval1234
-   some_namespace$eval1234$one_1234
-   some_namespace$eval1234$two_1235
-
-   some_namespace$eval1234$one_1234 and some_namespace$eval1234$two_1235 contian the implementation of the functions,
-   where some_namespace$eval1234 will contain two methods, invoke and invokeStatic.
-   The invokeStatic method breaks down into something similar to a single create array call followed by 2 array set calls
-   with new invocations on the 2 classes the method then returns a new vector created from the array.
-
-   5000 is lower than the absolute max to allow for modifications to how clojure compiles without needing to modify this.
-   The current limit should be 5471, this is derived from the following opcode investigation:
-
-   Array creation:                                                    5B
-   Creating and populating the first 6 elements of the array:        60B
-   Creating and populating the next 122 elements of the array:    1,342B
-   Creating and populating the next 5343 elements of the array:  64,116B
-   Creating the vector and the return statement:                      4B
-
-   This sums to 65,527B just shy of the 65,536B method size limit."
-  5000)
-
 (def omit-compile-ctx-default
   "During construction of the Session there is data maintained such that if the underlying expressions fail to compile
    then this data can be used to explain the failure and the constraints of the rule who's expression is being evaluated.
@@ -2059,22 +2053,18 @@
 (sc/defn mk-session*
   "Compile the rules into a rete network and return the given session."
   [productions :- #{schema/Production}
-   facts :- [sc/Any]
    options :- {sc/Keyword sc/Any}]
   (validate-names-unique productions)
   (let [;; A stateful counter used for unique ids of the nodes of the graph.
         id-counter (atom 0)
         create-id-fn (fn [] (swap! id-counter inc))
 
-        compiler-cache (:compiler-cache options default-compiler-cache)
-        forms-per-eval (:forms-per-eval options forms-per-eval-default)
-
         beta-graph (to-beta-graph productions create-id-fn)
         alpha-graph (to-alpha-graph beta-graph create-id-fn)
 
         ;; Extract the expressions from the graphs and evaluate them in a batch manner.
         ;; This is a performance optimization, see Issue 381 for more information.
-        exprs (compile-exprs (extract-exprs beta-graph alpha-graph) compiler-cache forms-per-eval)
+        exprs (compile-exprs (extract-exprs beta-graph alpha-graph) options)
 
         ;; If we have made it to this point, it means that we have succeeded in compiling all expressions
         ;; thus we can free the :compile-ctx used for troubleshooting compilation failures.
@@ -2122,7 +2112,7 @@
                                :transport transport
                                :listeners (get options :listeners  [])
                                :get-alphas-fn get-alphas-fn})]
-    (eng/insert session facts)))
+    session))
 
 (defn add-production-load-order
   "Adds ::rule-load-order to metadata of productions. Custom DSL's may need to use this if
@@ -2154,34 +2144,6 @@
 
     :else []))
 
-(defn load-facts-from-source
-  "loads the hierarchies from a source if it implements `IRuleSource`, or navigates inside
-  collections to load from vectors, lists, sets, seqs."
-  [source]
-  (cond
-    (u/instance-satisfies? IFactSource source)
-    (load-facts source)
-
-    (or (vector? source)
-        (list? source)
-        (set? source)
-        (seq? source))
-    (mapcat load-facts-from-source source)
-
-    (var? source)
-    (load-facts-from-source @source)
-
-    (fn? source) ;;; source is a rule fn so it can't also be a fact unless explicitly inserted
-    []
-
-    (:hierarchy-data source) ;;; source is a hierarchy so it can't also be a fact unless explicitly inserted
-    []
-
-    (:lhs source) ;;; source is a production so it can't also be a fact unless explicitly inserted
-    []
-
-    :else [source]))
-
 (defn load-hierarchies-from-source
   "loads the hierarchies from a source if it implements `IRuleSource`, or navigates inside
   collections to load from vectors, lists, sets, seqs."
@@ -2199,19 +2161,12 @@
     (var? source)
     (load-hierarchies-from-source @source)
 
-    (:hierarchy-data source)
+    (and (:parents source)
+         (:ancestors source)
+         (:descendants source))
     [source]
 
     :else []))
-
-(defn- reduce-hierarchy
-  [h {:keys [hierarchy-data]}]
-  (reduce (fn apply-op
-            [h [op tag parent]]
-            (case op
-              :d (hierarchy/derive h tag parent)
-              :u (hierarchy/underive h tag parent)
-              (throw (ex-info "Unsupported operation building hierarchy" {:op op})))) h hierarchy-data))
 
 (defn mk-session
   "Creates a new session using the given rule source. The resulting session
@@ -2226,12 +2181,16 @@
                               (into (sorted-set-by production-load-order-comp) productions-unique)
                               ;; Store the name of the custom comparator for durability.
                               {:clara.rules.durability/comparator-name `production-load-order-comp})
+         options-hierarchy (get options :hierarchy)
          hierarchies-loaded (cond->> (mapcat load-hierarchies-from-source sources)
-                              (:hierarchy options) (cons (:hierarchy options)))
+                              options-hierarchy
+                              (cons (:hierarchy options)))
          hierarchy (when (seq hierarchies-loaded)
-                     (reduce reduce-hierarchy (hierarchy/make-hierarchy) hierarchies-loaded))
-         facts (->> (mapcat load-facts-from-source sources)
-                    (vec))
+                     (->> (for [{:keys [parents]} hierarchies-loaded
+                                [tag parent-set] parents
+                                parent parent-set]
+                            [tag parent])
+                          (reduce (partial apply derive) (make-hierarchy))))
          options (cond-> options
                    (some? hierarchy)
                    (assoc :hierarchy hierarchy))
@@ -2242,12 +2201,12 @@
                          (nil? options-cache)
                          default-session-cache
                          :else options-cache)
+         hash-expr-fn (or (:hash-expr-fn options) hash)
          ;;; this is simpler than storing all the productions and options in the cache
-         session-key (str (md5-hash productions-sorted)
-                          (md5-hash (dissoc options :cache :compiler-cache))
-                          (hash facts))]
+         session-key [(hash-expr-fn productions-sorted)
+                      (hash-expr-fn (dissoc options :cache :compiler-cache))]]
      (if session-cache
        (cache/lookup-or-miss session-cache session-key
                              (fn do-mk-session [_]
-                               (mk-session* productions-sorted facts options)))
-       (mk-session* productions-sorted facts options)))))
+                               (mk-session* productions-sorted options)))
+       (mk-session* productions-sorted options)))))

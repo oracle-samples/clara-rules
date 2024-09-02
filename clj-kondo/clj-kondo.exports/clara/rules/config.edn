@@ -1,10 +1,9 @@
 {:lint-as {clara.rules/defsession clojure.core/def
-           clara.rules/defhierarchy clojure.core/def
-           clara.rules/defdata clojure.core/def
            clara.rules.platform/eager-for clojure.core/for
            clara.rules.platform/compute-for clojure.core/for}
  :hooks {:analyze-call {clara.rules/defquery hooks.clara-rules/analyze-defquery-macro
                         clara.rules/defrule hooks.clara-rules/analyze-defrule-macro
+                        clara.rules/defhierarchy hooks.clara-rules/analyze-defhierarchy-macro
                         clara.rules.dsl/parse-query hooks.clara-rules/analyze-parse-query-macro
                         clara.rules.dsl/parse-rule hooks.clara-rules/analyze-parse-rule-macro
                         clara.tools.testing-utils/def-rules-test hooks.clara-rules/analyze-def-rules-test-macro}}}
