@@ -10,6 +10,9 @@ This is a history of changes to k13labs/clara-rules.
 * add `defhierarchy` macro to define hierarchies of facts allowing to easily establish parent/child relationships.
 * rename `clear-ns-productions!` to `clear-ns-vars!` since now there are ns-installed vars that are not productions.
 
+# 1.3.5
+* Update sum accumulator to support default-value, set to 0 if not specified, to avoid NPE during sum.
+
 # 1.3.4
 * Update CyclicalRulesListener to return the cycles-count value when converted to persistent.
 
