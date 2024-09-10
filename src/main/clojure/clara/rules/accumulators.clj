@@ -151,13 +151,13 @@
 
 (defn sum
   "Returns an accumulator that returns the sum of values of a given field"
-  [field]
+  [field & {:keys [default-value] :or {default-value 0}}]
   (accum
    {:initial-value 0
     :reduce-fn (fn [total item]
-                 (+ total (field item)))
+                 (+ total (or (field item) default-value)))
     :retract-fn (fn [total item]
-                  (- total (field item)))
+                  (- total (or (field item) default-value)))
     :combine-fn +}))
 
 (defn count

@@ -116,22 +116,28 @@
     (is (= (list {:?t 20}) (query max-retracted average-temp)))))
 
 (def-rules-test test-sum
-  {:queries [sum-query [[] [[?t <- (acc/sum :temperature) from [Temperature]]]]]
+  {:queries [sum-query [[] [[?t <- (acc/sum :temperature) from [Temperature]]]]
 
-   :sessions [empty-session [sum-query] {}]}
+             sum-query-with-default [[] [[?t <- (acc/sum :temperature :default-value 10) from [Temperature]]]]]
+
+   :sessions [empty-session [sum-query sum-query-with-default] {}]}
 
   (let [session (-> empty-session
                     (insert (->Temperature 30 "MCI"))
                     (insert (->Temperature 10 "MCI"))
+                    (insert (->Temperature nil "MCI"))
                     (insert (->Temperature 80 "MCI"))
                     fire-rules)
 
         retracted (-> session
                       (retract (->Temperature 30 "MCI"))
+                      (retract (->Temperature nil "MCI"))
                       fire-rules)]
 
     (is (= [{:?t 120}] (query session sum-query)))
-    (is (= [{:?t 90}] (query retracted sum-query)))))
+    (is (= [{:?t 130}] (query session sum-query-with-default)))
+    (is (= [{:?t 90}] (query retracted sum-query)))
+    (is (= [{:?t 90}] (query retracted sum-query-with-default)))))
 
 (def-rules-test test-count
   {:queries [count-query [[] [[?c <- (acc/count) from [Temperature]]]]]
