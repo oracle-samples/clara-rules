@@ -1,5 +1,8 @@
 This is a history of changes to k13labs/clara-rules.
 
+# 1.3.5
+* Update sum accumulator to support default-value, set to 0 if not specified, to avoid NPE during sum.
+
 # 1.3.4
 * Update CyclicalRulesListener to return the cycles-count value when converted to persistent.
 

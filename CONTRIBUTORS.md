@@ -9,6 +9,7 @@ Clara Rules Contributors
 - Dave Dixon [@sparkofreason]
 - Baptiste Fontaine [@bfontaine]
 - Jose Gomez [@k13gomez]
+- Lucio Assis [@luciolucio]
 - Imre Kószó [@imrekoszo]
 
 [@rbrush]: https://github.com/rbrush
@@ -21,4 +22,5 @@ Clara Rules Contributors
 [@bfontaine]: https://github.com/bfontaine
 [@sunilgunisetty]: https://github.com/sunilgunisetty
 [@k13gomez]: https://github.com/k13gomez
+[@luciolucio]: https://github.com/luciolucio
 [@imrekoszo]: https://github.com/imrekoszo
