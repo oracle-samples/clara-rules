@@ -61,12 +61,9 @@
   []
   (swap! default-compiler-cache empty))
 
-;; Protocol for loading rules from some arbitrary source.
-(defprotocol IRuleSource
-  (load-rules [source]))
-
-(defprotocol IHierarchySource
-  (load-hierarchies [source]))
+;; Protocol for loading a source of rules and fact hierarchies.
+(defprotocol IClaraSource
+  (load-source [source]))
 
 (sc/defschema BetaNode
   "These nodes exist in the beta network."
@@ -2122,48 +2119,37 @@
          (vary-meta production assoc ::rule-load-order (or n 0)))
        (range) productions))
 
-(defn load-rules-from-source
-  "loads the rules from a source if it implements `IRuleSource`, or navigates inside
-  collections to load rules from vectors, lists, sets, seqs."
+(defn- classify-load-type
   [source]
   (cond
-    (u/instance-satisfies? IRuleSource source)
-    (load-rules source)
-
-    (or (vector? source)
-        (list? source)
-        (set? source)
-        (seq? source))
-    (mapcat load-rules-from-source source)
-
-    (var? source)
-    (load-rules-from-source @source)
-
     (:lhs source)
-    [source]
-
-    :else []))
-
-(defn load-hierarchies-from-source
-  "loads the hierarchies from a source if it implements `IRuleSource`, or navigates inside
-  collections to load from vectors, lists, sets, seqs."
-  [source]
-  (cond
-    (u/instance-satisfies? IHierarchySource source)
-    (load-hierarchies source)
-
-    (or (vector? source)
-        (list? source)
-        (set? source)
-        (seq? source))
-    (mapcat load-hierarchies-from-source source)
-
-    (var? source)
-    (load-hierarchies-from-source @source)
+    :productions
 
     (and (:parents source)
          (:ancestors source)
          (:descendants source))
+    :hierarchies
+
+    :else nil))
+
+(defn load-source*
+  "loads the rules, queries and hierarchies from a source if it implements `IClaraSOurce`, or navigates inside
+  collections to recursively load from vectors, lists, sets, seqs."
+  [source]
+  (cond
+    (u/instance-satisfies? IClaraSource source)
+    (load-source source)
+
+    (or (vector? source)
+        (list? source)
+        (set? source)
+        (seq? source))
+    (mapcat load-source* source)
+
+    (var? source)
+    (load-source* @source)
+
+    (classify-load-type source)
     [source]
 
     :else []))
@@ -2174,15 +2160,17 @@
   ([sources-and-options]
    (let [sources (take-while (complement keyword?) sources-and-options)
          options (apply hash-map (drop-while (complement keyword?) sources-and-options))
-         productions-loaded (->> (mapcat load-rules-from-source sources)
-                                 (add-production-load-order))
+         {:keys [productions
+                 hierarchies]} (->> (mapcat load-source* sources)
+                                    (group-by classify-load-type))
+         productions-loaded (add-production-load-order productions)
          productions-unique (hs/set productions-loaded)
          productions-sorted (with-meta
                               (into (sorted-set-by production-load-order-comp) productions-unique)
                               ;; Store the name of the custom comparator for durability.
                               {:clara.rules.durability/comparator-name `production-load-order-comp})
          options-hierarchy (get options :hierarchy)
-         hierarchies-loaded (cond->> (mapcat load-hierarchies-from-source sources)
+         hierarchies-loaded (cond->> hierarchies
                               options-hierarchy
                               (cons (:hierarchy options)))
          hierarchy (when (seq hierarchies-loaded)

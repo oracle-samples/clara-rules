@@ -135,63 +135,31 @@
   (eng/rhs-retract-facts! facts))
 
 (extend-type clojure.lang.Fn
-  com/IRuleSource
-  (load-rules [afn]
+  com/IClaraSource
+  (load-source [afn]
     [(afn)]))
 
 (extend-type clojure.lang.Symbol
-  com/IHierarchySource
-  (load-hierarchies [sym]
-    ;; Find the hierarchies in the namespace, shred them,
-    ;; and compile them into a rule base.
-    (if (namespace sym)
-      ;; The symbol is qualified, so load hierarchies in the qualified symbol.
-      (let [resolved (resolve sym)]
-        (when (nil? resolved)
-          (throw (ex-info (str "Unable to resolve hierarchy source: " sym) {:sym sym})))
-
-        (cond
-          ;; The symbol references a hierarchy, so just return it
-          (:hierarchy (meta resolved))
-          (com/load-hierarchies-from-source @resolved)
-
-          ;; The symbol references a sequence, so ensure we load all sources.
-          (sequential? @resolved)
-          (mapcat com/load-hierarchies-from-source @resolved)
-
-          :else
-          []))
-
-      ;; The symbol is not qualified, so treat it as a namespace.
-      (->> (ns-interns sym)
-           (vals) ; Get the references in the namespace.
-           (filter var?)
-           (filter (comp (some-fn :hierarchy :hierarchy-seq) meta)) ; Filter down to hierarchy and hierarchy-seq, and seqs of both.
-           ;; If definitions are created dynamically (i.e. are not reflected in an actual code file)
-           ;; it is possible that they won't have :line metadata, so we have a default of 0.
-           (sort (fn [v1 v2]
-                   (compare (or (:line (meta v1)) 0)
-                            (or (:line (meta v2)) 0))))
-           (mapcat com/load-hierarchies-from-source))))
-  com/IRuleSource
-  (load-rules [sym]
+  com/IClaraSource
+  (load-source [sym]
     ;; Find the rules and queries in the namespace, shred them,
     ;; and compile them into a rule base.
     (if (namespace sym)
       ;; The symbol is qualified, so load rules in the qualified symbol.
       (let [resolved (resolve sym)]
         (when (nil? resolved)
-          (throw (ex-info (str "Unable to resolve rule source: " sym) {:sym sym})))
+          (throw (ex-info (str "Unable to resolve clara source: " sym) {:sym sym})))
 
         (cond
           ;; The symbol references a rule or query, so just load it
           (or (:query (meta resolved))
-              (:rule (meta resolved)))
-          (com/load-rules-from-source @resolved)
+              (:rule (meta resolved))
+              (:hierarchy (meta resolved)))
+          (com/load-source* @resolved)
 
           ;; The symbol references a sequence, so ensure we load all sources.
           (sequential? @resolved)
-          (mapcat com/load-rules-from-source @resolved)
+          (mapcat com/load-source* @resolved)
 
           :else
           []))
@@ -200,13 +168,13 @@
       (->> (ns-interns sym)
            (vals) ; Get the references in the namespace.
            (filter var?)
-           (filter (comp (some-fn :rule :query :production-seq) meta)) ; Filter down to rules, queries, and seqs of both.
+           (filter (comp (some-fn :rule :query :hierarchy :hierarchy-seq :production-seq) meta)) ; Filter down to rules, queries, and seqs of both.
            ;; If definitions are created dynamically (i.e. are not reflected in an actual code file)
            ;; it is possible that they won't have :line metadata, so we have a default of 0.
            (sort (fn [v1 v2]
                    (compare (or (:line (meta v1)) 0)
                             (or (:line (meta v2)) 0))))
-           (mapcat com/load-rules-from-source)))))
+           (mapcat com/load-source*)))))
 
 (defmacro mk-session
   "Creates a new session using the given rule sources. The resulting session

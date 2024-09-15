@@ -944,8 +944,7 @@
              (derive :my/parent :my/ancestor)))))
 
 (deftest test-load-hierarchies
-  (is (= [test-hierarchy]
-         (com/load-hierarchies 'clara.test-rules))))
+  (is (contains? (set (com/load-source 'clara.test-rules)) test-hierarchy)))
 
 (deftest test-override-hierarchy
   (testing "via hierarchy options"

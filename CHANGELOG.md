@@ -1,14 +1,15 @@
 This is a history of changes to k13labs/clara-rules.
 
 # 1.4.0-SNAPSHOT
+* (breaking change) renamed the protocol `IRuleSource/load-rules` to `IClaraSource/load-source`, which can load rules and hierarchies.
+* (breaking change) rename `clear-ns-productions!` to `clear-ns-vars!` since now there are ns-installed vars that are not productions.
 * update linter config for new macros.
 * `defrule` now defines rules as functions with two arities, no args returns the rule map, and 2 args is the compiled RHS.
 * `defrule` separator `=>` symbol is now optional when there is no LHS expressions
-* `clojure.lang.Fn` now implements `clara.rules.compiler/IRuleSource`, and returns a single rule by invoking the like `(a-rule)`.
+* `clojure.lang.Fn` now implements `clara.rules.compiler/IClaraSource`, and returns a single rule by invoking the like `(a-rule)`.
 * add built-in support to serialize `clojure.lang.Var` so that a rule handler var can be serialized correctly.
-* add function `clara.rules.compiler/load-rules-from-source` to simplify loading rules
+* add function `clara.rules.compiler/load-source*` to simplify recursively loading using `IClaraSource/load-source`.
 * add `defhierarchy` macro to define hierarchies of facts allowing to easily establish parent/child relationships.
-* rename `clear-ns-productions!` to `clear-ns-vars!` since now there are ns-installed vars that are not productions.
 
 # 1.3.5
 * Update sum accumulator to support default-value, set to 0 if not specified, to avoid NPE during sum.
