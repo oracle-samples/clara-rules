@@ -14,6 +14,6 @@
   [_]
   (compile-java ["src/main/java"] "target/main/classes"))
 
-(defn compile-test-java [_]
+(defn compile-test-java
   [_]
   (compile-java ["src/test/java"] "target/test/classes"))
