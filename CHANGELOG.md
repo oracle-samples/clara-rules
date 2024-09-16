@@ -1,6 +1,6 @@
 This is a history of changes to k13labs/clara-rules.
 
-# 1.4.0-SNAPSHOT
+# 1.4.0
 * (breaking change) renamed the protocol `IRuleSource/load-rules` to `IClaraSource/load-source`, which can load rules and hierarchies.
 * (breaking change) rename `clear-ns-productions!` to `clear-ns-vars!` since now there are ns-installed vars that are not productions.
 * update linter config for new macros.
