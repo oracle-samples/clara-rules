@@ -2,9 +2,11 @@ name: Clojure CI
 
 on:
   push:
-    branches: "*"
+    branches:
+      - 'main'
   pull_request:
-    branches: [ "main" ]
+    branches:
+      - '**'
 
 jobs:
   build:
@@ -12,17 +14,17 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
-    - name: Setup Java
-      uses: actions/setup-java@v3
+    - name: Tools setup
+      uses: jdx/mise-action@v2
       with:
-        # see: https://github.com/marketplace/actions/setup-java
-        distribution: 'corretto'
-        java-version: '11'
-    - name: Install clojure tools
-      uses: DeLaGuardo/setup-clojure@12.1
-      with:
-        # see: https://github.com/marketplace/actions/setup-clojure
-        cli: 1.11.1.1429
+        install: true
+        cache: true
+    - name: Tools config
+      run: |
+        echo "JAVA_HOME=$(mise where java)" >> $GITHUB_ENV
+        echo "GRAALVM_HOME=$(mise where java)" >> $GITHUB_ENV
+        echo "$(mise where java)/bin" >> $GITHUB_PATH
+        gu install native-image
     - name: Run tests
       run: make test
     - name: Run coverage tests
@@ -32,4 +34,8 @@ jobs:
     - name: Run clj-kondo linter
       run: make lint
     - name: Run build jar
-      run: make clean build
+      run: make build
+    - name: Run build app
+      run: |
+        make build-native
+        build/clara-test-app this is a test invocation of native app

@@ -19,6 +19,9 @@
                      org.clojure/math.combinatorics {:mvn/version "0.3.0"}
                      criterium/criterium {:mvn/version "0.4.6"}}}
 
+  :app {:extra-paths ["app"]
+        :extra-deps {com.github.clj-easy/graal-build-time {:mvn/version "1.0.5"}}}
+
   :clj-kondo {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2024.03.05"}}
               :main-opts ["-m" "clj-kondo.main"]}
 
@@ -47,8 +50,13 @@
                  :main-opts ["-m" "cljfmt.main" "check" "src" "dev"]}
 
   :jar {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.303"}}
-        :exec-fn hf.depstar/jar
-        :exec-args {:jar "build/clara-rules.jar"}}
+        :exec-fn hf.depstar/jar}
+
+  :uberjar {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.303"}}
+            :exec-fn hf.depstar/uberjar
+            :exec-args {:aot true
+                        :aliases [:app]
+                        :main-class clara.main}}
 
   :install-maven {:extra-deps {slipset/deps-deploy {:mvn/version "0.2.2"}}
                   :exec-fn deps-deploy.deps-deploy/deploy

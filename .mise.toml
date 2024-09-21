@@ -1,0 +1,5 @@
+[plugins]
+clojure = "https://github.com/asdf-community/asdf-clojure.git"
+[tools]
+java = "graalvm-22.3.1+java11"
+clojure = "1.11"
