@@ -220,9 +220,7 @@
 (defn parse-rule*
   "Creates a rule from the DSL syntax using the given environment map.  *ns*
    should be bound to the namespace the rule is meant to be defined in."
-  ([lhs rhs properties env]
-   (parse-rule* lhs rhs properties env {}))
-  ([lhs rhs properties env rule-meta]
+  ([lhs rhs properties rule-env rule-meta]
    (let [conditions (into [] (for [expr lhs]
                                (parse-expression expr rule-meta)))
 
@@ -235,7 +233,7 @@
                                          assoc :file *file*))}
 
          symbols (set (filter symbol? (com/flatten-expression (concat lhs rhs))))
-         matching-env (into {} (for [sym (keys env)
+         matching-env (into {} (for [sym (keys rule-env)
                                      :when (symbols sym)]
                                  [(keyword (name sym)) sym]))]
 
@@ -245,14 +243,12 @@
        (seq properties) (assoc :props properties)
 
        ;; Add the environment, if given.
-       (seq env) (assoc :env matching-env)))))
+       (seq rule-env) (assoc :env matching-env)))))
 
 (defn parse-rule-action*
   "Creates a rule action from the DSL syntax using the given environment map.  *ns*
    should be bound to the namespace the rule is meant to be defined in."
-  ([lhs rhs properties env]
-   (parse-rule-action* lhs rhs properties env {}))
-  ([lhs rhs properties env rule-meta]
+  ([lhs rhs properties rule-env rule-meta]
    (let [conditions (into [] (for [expr lhs]
                                (parse-expression expr rule-meta)))
 
@@ -262,7 +258,7 @@
                :rhs     (vary-meta rhs assoc :file *file*)}
 
          symbols (set (filter symbol? (com/flatten-expression (concat lhs rhs))))
-         matching-env (into {} (for [sym (keys env)
+         matching-env (into {} (for [sym (keys rule-env)
                                      :when (symbols sym)]
                                  [(keyword (name sym)) sym]))]
 
@@ -272,13 +268,11 @@
        (seq properties) (assoc :props properties)
 
        ;; Add the environment, if given.
-       (seq env) (assoc :env matching-env)))))
+       (seq rule-env) (assoc :env matching-env)))))
 
 (defn parse-query*
   "Creates a query from the DSL syntax using the given environment map."
-  ([params lhs env]
-   (parse-query* params lhs env {}))
-  ([params lhs env query-meta]
+  ([params lhs query-env query-meta]
    (let [conditions (into [] (for [expr lhs]
                                (parse-expression expr query-meta)))
 
@@ -288,19 +282,19 @@
 
          symbols (set (filter symbol? (com/flatten-expression lhs)))
          matching-env (into {}
-                            (for [sym (keys env)
+                            (for [sym (keys query-env)
                                   :when (symbols sym)]
                               [(keyword (name sym)) sym]))]
 
      (cond-> query
-       (seq env) (assoc :env matching-env)))))
+       (seq query-env) (assoc :env matching-env)))))
 
 (defmacro parse-rule
   "Macro used to dynamically create a new rule using the DSL syntax."
   ([lhs rhs]
-   (parse-rule* lhs rhs nil &env))
+   (parse-rule* lhs rhs nil &env (meta &form)))
   ([lhs rhs properties]
-   (parse-rule* lhs rhs properties &env)))
+   (parse-rule* lhs rhs properties &env (meta &form))))
 
 ;;; added to clojure.core in 1.9
 (defn- qualified-keyword?
@@ -315,28 +309,26 @@
 
 (defn build-rule
   "Function used to parse and build a rule using the DSL syntax."
-  ([name body] (build-rule name body {}))
-  ([name body form-meta]
+  ([name body rule-env rule-meta]
    (let [doc (if (string? (first body)) (first body) nil)
          body (if doc (rest body) body)
          properties (if (map? (first body)) (first body) nil)
          definition (if properties (rest body) body)
          {:keys [lhs rhs]} (split-lhs-rhs definition)]
-     (cond-> (parse-rule* lhs rhs properties {} form-meta)
+     (cond-> (parse-rule* lhs rhs properties rule-env rule-meta)
 
        name (assoc :name (production-name name))
        doc (assoc :doc doc)))))
 
 (defn build-rule-action
   "Function used to parse and build a rule action using the DSL syntax."
-  ([name body] (build-rule-action name body {}))
-  ([name body form-meta]
+  ([name body rule-env rule-meta]
    (let [doc (if (string? (first body)) (first body) nil)
          body (if doc (rest body) body)
          properties (if (map? (first body)) (first body) nil)
          definition (if properties (rest body) body)
          {:keys [lhs rhs]} (split-lhs-rhs definition)]
-     (cond-> (parse-rule-action* lhs rhs properties {} form-meta)
+     (cond-> (parse-rule-action* lhs rhs properties rule-env rule-meta)
 
        name (assoc :name (production-name name))
        doc (assoc :doc doc)))))
@@ -344,15 +336,14 @@
 (defmacro parse-query
   "Macro used to dynamically create a new rule using the DSL syntax."
   [params lhs]
-  (parse-query* params lhs &env))
+  (parse-query* params lhs &env (meta &form)))
 
 (defn build-query
   "Function used to parse and build a query using the DSL syntax."
-  ([name body] (build-query name body {}))
-  ([name body form-meta]
+  ([name body env form-meta]
    (let [doc (if (string? (first body)) (first body) nil)
          binding (if doc (second body) (first body))
          definition (if doc (drop 2 body) (rest body))]
-     (cond-> (parse-query* binding definition {} form-meta)
+     (cond-> (parse-query* binding definition env form-meta)
        name (assoc :name (production-name name))
        doc (assoc :doc doc)))))

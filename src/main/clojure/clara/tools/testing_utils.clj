@@ -31,14 +31,14 @@
                        (partition 2)
                        (into {}
                              (map (fn [[rule-name [lhs rhs props]]]
-                                    [rule-name (assoc (dsl/parse-rule* lhs rhs props {}) :name (str rule-name))]))))
+                                    [rule-name (assoc (dsl/parse-rule* lhs rhs props &env (meta &form)) :name (str rule-name))]))))
 
         sym->query (->> params
                         :queries
                         (partition 2)
                         (into {}
                               (map (fn [[query-name [params lhs]]]
-                                     [query-name (assoc (dsl/parse-query* params lhs {}) :name (str query-name))]))))
+                                     [query-name (assoc (dsl/parse-query* params lhs &env (meta &form)) :name (str query-name))]))))
 
         production-syms->productions (fn [p-syms]
                                        (map (fn [s]

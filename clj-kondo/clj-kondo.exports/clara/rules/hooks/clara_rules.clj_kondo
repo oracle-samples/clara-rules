@@ -410,7 +410,7 @@
                     (api/token-node 'def)
                     var-name
                     (api/vector-node
-                      children)))
+                     children)))
                   merge {:clj-kondo/ignore [:clojure-lsp/unused-public-var]})]
     {:node new-node}))
 

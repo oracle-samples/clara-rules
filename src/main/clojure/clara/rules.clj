@@ -256,19 +256,23 @@
   See the [rule authoring documentation](http://www.clara-rules.org/docs/rules/) for details."
   [rule-name & body]
   (let [doc (if (string? (first body)) (first body) nil)
-        rule (dsl/build-rule rule-name body (meta &form)) ;;; Full rule LHS + RHS
-        rule-action (dsl/build-rule-action rule-name body (meta &form)) ;;; Only the RHS
+        rule (dsl/build-rule rule-name body &env (meta &form)) ;;; Full rule LHS + RHS
+        rule-action (dsl/build-rule-action rule-name body &env (meta &form)) ;;; Only the RHS
         rule-node (com/build-rule-node rule-action) ;;; The Node of the RHS
         {:keys [bindings production]} rule-node
         rule-handler (com/compile-action-handler rule-name bindings
                                                  (:rhs production)
                                                  (:env production))
+        [rule-args & rule-body] (drop 2 rule-handler)
         name-with-meta (vary-meta rule-name assoc :rule true :doc doc)
         handler-name (symbol (name (ns-name *ns*)) (name rule-name))] ;;; The compiled RHS
     `(defn ~name-with-meta
        ([]
         (assoc ~rule :handler '~handler-name))
-       (~@(drop 2 rule-handler)))))
+       ([~@(take 1 rule-args)]
+        (~rule-name '?__token__ {}))
+       ([~@rule-args]
+        ~@rule-body))))
 
 (defmacro defquery
   "Defines a query and stores it in the given var. For instance, a simple query that accepts no
@@ -283,7 +287,7 @@
   [name & body]
   (let [doc (if (string? (first body)) (first body) nil)]
     `(def ~(vary-meta name assoc :query true :doc doc)
-       ~(dsl/build-query name body (meta &form)))))
+       ~(dsl/build-query name body &env (meta &form)))))
 
 (defmacro defhierarchy
   "Defines a hierarchy and stores it in the given var. For instance, a simple hierarchy that adds
