@@ -1,10 +1,14 @@
 [![Build Status](https://github.com/cerner/clara-rules/actions/workflows/clojure.yml/badge.svg)](https://github.com/cerner/clara-rules/actions/workflows/clojure.yml)
 
-# _About_
+# Project name
+
+clara-rules - it's a forward-chaining rules in Clojure(Script)
+
+## _About_
 
 Clara is a forward-chaining rules engine written in Clojure(Script) with Java interoperability. It aims to simplify code with a developer-centric approach to expert systems. See [clara-rules.org](http://www.clara-rules.org) for more.
 
-# _Usage_
+## _Usage_
 
 Here's a simple example. Complete documentation is at [clara-rules.org](http://www.clara-rules.org/docs/firststeps/).
 
@@ -41,7 +45,7 @@ Here's a simple example. Complete documentation is at [clara-rules.org](http://w
 ;; Notify Alice that Acme has a new support request!
 ```
 
-# _Building_
+## _Building_
 
 Clara is built, tested, and deployed using [Leiningen](http://leiningen.org). 
 ClojureScript tests are executed via [puppeteer](https://pptr.dev/). 
@@ -50,23 +54,27 @@ npm install -g puppeteer
 npx puppeteer browsers install chrome
 ```
 
-# _Availability_
+## _Availability_
 
 Clara releases are on [Clojars](https://clojars.org/). Simply add the following to your project:
 
 [![Clojars Project](http://clojars.org/com.cerner/clara-rules/latest-version.svg)](http://clojars.org/com.cerner/clara-rules)
 
-# _Communication_
+## _Communication_
 
 Questions can be posted to the [Clara Rules Google Group](https://groups.google.com/forum/?hl=en#!forum/clara-rules) or the [Slack channel](https://clojurians.slack.com/messages/clara/).  
 
-# Contributing
+## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md)
+This project welcomes contributions from the community. Before submitting a pull request, please [review our contribution guide](./CONTRIBUTING.md)
 
-# LICENSE
+## Security
 
-Copyright 2018 Cerner Innovation, Inc.
+Please consult the [security guide](./SECURITY.md) for our responsible security vulnerability disclosure process
+
+## License
+
+Copyright (c) 2018, 2025 Oracle and/or its affiliates.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
 
