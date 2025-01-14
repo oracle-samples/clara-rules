@@ -2,7 +2,7 @@
 
 # Project name
 
-clara-rules
+clara-rules - it's a forward-chaining rules in Clojure(Script)
 
 ## _About_
 
