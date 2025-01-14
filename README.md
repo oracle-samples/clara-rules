@@ -2,6 +2,7 @@
 
 # Project name
 
+clara-rules
 
 ## _About_
 
