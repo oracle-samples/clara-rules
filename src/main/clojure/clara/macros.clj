@@ -68,139 +68,139 @@
   ([node-ids :- #{sc/Int}              ; Nodes to compile.
     {:keys [id-to-production-node id-to-condition-node id-to-new-bindings forward-edges] :as beta-graph} :- schema/BetaGraph
     parent-bindings :- #{sc/Keyword}]
-     (vec
-      (for [id node-ids
-            :let [beta-node (or (get id-to-condition-node id)
-                                (get id-to-production-node id))
+   (vec
+    (for [id node-ids
+          :let [beta-node (or (get id-to-condition-node id)
+                              (get id-to-production-node id))
 
-                  {:keys [condition production query join-bindings]} beta-node
+                {:keys [condition production query join-bindings]} beta-node
 
-                  child-ids (get forward-edges id)
+                child-ids (get forward-edges id)
 
-                  constraint-bindings (com/variables-as-keywords (:constraints condition))
+                constraint-bindings (com/variables-as-keywords (:constraints condition))
 
-                  ;; Get all bindings from the parent, condition, and returned fact.
-                  all-bindings (cond-> (s/union parent-bindings constraint-bindings)
-                                       ;; Optional fact binding from a condition.
-                                       (:fact-binding condition) (conj (:fact-binding condition))
-                                       ;; Optional accumulator result.
-                                       (:result-binding beta-node) (conj (:result-binding beta-node)))
+                ;; Get all bindings from the parent, condition, and returned fact.
+                all-bindings (cond-> (s/union parent-bindings constraint-bindings)
+                                     ;; Optional fact binding from a condition.
+                                     (:fact-binding condition) (conj (:fact-binding condition))
+                                     ;; Optional accumulator result.
+                                     (:result-binding beta-node) (conj (:result-binding beta-node)))
 
-                  new-bindings (get id-to-new-bindings id)]]
+                new-bindings (get id-to-new-bindings id)]]
 
-        (case (:node-type beta-node)
+      (case (:node-type beta-node)
 
-          :join
-          (if (:join-filter-expressions beta-node)
-            `(eng/->ExpressionJoinNode
-              ~id
-              '~condition
-              ~(com/compile-join-filter id
-                                        "ExpressionJoinNode"
-                                        (:join-filter-expressions beta-node)
-                                        (:join-filter-join-bindings beta-node)
-                                        (:new-bindings beta-node)
-                                        {})
-              ~(gen-beta-network child-ids beta-graph all-bindings)
-              ~join-bindings)
-            `(eng/->HashJoinNode
-              ~id
-              '~condition
-              ~(gen-beta-network child-ids beta-graph all-bindings)
-              ~join-bindings))
-
-          :negation
-          (if (:join-filter-expressions beta-node)
-            `(eng/->NegationWithJoinFilterNode
-              ~id
-              '~condition
-              ~(com/compile-join-filter id
-                                        "NegationWithJoinFilterNode"
-                                        (:join-filter-expressions beta-node)
-                                        (:join-filter-join-bindings beta-node)
-                                        (:new-bindings beta-node)
-                                        {})
-              ~(gen-beta-network child-ids beta-graph all-bindings)
-              ~join-bindings)
-            `(eng/->NegationNode
-              ~id
-              '~condition
-              ~(gen-beta-network child-ids beta-graph all-bindings)
-              ~join-bindings))
-
-          :test
-          `(eng/->TestNode
+        :join
+        (if (:join-filter-expressions beta-node)
+          `(eng/->ExpressionJoinNode
             ~id
-            ~(:env beta-node)
-            ~(:constraints condition)
-            ~(com/compile-test id (:constraints condition) (:env beta-node))
-            ~(gen-beta-network child-ids beta-graph all-bindings))
+            '~condition
+            ~(com/compile-join-filter id
+                                      "ExpressionJoinNode"
+                                      (:join-filter-expressions beta-node)
+                                      (:join-filter-join-bindings beta-node)
+                                      (:new-bindings beta-node)
+                                      {})
+            ~(gen-beta-network child-ids beta-graph all-bindings)
+            ~join-bindings)
+          `(eng/->HashJoinNode
+            ~id
+            '~condition
+            ~(gen-beta-network child-ids beta-graph all-bindings)
+            ~join-bindings))
 
-          :accumulator
-          (if (:join-filter-expressions beta-node)
-            `(eng/->AccumulateWithJoinFilterNode
-              ~id
-              {:accumulator '~(:accumulator beta-node)
-               :from '~condition}
-              ~(:accumulator beta-node)
-              ~(com/compile-join-filter id
-                                        "AccumulateWithJoinFilterNode"
-                                        (:join-filter-expressions beta-node)
-                                        (:join-filter-join-bindings beta-node)
-                                        (:new-bindings beta-node)
-                                        {})
-              ~(:result-binding beta-node)
-              ~(gen-beta-network child-ids beta-graph all-bindings)
-              ~join-bindings
-              ~new-bindings)
+        :negation
+        (if (:join-filter-expressions beta-node)
+          `(eng/->NegationWithJoinFilterNode
+            ~id
+            '~condition
+            ~(com/compile-join-filter id
+                                      "NegationWithJoinFilterNode"
+                                      (:join-filter-expressions beta-node)
+                                      (:join-filter-join-bindings beta-node)
+                                      (:new-bindings beta-node)
+                                      {})
+            ~(gen-beta-network child-ids beta-graph all-bindings)
+            ~join-bindings)
+          `(eng/->NegationNode
+            ~id
+            '~condition
+            ~(gen-beta-network child-ids beta-graph all-bindings)
+            ~join-bindings))
 
-            `(eng/->AccumulateNode
-              ~id
-              {:accumulator '~(:accumulator beta-node)
-               :from '~condition}
-              ~(:accumulator beta-node)
-              ~(:result-binding beta-node)
-              ~(gen-beta-network child-ids beta-graph all-bindings)
-              ~join-bindings
-              ~new-bindings))
+        :test
+        `(eng/->TestNode
+          ~id
+          ~(:env beta-node)
+          ~(:constraints condition)
+          ~(com/compile-test id (:constraints condition) (:env beta-node))
+          ~(gen-beta-network child-ids beta-graph all-bindings))
 
-          :production
-          `(eng/->ProductionNode
-           ~id
-           '~production
-           ;; NOTE:  This is a workaround around allowing the compiler to eval this
-           ;; form in an unknown ns.  It will suffer from var shadowing problems described
-           ;; @ https://github.com/cerner/clara-rules/issues/178.
-           ;; A better solution may be to enhance dsl/resolve-vars to deal with shadowing
-           ;; correctly in cljs.  This may be easier to do there since the compiler's
-           ;; analyzer may be more exposed than on the clj side.
-           ~(let [resolve-vars #(@#'dsl/resolve-vars (:rhs production)
-                                                     ;; It is unlikely that passing the bindings matters,
-                                                     ;; but all:fact-binding from the LHS conditions were
-                                                     ;; made available here in the past.  However, all
-                                                     ;; bindings begin with "?" which typically means
-                                                     ;; that a rule wouldn't, or at least shouldn't for
-                                                     ;; clarity, start the names of other locals or vars
-                                                     ;; with "?".
-                                                     (mapv (comp symbol name) all-bindings))]
-              (com/compile-action id
-                                  all-bindings
-                                  ;; Using private function for now as a workaround.
-                                  (if (:ns-name production)
-                                    (if (com/compiling-cljs?)
-                                      (binding [cljs.analyzer/*cljs-ns* (:ns-name production)]
-                                        (resolve-vars))
-                                      (binding [*ns* (the-ns (:ns-name production))]
-                                        (resolve-vars)))
-                                    (resolve-vars))
-                                  (:env production))))
+        :accumulator
+        (if (:join-filter-expressions beta-node)
+          `(eng/->AccumulateWithJoinFilterNode
+            ~id
+            {:accumulator '~(:accumulator beta-node)
+             :from '~condition}
+            ~(:accumulator beta-node)
+            ~(com/compile-join-filter id
+                                      "AccumulateWithJoinFilterNode"
+                                      (:join-filter-expressions beta-node)
+                                      (:join-filter-join-bindings beta-node)
+                                      (:new-bindings beta-node)
+                                      {})
+            ~(:result-binding beta-node)
+            ~(gen-beta-network child-ids beta-graph all-bindings)
+            ~join-bindings
+            ~new-bindings)
 
-          :query
-          `(eng/->QueryNode
-           ~id
-           '~query
-           ~(:params query))
-          (throw (ex-info (str "Unknown node type " (:node-type beta-node)) {:node beta-node})))))))
+          `(eng/->AccumulateNode
+            ~id
+            {:accumulator '~(:accumulator beta-node)
+             :from '~condition}
+            ~(:accumulator beta-node)
+            ~(:result-binding beta-node)
+            ~(gen-beta-network child-ids beta-graph all-bindings)
+            ~join-bindings
+            ~new-bindings))
+
+        :production
+        `(eng/->ProductionNode
+          ~id
+          '~production
+          ;; NOTE:  This is a workaround around allowing the compiler to eval this
+          ;; form in an unknown ns.  It will suffer from var shadowing problems described
+          ;; @ https://github.com/cerner/clara-rules/issues/178.
+          ;; A better solution may be to enhance dsl/resolve-vars to deal with shadowing
+          ;; correctly in cljs.  This may be easier to do there since the compiler's
+          ;; analyzer may be more exposed than on the clj side.
+          ~(let [resolve-vars #(@#'dsl/resolve-vars (:rhs production)
+                                                    ;; It is unlikely that passing the bindings matters,
+                                                    ;; but all:fact-binding from the LHS conditions were
+                                                    ;; made available here in the past.  However, all
+                                                    ;; bindings begin with "?" which typically means
+                                                    ;; that a rule wouldn't, or at least shouldn't for
+                                                    ;; clarity, start the names of other locals or vars
+                                                    ;; with "?".
+                                                    (mapv (comp symbol name) all-bindings))]
+             (com/compile-action id
+                                 all-bindings
+                                 ;; Using private function for now as a workaround.
+                                 (if (:ns-name production)
+                                   (if (com/compiling-cljs?)
+                                     (binding [cljs.analyzer/*cljs-ns* (:ns-name production)]
+                                       (resolve-vars))
+                                     (binding [*ns* (the-ns (:ns-name production))]
+                                       (resolve-vars)))
+                                   (resolve-vars))
+                                 (:env production))))
+
+        :query
+        `(eng/->QueryNode
+          ~id
+          '~query
+          ~(:params query))
+        (throw (ex-info (str "Unknown node type " (:node-type beta-node)) {:node beta-node})))))))
 
 (sc/defn ^:always-validate compile-alpha-nodes
   [alpha-nodes :- [schema/AlphaNode]]
