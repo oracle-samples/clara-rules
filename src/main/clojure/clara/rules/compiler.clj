@@ -140,6 +140,9 @@
   ClojureScript implementation details that may change."
   [sym]
   (let [resolved (resolve-cljs-sym (cljs-ns) sym)
+        _ (when-not resolved
+            (throw (ex-info (str "Unable to resolve symbol " sym)
+                            {:symbol sym, :ns (cljs-ns)})))
         constructor (symbol (str "->" (name resolved)))
         namespace-info (get-namespace-info (symbol (namespace resolved)))
         constructor-info (get-in namespace-info [:defs constructor])]
