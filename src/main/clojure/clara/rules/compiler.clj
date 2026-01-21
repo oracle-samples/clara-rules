@@ -301,8 +301,8 @@
                `(if ~(cons '= expression-values) ~compiled-rest nil)
                ;; No additional values to check, so move on to the rest of
                ;; the expression
-               compiled-rest)
-            )
+               compiled-rest))
+            
 
          ;; A contraint that is empty doesn't need to be added as a check,
          ;; simply move on to the rest
@@ -955,30 +955,30 @@
                         constraint-bindings)
 
         new-bindings (set/difference (variables-as-keywords (:constraints condition))
-                                             parent-bindings)
+                                     parent-bindings)
 
         join-filter-bindings (if join-filter-expressions
                                (variables-as-keywords join-filter-expressions)
                                nil)]
 
-        (cond->
-            {:node-type node-type
-             :condition condition
-             :new-bindings new-bindings
-             :used-bindings (set/union cond-bindings join-filter-bindings)}
+       (cond->
+           {:node-type node-type
+            :condition condition
+            :new-bindings new-bindings
+            :used-bindings (set/union cond-bindings join-filter-bindings)}
 
-          (seq env) (assoc :env env)
+         (seq env) (assoc :env env)
 
-          ;; Add the join bindings to join, accumulator or negation nodes.
-          (#{:join :negation :accumulator} node-type) (assoc :join-bindings (set/intersection cond-bindings parent-bindings))
+         ;; Add the join bindings to join, accumulator or negation nodes.
+         (#{:join :negation :accumulator} node-type) (assoc :join-bindings (set/intersection cond-bindings parent-bindings))
 
-          accumulator (assoc :accumulator accumulator)
+         accumulator (assoc :accumulator accumulator)
 
-          result-binding (assoc :result-binding result-binding)
+         result-binding (assoc :result-binding result-binding)
 
-          join-filter-expressions (assoc :join-filter-expressions join-filter-expressions)
+         join-filter-expressions (assoc :join-filter-expressions join-filter-expressions)
 
-          join-filter-bindings (assoc :join-filter-join-bindings (set/intersection join-filter-bindings parent-bindings)))))
+         join-filter-bindings (assoc :join-filter-join-bindings (set/intersection join-filter-bindings parent-bindings)))))
 
 (sc/defn ^:private add-node :- schema/BetaGraph
   "Adds a node to the beta graph."
@@ -998,8 +998,8 @@
                                  #{}))
 
         beta-graph (if (#{:production :query} (:node-type target-node))
-                          (assoc-in beta-graph [:id-to-production-node target-id] target-node)
-                          (assoc-in beta-graph [:id-to-condition-node target-id] target-node))]
+                       (assoc-in beta-graph [:id-to-production-node target-id] target-node)
+                       (assoc-in beta-graph [:id-to-condition-node target-id] target-node))]
 
 
     ;; Associate the forward and backward edges.
@@ -1323,8 +1323,8 @@
               (binding [*compile-ctx* {:production production}]
                 (add-production production beta-graph create-id-fn)))
 
-            empty-beta-graph
-            productions))
+          empty-beta-graph
+          productions))
 
 (sc/defn ^:private root-node? :- sc/Bool
   "A helper function to determine if the node-id provided is a root node. A given node would be considered a root-node,
@@ -1351,25 +1351,25 @@
 
         ;; If extract-exprs ever became a hot spot, this could be changed out to use more java interop.
         id->expr (reduce (fn [prev alpha-node]
-                              (let [{:keys [id condition env]} alpha-node
-                                    {:keys [type constraints fact-binding args]} condition
-                                    cmeta (meta condition)]
-                                (handle-expr prev
-                                             (with-meta (compile-condition
-                                                          type id (first args) constraints
-                                                          fact-binding env)
-                                                        ;; Remove all metadata but file and line number
-                                                        ;; to protect from evaluating unsafe metadata
-                                                        ;; See PR 243 for more detailed discussion
-                                                        (select-keys cmeta [:line :file]))
-                                             id
-                                             :alpha-expr
-                                             {:file (or (:file cmeta) *file*)
-                                              :compile-ctx {:condition condition
-                                                            :env env
-                                                            :msg "compiling alpha node"}})))
-                            {}
-                            alpha-graph)
+                             (let [{:keys [id condition env]} alpha-node
+                                   {:keys [type constraints fact-binding args]} condition
+                                   cmeta (meta condition)]
+                               (handle-expr prev
+                                            (with-meta (compile-condition
+                                                         type id (first args) constraints
+                                                         fact-binding env)
+                                                       ;; Remove all metadata but file and line number
+                                                       ;; to protect from evaluating unsafe metadata
+                                                       ;; See PR 243 for more detailed discussion
+                                                       (select-keys cmeta [:line :file]))
+                                            id
+                                            :alpha-expr
+                                            {:file (or (:file cmeta) *file*)
+                                             :compile-ctx {:condition condition
+                                                           :env env
+                                                           :msg "compiling alpha node"}})))
+                         {}
+                         alpha-graph)
         id->expr (reduce-kv (fn [prev id production-node]
                              (let [production (-> production-node :production)]
                                (handle-expr prev
@@ -1752,8 +1752,8 @@
     ;; Compile conditions into functions.
     (vec
      (for [[[condition env] node-ids] condition-to-node-entries
-           :when (:type condition) ; Exclude test conditions.
-           ]
+           :when (:type condition)] ; Exclude test conditions.
+           
 
        (cond-> {:id (create-id-fn)
                 :condition condition
