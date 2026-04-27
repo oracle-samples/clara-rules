@@ -242,8 +242,10 @@
   "analyze clara-rules defquery macro"
   [{:keys [:node]}]
   (let [[production-name & children] (rest (:children node))
-        production-docs (when (= :token (node-type (first children)))
-                          (first children))
+        ;; Skip docstring if it's a string literal node
+        [children production-docs] (if (= :string (node-type (first children)))
+                                   [(rest children) (first children)]
+                                   [children nil])
         children (if production-docs (rest children) children)
         production-opts (when (= :map (node-type (first children)))
                           (first children))
@@ -347,8 +349,10 @@
   "analyze clara-rules defrule macro"
   [{:keys [:node]}]
   (let [[production-name & children] (rest (:children node))
-        production-docs (when (= :token (node-type (first children)))
-                          (first children))
+        ;; Skip docstring if it's a string literal node
+        [children production-docs] (if (= :string (node-type (first children)))
+                                   [(rest children) (first children)]
+                                   [children nil])
         children (if production-docs (rest children) children)
         production-opts (when (= :map (node-type (first children)))
                           (first children))
