@@ -6,7 +6,7 @@ if (process.argv.length !== 3) {
 }
 
 (async ()  => {
-    const browser = await puppeteer.launch({ headless: true }); // Launch headless Chrome
+    const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox']}); // Launch headless Chrome
     const page = await browser.newPage(); // Create a new page
 
     // test html file

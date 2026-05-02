@@ -16,6 +16,11 @@ jobs:
       with:
         # The Java version to make available on the path. Takes a whole or semver Java version, or 1.x syntax (e.g. 1.8 => Java 8.x). Early access versions can be specified in the form of e.g. 14-ea, 14.0.0-ea, or 14.0.0-ea.28
         java-version: 1.8
+    - name: Setup Clojure
+      uses: DeLaGuardo/setup-clojure@13.2
+      with: 
+        lein: 2.9.1
+        clj-kondo: 2023.04.14
     - name: Setup Node.js environment
       uses: actions/setup-node@v2.5.2
       with:
