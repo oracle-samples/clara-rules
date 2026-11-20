@@ -1307,7 +1307,7 @@
 
           (let [initial-value (:initial-value accumulator)
 
-                initial-converted (when initial-value
+                initial-converted (when (some? initial-value)
                                     (convert-return-fn initial-value))]
 
             (when (and (some? initial-converted)
