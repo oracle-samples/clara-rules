@@ -1,6 +1,7 @@
 This is a history of changes to clara-rules.
 
 # 0.25.0-SNAPSHOT
+* propagate a `false` accumulator initial value again after all facts of an `AccumulateNode` binding group are retracted. See [Issue 517](https://github.com/oracle-samples/clara-rules/issues/517).
 
 
 ### 0.24.0

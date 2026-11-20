@@ -1474,6 +1474,42 @@
            [{:?ts false}])
         (str "A false initial value should propagate for node type " node-type))))
 
+(def-rules-test test-false-initial-value-after-all-retracted
+
+  {:queries [t-history-query [[] [[TemperatureHistory (= ?ts temperatures)]]]]
+
+   :rules [no-join [[[?t <- false-initial-value-accum :from [Cold]]]
+                    (insert! (->TemperatureHistory ?t))]
+
+           filter-join [[[?all-hot <- (acc/all) :from [Hot]]
+                         [?t <- false-initial-value-accum :from [Cold (every? (fn [hot-fact]
+                                                                                (< temperature (:temperature hot-fact)))
+                                                                              ?all-hot)]]]
+                        (insert! (->TemperatureHistory ?t))]]
+
+   :sessions [empty-session-no-join [t-history-query no-join] {}
+              empty-session-filter-join [t-history-query filter-join] {}]}
+
+  (doseq [[node-type empty-session] [["AccumulateNode"
+                                      empty-session-no-join]
+                                     ["AccumulateWithJoinFilterNode"
+                                      empty-session-filter-join]]
+          :let [cold (->Cold 10)
+                with-cold (-> empty-session
+                              (insert cold)
+                              fire-rules)]]
+
+    (is (= (query with-cold t-history-query)
+           [{:?ts ::dummy-value}])
+        (str "The accumulated value should propagate while a matching fact exists for node type " node-type))
+
+    (is (= (-> with-cold
+               (retract cold)
+               fire-rules
+               (query t-history-query))
+           [{:?ts false}])
+        (str "A false initial value should propagate again after all matching facts are retracted for node type " node-type))))
+
 ;; Version of the "all" accumulator that converts the result to boolean false if it is empty.
 (def false-if-empty-accum-all
   (let [base-all (acc/all)
